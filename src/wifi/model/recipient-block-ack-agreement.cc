@@ -176,7 +176,10 @@ RecipientBlockAckAgreement::NotifyReceivedMpdu(Ptr<const WifiMpdu> mpdu, uint8_t
     } else {
         uint16_t mpduSeqNumber = mpdu->GetHeader().GetSequenceNumber();
         uint16_t distance = GetDistance(mpduSeqNumber, m_scoreboard_asyn[linkId].GetWinStart());
-        // if (Simulator::Now() > Seconds(1)) std::cout << Simulator::Now() << " Got snn = " << mpduSeqNumber << " on " << +linkId << "distance = " << distance  <<" winStart = " << m_scoreboard_asyn[linkId].GetWinStart()<< std::endl;
+        // if (Simulator::Now() > Seconds(1))
+        //     std::cout << Simulator::Now() << "m_mode = " << m_mode << " Got snn = " << mpduSeqNumber << " on " << +linkId
+        //               << "distance = " << distance
+        //               << " winStart = " << m_scoreboard_asyn[linkId].GetWinStart() << " mpduSize = " << mpdu->GetPacketSize() << std::endl;
         /* Update the scoreboard (see Section 10.24.7.3 of 802.11-2016) */
         if (distance < m_scoreboard_asyn[linkId].GetWinSize())
         {
@@ -189,10 +192,10 @@ RecipientBlockAckAgreement::NotifyReceivedMpdu(Ptr<const WifiMpdu> mpdu, uint8_t
             m_scoreboard_asyn[linkId].At(m_scoreboard_asyn[linkId].GetWinSize() - 1) = true;
         }
         else {
-            std::cout << "distance > SEQNO_SPACE_HALF_SIZE before" << m_scoreboard_asyn[linkId].GetWinStart() << std::endl; 
+            std::cout << "distance > SEQNO_SPACE_HALF_SIZE before WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << std::endl; 
             m_scoreboard_asyn[linkId].Advance(distance - m_scoreboard_asyn[linkId].GetWinSize() + 1);
             m_scoreboard_asyn[linkId].At(m_scoreboard_asyn[linkId].GetWinSize() - 1) = true;
-            std::cout <<" after " << m_scoreboard_asyn[linkId].GetWinStart() << std::endl;
+            std::cout <<" after WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << std::endl;
         }
 
         distance = GetDistance(mpduSeqNumber, m_winStartB);
@@ -231,6 +234,8 @@ RecipientBlockAckAgreement::NotifyReceivedMpdu(Ptr<const WifiMpdu> mpdu, uint8_t
             // WinStartB and proceeding sequentially until there is no buffered MSDU or
             // A-MSDU for the next sequential Sequence Number subfield value
             PassBufferedMpdusUntilFirstLost();
+        } else {
+            // std::cout << "distance > BufferSize" << std::endl;
         }
     }
 }

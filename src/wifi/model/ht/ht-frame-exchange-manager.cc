@@ -366,7 +366,7 @@ HtFrameExchangeManager::StartFrameExchange(Ptr<QosTxop> edca, Time availableTime
         if (!peekedItem)
             return false;
     }
-    
+
     //海思新架构模拟
     //发送前更新自己读指针到最新
     if(m_mac->GetNLinks() > 1 && peekedItem->GetHeader().IsQosData()){
@@ -646,6 +646,11 @@ HtFrameExchangeManager::SendDataFrame(Ptr<WifiMpdu> peekedItem,
         bool flag = edca->GetMsduGrouper()->UpdateAmpduSize(m_linkId, mpduList.size());
         if (flag)
         {
+            txParams.Clear();
+            txParams.m_txVector =
+                GetWifiRemoteStationManager()->GetDataTxVector(peekedItem->GetHeader(),
+                                                               m_allowedWidth);
+            mpdu = edca->GetNextMpdu(m_linkId, peekedItem, txParams, availableTime, initialFrame);
             mpduList = m_mpduAggregator->GetNextAmpdu(mpdu, txParams, availableTime);
             edca->GetMsduGrouper()->ResetRedundancyMode(m_linkId);
         }
@@ -657,7 +662,7 @@ HtFrameExchangeManager::SendDataFrame(Ptr<WifiMpdu> peekedItem,
     //     for (const auto & it : mpduList) {
     //         std::cout << it->GetHeader().GetSequenceNumber() << ", ";
     //     }
-    //     std::cout << "], 长度 = " << mpduList.size() << std::endl;
+    //     std::cout << "], 长度 = " << mpduList.size() << ", packetSize = " << mpduList[0]->GetPacketSize() << std::endl;
     // }
     
     if (mpduList.size() > 1)

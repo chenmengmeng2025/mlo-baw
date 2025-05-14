@@ -503,7 +503,7 @@ class QosTxop : public Txop
                    std::vector<uint32_t> /* meanAmpduLength */>
         TracedParamsAndStats;
     TracedCallback<std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint64_t>>>,
-                   std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint32_t>>>>
+                   std::unordered_map<uint8_t, std::vector<std::tuple<uint64_t, uint64_t, uint32_t>>>>
         TracedTxopTime;
     std::vector<uint32_t> m_alg_txop_limits;
     std::vector<int32_t> m_alg_rts_cts_thresholds;

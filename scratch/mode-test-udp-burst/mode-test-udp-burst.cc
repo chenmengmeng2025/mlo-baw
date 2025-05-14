@@ -200,6 +200,32 @@ SaveTxopStats(std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint64
 std::string ppduTxOutputFile("./PPDU.csv");
 
 void
+NotifyPpduTxDurationMLDSTA(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
+{
+    if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
+        return;
+    // std::cout << "NotifyPpduTxDuration: " << Simulator::Now().GetSeconds() << std::endl;
+    Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
+    uint32_t nmpdus = 0;
+    if (psdu->IsAggregate())
+    {
+        nmpdus = psdu->GetNMpdus();
+    } else {
+        nmpdus = 1;
+    }
+    if (Simulator::Now().GetSeconds() < 6)
+    {
+        std::fstream file;
+        file.open(ppduTxOutputFile, std::ios::out | std::ios::app);
+        if (nmpdus != 0)
+            file << "MLD" << uint32_t(linkid) << "," << Simulator::Now().GetMicroSeconds() << ","
+                    << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() << ","
+                    << nmpdus << std::endl;
+        file.close();
+    }
+}
+
+void
 NotifyPpduTxDurationOBSS2G(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
 {
     if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
@@ -250,8 +276,9 @@ NotifyPpduTxDurationOBSS5G(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t link
         file.close();
     }
 }
+
 void
-NotifyPpduTxDurationMLD(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
+NotifyPpduTxDurationMLDAP(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
 {
     if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
         return;
@@ -343,7 +370,7 @@ main(int argc, char* argv[])
     cmd.AddValue("inference", "inference setting", inference);
     cmd.Parse(argc, argv);
 
-    simT = period_update * 10 + 1;
+    simT = period_update * 3 + 1;
     Time period{Seconds(period_update)};
     if (!(inference & 0b01)) r1 = 1e-9;  
     if (!(inference & 0b10)) r2 = 1e-9;
@@ -633,8 +660,10 @@ main(int argc, char* argv[])
     }
 
     // MLD AP PPDU TX Duration Output
-    DynamicCast<WifiNetDevice>(apDev.Get(0))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationMLD));
-    DynamicCast<WifiNetDevice>(apDev.Get(0))->GetPhy(1)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationMLD));
+    DynamicCast<WifiNetDevice>(apDev.Get(0))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationMLDAP));
+    DynamicCast<WifiNetDevice>(apDev.Get(0))->GetPhy(1)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationMLDAP));
+    DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationMLDSTA));
+    DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(1)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationMLDSTA));
 
     NetDeviceContainer devices;
     devices.Add(apDev);
@@ -851,7 +880,7 @@ main(int argc, char* argv[])
     std::cout << txopLimitList[0] << " " << txopLimitList[1] << std::endl;
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/TxopLimits", AttributeContainerValue<TimeValue>(txopLimitList));
 
-    // phy.EnablePcap("ap0-trace", apDev.Get(0));
+    phy.EnablePcap("ap0-trace", apDev.Get(0));
     // phySld2.EnablePcap("ap1-trace", apDev.Get(1));
     // phySld5.EnablePcap("ap2-trace", apDev.Get(2));
     // phy.EnablePcap("mld-trace", mldDev.Get(0));

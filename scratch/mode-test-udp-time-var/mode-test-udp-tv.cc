@@ -177,7 +177,7 @@ std::string txopOutputFile("./Txop.csv");
 std::string txopMpduNumberOutputFile("./TxopMpduNum.csv");
 void
 SaveTxopStats(std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint64_t>>> txopList,
-              std::unordered_map<uint8_t, std::vector<std::tuple<uint64_t, uint64_t, uint32_t>>> numList)
+              std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint32_t>>> numList)
 {
     std::ofstream fout(txopOutputFile, std::ios::out);
     fout << "LinkId,TxopStartTime,TxopEndTime" << std::endl;
@@ -187,14 +187,14 @@ SaveTxopStats(std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint64
             fout << (uint32_t)i << "," << txopList[i][j].first << "," << txopList[i][j].second << std::endl;
     }
     fout.close();
-    // std::ofstream fout2(txopMpduNumberOutputFile, std::ios::out);
-    // fout2 << "LinkId, TxopStartTime, TxopMpduNum" << std::endl;
-    // for (uint8_t i = 0; i < 2; i++)
-    // {
-    //     for (size_t j = 0; j < numList[i].size(); ++j)
-    //         fout2 << (uint32_t)i << "," << numList[i][j].first << "," << numList[i][j].second << std::endl;
-    // }
-    // fout2.close();
+    std::ofstream fout2(txopMpduNumberOutputFile, std::ios::out);
+    fout2 << "LinkId, TxopStartTime, TxopMpduNum" << std::endl;
+    for (uint8_t i = 0; i < 2; i++)
+    {
+        for (size_t j = 0; j < numList[i].size(); ++j)
+            fout2 << (uint32_t)i << "," << numList[i][j].first << "," << numList[i][j].second << std::endl;
+    }
+    fout2.close();
 }
 
 std::string ppduTxOutputFile("./PPDU.csv");
@@ -342,8 +342,6 @@ main(int argc, char* argv[])
     uint8_t mode = 1;
 
     double simT = 0;
-    bool param_update = true;
-    bool redundancy_enable = false;
     Time simT_delayEnd = NanoSeconds(2);
     CommandLine cmd(__FILE__);
     std::filesystem::path filepath = __FILE__;
@@ -370,27 +368,19 @@ main(int argc, char* argv[])
     cmd.AddValue("sl", "Single Link if > 0", singleLink);
     cmd.AddValue("nss", "mimo", nss);
     cmd.AddValue("inference", "inference setting", inference);
-    cmd.AddValue("redundancy", "redundancy setting", redundancy_enable);
-    cmd.AddValue("param_update", "param update setting", param_update); 
     cmd.Parse(argc, argv);
 
-    simT = period_update * 10 + 1;
+    simT = period_update * 3 + 1;
     Time period{Seconds(period_update)};
     if (!(inference & 0b01)) r1 = 1e-9;  
     if (!(inference & 0b10)) r2 = 1e-9;
     Time tputInterval = period / 2; // interval for detailed throughput measurement
-    std::string title;
-    if (rateCtrl == "constant")
-        title = "bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + "_mcs_" +
-                            std::to_string(mcs1) + "_" + std::to_string(mcs2) + "_interference_" +
-                            std::to_string(r1) + "_" + std::to_string(r2) + "_txoplimits_" + 
-                            std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update);
-    else title = "bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + "_ratectrl_" +
-                            rateCtrl + "_interference_" +
-                            std::to_string(r1) + "_" + std::to_string(r2) + "_txoplimits_" + 
-                            std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update);
+    std::string title = "bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + "_mcs_" +
+                        std::to_string(mcs1) + "_" + std::to_string(mcs2) + "_interference_" +
+                        std::to_string(r1) + "_" + std::to_string(r2) + "_txoplimits_" + 
+                        std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss);
 
-    std::string csv_file = (filepath.parent_path() / ("result_" + title + ".csv")).string();
+    std::string csv_file = (filepath.parent_path() / ("result_" + title + "_thpt.csv")).string();
     std::cout << csv_file << std::endl;
     // LogComponentEnable("PhyEntity", LOG_LEVEL_DEBUG);
     bool udp = true;
@@ -408,7 +398,7 @@ main(int argc, char* argv[])
     uint32_t payloadSize = 700; // must fit in the max TX duration when transmitting at MCS 0 over an RU of 26 tones
     Time accessReqInterval{0};
     uint32_t maxGroupSize = 4;
-    if (useRts) // 默认不使用RTS CTS
+    if (useRts)
     {
         Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("0"));
         Config::SetDefault("ns3::WifiDefaultProtectionManager::EnableMuRts", BooleanValue(true));
@@ -856,9 +846,9 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode));
     Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(0x01 << 2)); // 只负责接收，无msdu_grouper
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchEnable", BooleanValue(grid_search_enable));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/ParamUpdate", BooleanValue(param_update));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/ParamUpdate", BooleanValue(true));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchParameter", StringValue("./scratch/params.json"));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/RedundancyEnable", BooleanValue(redundancy_enable));
+
 
     /* BSS EDCA */
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
@@ -872,9 +862,6 @@ main(int argc, char* argv[])
     //  Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3}));
     //  Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3}));
 
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
     
     // /* BSS EDCA */
     // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));

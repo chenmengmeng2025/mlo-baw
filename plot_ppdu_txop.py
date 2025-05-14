@@ -11,12 +11,14 @@ color_map = {
     '1': '#2ca02c',      # 绿色
     'OBSS1': '#ff7f0e',   # 橙色
     'OBSS2': '#ffd700',   # 黄色
+    'MLD0' : '#d62728',   # 红色
+    'MLD1' : '#8c564b',   # 棕色
 }
 
 def get_y(type_):
-    if type_ == '1' or type_ == 'OBSS2':
+    if type_ == '1' or type_ == 'OBSS2' or  type_ == 'MLD1':
         return 1
-    elif type_ == '0' or type_ == 'OBSS1':
+    elif type_ == '0' or type_ == 'OBSS1' or  type_ == 'MLD0':
         return 0
     else:
         return 0
@@ -24,8 +26,8 @@ def get_y(type_):
 
 fig, ax = plt.subplots(figsize=(30, 4))
 
-begin = 1550000
-end = 1600000
+begin = 1500000
+end = 1520000
 for idx, row in df.iterrows():
     linkId = str(row.iloc[0])
     x_start = row.iloc[1]
@@ -41,20 +43,20 @@ for idx, row in df.iterrows():
                 ha='center', va='center', fontsize=8, color='black')
 
 # 读取txopPPDU.csv并画点
-# txop_df = pd.read_csv('./Txop.csv')
-# link_color = {0: 'purple', 1: 'red'}
+txop_df = pd.read_csv('./Txop.csv')
+link_color = {0: 'purple', 1: 'red'}
 
-# for idx, row in txop_df.iterrows():
-#     link = row.iloc[0]
-#     txopstart = row.iloc[1]
-#     txopend = row.iloc[2]
-#     if txopstart > begin and txopstart < end:
-#         color = link_color.get(link, 'black')
-#         y_pos = 0.6 if link == 1 else -0.4
-#         # 三角形标txopstart
-#         ax.scatter(txopstart, y_pos, marker='^' , alpha=0.7, color=color, s=10, label=f'link{link} start' if idx == 0 else "")
-#         # 方形标txopend
-#         ax.scatter(txopend, y_pos, marker='.', color=color,alpha=0.7, s=10, label=f'link{link} end' if idx == 0 else "")
+for idx, row in txop_df.iterrows():
+    link = row.iloc[0]
+    txopstart = row.iloc[1]
+    txopend = row.iloc[2]
+    if txopstart > begin and txopstart < end:
+        color = link_color.get(link, 'black')
+        y_pos = 0.6 if link == 1 else -0.4
+        # 三角形标txopstart
+        ax.scatter(txopstart, y_pos, marker='^' , alpha=0.7, color=color, s=10, label=f'link{link} start' if idx == 0 else "")
+        # 方形标txopend
+        ax.scatter(txopend, y_pos, marker='.', color=color,alpha=0.7, s=10, label=f'link{link} end' if idx == 0 else "")
 
 # 设置y轴
 ax.set_yticks([0, 1])

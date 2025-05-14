@@ -27,6 +27,7 @@
 #include "wifi-tx-parameters.h"
 
 #include "ns3/ht-configuration.h"
+#include "ns3/tcp-header.h"
 #include "ns3/ht-frame-exchange-manager.h"
 #include "ns3/log.h"
 #include "ns3/pointer.h"
@@ -475,7 +476,9 @@ QosTxop::PeekNextMpdu(uint8_t linkId, uint8_t tid, Mac48Address recipient, Ptr<c
             m_queue->Remove(mpdu);
             continue;
         }
-
+        // if (m_mode & 0x04) {
+        //     if (item) std::cout << item->GetPacketSize() << " " << item->GetHeader().GetSequenceNumber() << std::endl;
+        // }
         if ( m_mode & 0x02 )
         {   
             // std::cout << "mode 2" << IsLinkAllocated(linkId, item->GetAllocatedLink()) << std::endl;
@@ -1040,7 +1043,7 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
         auto params = GetMsduGrouper()->GetCurrentEdcaParameters();
         auto next_params = GetMsduGrouper()->GetNextEdcaParameters();
         const auto meanTxopTime = GetMsduGrouper()->GetMeanTxopTime(period / 2);
-        const auto meanTxopMpduNum = GetMsduGrouper()->GetMeanTxopMpduNum(period / 2);
+        const auto meanTxMpduNum = GetMsduGrouper()->GetMeanTxMpduNum(period / 2);
         
         if (!TracedParamsAndStats.IsEmpty())
             TracedParamsAndStats(std::move(params),
@@ -1055,12 +1058,12 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
                                  blockCnt,
                                  blockCnt_other_inflight,
                                  meanTxopTime,
-                                 meanTxopMpduNum,
+                                 meanTxMpduNum,
                                  {maxlen1, maxlen2},
                                  {meanlen1, meanlen2});
     
         if (!TracedTxopTime.IsEmpty())
-            TracedTxopTime(GetMsduGrouper()->m_txopList, GetMsduGrouper()->m_txopNumList);
+            TracedTxopTime(GetMsduGrouper()->m_txopList, GetMsduGrouper()->m_txtime_nmpdu_List);
 
         if (next_params.No == 0) {
             Simulator::Schedule(period, &QosTxop::ScheduleUpdateEdcaParameters, this, period);
@@ -1069,13 +1072,17 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
         SetParams(next_params);
         GetMsduGrouper()->ClearStats();
     } else {
-        const auto& new_params = GetMsduGrouper()->GetNewEdcaParameters(false);
+        auto address = GetMsduGrouper()->GetRecipient();
+        auto winSize = GetBaBufferSize(address, 0);
+        std::cout << "recipient address: " << address <<  " " << winSize <<std::endl;
+        
+        const auto& new_params = GetMsduGrouper()->GetNewEdcaParameters(false, winSize, p1, p2, avgdatarate1, avgdatarate2);
         if (new_params.No == 0) {
             Simulator::Schedule(period, &QosTxop::ScheduleUpdateEdcaParameters, this, period);
             return;
         }
         const auto meanTxopTime = GetMsduGrouper()->GetMeanTxopTime(period / 2);
-        const auto meanTxopMpduNum = GetMsduGrouper()->GetMeanTxopMpduNum(period / 2);
+        const auto meanTxopMpduNum = GetMsduGrouper()->GetMeanTxMpduNum(period / 2);
         if (!TracedParamsAndStats.IsEmpty())
             TracedParamsAndStats(std::move(new_params),
                                  GetMsduGrouper()->GetLink1Pct(),
@@ -1094,7 +1101,7 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
                                  {meanlen1, meanlen2});
     
         if (!TracedTxopTime.IsEmpty())
-            TracedTxopTime(GetMsduGrouper()->m_txopList, GetMsduGrouper()->m_txopNumList);
+            TracedTxopTime(GetMsduGrouper()->m_txopList, GetMsduGrouper()->m_txtime_nmpdu_List);
 
         SetParams(new_params);
     }
@@ -1202,14 +1209,13 @@ QosTxop::SetParams(const mldParams & next_params) {
 
         // RTS/CTS 开启关闭
         for (uint8_t i = 0; i < 2; ++ i) {
-            if (next_params.RTS_CTS[i])
-                m_mac->GetWifiRemoteStationManager(i)->SetRtsCtsThreshold(0);
+            if (next_params.RTS_CTS[i]) m_mac->GetWifiRemoteStationManager(i)->SetRtsCtsThreshold(0);
             else m_mac->GetWifiRemoteStationManager(i)->SetRtsCtsThreshold(std::numeric_limits<uint32_t>::max());
         }
 
-        // 聚合参数
-
-        m_mac->SetAttribute("BE_MaxAmpduSize", UintegerValue(1024 * 4 * (700 + 150)));
+        // 聚合参数, MLO算法通过控制Txop来控制聚合长度，因此不修改这个参数
+        if (next_params.AmpduSizes[0] != 0)
+            m_mac->SetAttribute("BE_MaxAmpduSize", UintegerValue(next_params.AmpduSizes[0]));
 
         // 重传次数
         for (uint8_t i = 0; i < 2; ++ i) {

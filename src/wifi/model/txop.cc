@@ -191,7 +191,12 @@ Txop::GetTypeId()
                 MakeStringAccessor(&Txop::m_jsonFileName),
                 MakeStringChecker()
                 )
-
+            .AddAttribute("RedundancyEnable",
+                "Redundancy Setting",
+                BooleanValue(false),
+                MakeBooleanAccessor(&Txop::m_reduandancyEnable),
+                MakeBooleanChecker()
+                )
             .AddAttribute("Period",
                 "Stats Period Setting",
                 TimeValue(Seconds(3.0)),
@@ -696,7 +701,7 @@ Txop::Queue(Ptr<WifiMpdu> mpdu)
     }
     m_queue->Enqueue(mpdu);
     
-    if(m_mode && mpdu->GetHeader().IsQosData() && mpdu->GetPacketSize() != mpdu->GetPacket()->GetAdjustment()){
+    if((m_mode & 0x03) && mpdu->GetHeader().IsQosData() && mpdu->GetPacketSize() != mpdu->GetPacket()->GetAdjustment()){
         // std::cout<< "msdu入队" <<std::endl;
         m_grouper->AggregateMsdu(mpdu);
     }
@@ -781,6 +786,10 @@ Txop::DoInitialize()
     // The initialization of m_queue and m_mac has been completed.
     if (m_mode & 0x03) {
         m_grouper = Create<MsduGrouper>(m_maxGroupSize, 4096, m_queue, m_mac, m_mode, m_period);
+        if(m_reduandancyEnable) {
+            std::cout << "允许冗余模式开启" << std::endl;
+            m_grouper->UpdateRedundancyFixedNumber({1, 1});
+        }
         m_grouper->SetLink1Pct(m_link1Pct);
         if (m_gs_enable) m_grouper->EnableGridSearch(m_jsonFileName);
         if (m_param_update) m_grouper->EnableParamUpdate();

@@ -6,7 +6,6 @@
 #include "ns3/applications-module.h"
 #include "ns3/config-store-module.h"
 #include "ns3/log.h"
-
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("Wifi6SimpleExample");
@@ -28,7 +27,7 @@ void NotifyAppRx(Ptr<const Packet> packet)
 }
 
 int main(int argc, char *argv[])
-{
+{  LogComponentEnable("TcpSocketBase", LOG_LEVEL_DEBUG);
     // 启用日志组件
     LogComponentEnable("Wifi6SimpleExample", LOG_LEVEL_INFO);
 
@@ -98,43 +97,45 @@ int main(int argc, char *argv[])
     Ipv4InterfaceContainer staInterfaces = address.Assign(staDevices);
 
     // 配置应用程序
-    uint32_t port = 9;  
+    uint16_t port = 9;  
+    PacketSinkHelper sink("ns3::TcpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), port));
+    ApplicationContainer sinkApps = sink.Install(staNode);
+    sinkApps.Start(Seconds(0.0));
+    sinkApps.Stop(Seconds(10.0));
 
-
-    BulkSendHelper source("ns3::TcpSocketFactory", InetSocketAddress(i.GetAddress(1), port));
-    // Set the amount of data to send in bytes.  Zero is unlimited.
-    source.SetAttribute("MaxBytes", UintegerValue(0));
-    ApplicationContainer sourceApps = source.Install(apNode);
+    // BulkSendHelper source("ns3::TcpSocketFactory", InetSocketAddress(staInterfaces.GetAddress(0), port));
+    // // Set the amount of data to send in bytes.  Zero is unlimited.
+    // source.SetAttribute("MaxBytes", UintegerValue(0));
+    // ApplicationContainer sourceApps = source.Install(apNode);
+    // sourceApps.Start(Seconds(0.0));
+    // sourceApps.Stop(Seconds(2.0));
+    OnOffHelper onoff("ns3::TcpSocketFactory", Ipv4Address::GetAny());
+    // OnOffHelper onoff("ns3::TcpSocketFactory", InetSocketAddress(staInterfaces.GetAddress(0), port));
+    AddressValue remoteAddress(InetSocketAddress(staInterfaces.GetAddress(0), port));
+    onoff.SetAttribute("Remote", remoteAddress);
+    onoff.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
+    onoff.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
+    onoff.SetAttribute("PacketSize", UintegerValue(1448));
+    onoff.SetAttribute("DataRate", StringValue("1000Mbps"));
+    ApplicationContainer sourceApps = onoff.Install(apNode);
     sourceApps.Start(Seconds(0.0));
-    sourceApps.Stop(Seconds(10.0));
+    sourceApps.Stop(Seconds(2.0));
+    uint32_t maxAmpduSize{1024 * 4 * (1448 + 150)}; // 1048575
+    uint32_t mpduBufferSize{256};
+    Config::Set("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_MaxAmpduSize",
+                UintegerValue(maxAmpduSize));
 
-    // 连接发送和接收回调
-    WifiTxStatsHelper ApStats;
-    NetDeviceContainer devices;
-    devices.Add(staDevices);
-    devices.Add(apDevices);
-    ApStats.Enable(devices);
-    ApStats.Start(Seconds(0.1));
-    ApStats.Stop(Seconds(10.0));
-    
+    Config::Set("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/MpduBufferSize",
+                UintegerValue(mpduBufferSize));
+    Config::Set("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2}));
+    Config::Set("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{1}));
+    Config::Set("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3}));
+    phy.EnablePcap("ap-ax-trace", apDevices.Get(0));
+    phy.EnablePcap("sta-ax-trace", staDevices.Get(0));
+
     // 启动仿真
-    Simulator::Stop(Seconds(10.0));
+    Simulator::Stop(Seconds(2.0));
     Simulator::Run();
-    auto rxBytes = serverApps.Get(0)->GetObject<UdpServer>()->GetReceived() * 1024;
-    double totalThroughputMbps = (double)(rxBytes) * 8 / 10 / 1e6;
-    std::cout << "Total Throughput: " << totalThroughputMbps << " Mbps" << std::endl;
-    std::cout << "from, \t to, \t throughput(mbps),\t Mean Access Delay" << std::endl;
-    int8_t from = 0;
-    int8_t to = 1;
-    auto results = ApStats.GetFinalStatistics();
-
-    rxBytes = results.m_numSuccessPerNodePairLink[{from, to}][0] * 1024;
-    std::cout << "throughput: " << rxBytes * 8 / 10 / 1e6 << std::endl;
-    std::cout << "Access Delay: " << results.m_meanAccessDelayPerNodePairLink[{from, to}][0] << std::endl;
-    from = 1, to = 0;
-    rxBytes = results.m_numSuccessPerNodePairLink[{from, to}][0] * 1024;
-    std::cout << "throughput: " << rxBytes * 8 / 10 / 1e6 << std::endl;
-    std::cout << "Access Delay: " << results.m_meanAccessDelayPerNodePairLink[{from, to}][0] << std::endl;
     Simulator::Destroy();
     return 0;
 }

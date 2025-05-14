@@ -563,7 +563,7 @@ MsduGrouper::NotifyPpduTxDuration(Ptr<const WifiPpdu> ppdu, Time duration, uint8
                          << Simulator::Now() << " " << packet->GetUid());
         }
     }
-    m_txopNumList[linkId].emplace_back(Simulator::Now().GetMicroSeconds(), nmpdus);
+    m_txtime_nmpdu_List[linkId].emplace_back(Simulator::Now().GetMicroSeconds(), duration.GetMicroSeconds(), nmpdus);
     m_queueStats.m_ppduinfos.push_back(ppduinfo);
 }
 
@@ -752,11 +752,14 @@ MsduGrouper::UpdateAmpduSize(uint8_t linkId, uint32_t size)
             }
         }
     }
-    // if (size == 0) {
-    //     // 卡窗发生时候，开启冗余模式
-    //     SetRedundancyMode(linkId, 256);
-    //     return true;
-    // }
+    if (size == 0 && (m_mode & 0x01)) {
+        // 模式一只会在无包可发时才会开启冗余模式
+        if (m_redundancyFixedNumber[linkId]) {
+            std::cout << "开启冗余 on Link " << (uint32_t)linkId << std::endl;
+            SetRedundancyMode(linkId, 256);
+        }
+        return true;
+    }
     return false;
 }
 
@@ -775,29 +778,29 @@ MsduGrouper::GetCurrentEdcaParameters()
 }
 
 mldParams
-MsduGrouper::GetNewEdcaParameters(bool initial)
+MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, double p2, double datarate1, double datarate2)
 {
-    const auto meanTxopTime = GetMeanTxopTime(m_period / 2);
-    const auto meanTxopMpduNum = GetMeanTxopMpduNum(m_period / 2);
     uint32_t txoplimit = 0;
+    uint32_t aifsn1, aifsn2 = 2;
     if (!initial) {
-        uint16_t winSize = 256;
-        std::cout << meanTxopTime[0] << " , " << meanTxopTime[1] << std::endl;
-        std::cout << meanTxopMpduNum[0] << " , " << meanTxopMpduNum[1] << std::endl;
-        std::vector<double> txoptime_permpdu = {(double) meanTxopTime[0] / (meanTxopMpduNum[0] + 1e-6), (double) meanTxopTime[1] / (meanTxopMpduNum[1] + 1e-6)};
-        txoplimit = ceil(winSize / (1 / (txoptime_permpdu[0] + 1e-6) + 1 / (txoptime_permpdu[1] + 1e-6))) / 32;
-        txoplimit = 0;
+        auto mpdusize = GetMeanMpduSize();
+        std::cout << mpdusize << std::endl;
+        txoplimit = std::ceil((double) winSize / (p1 * datarate1 + p2 * datarate2) * mpdusize * 8 / 32);
+        // txoplimit = 0;
         std::cout << "MLO Algorithm to Set Txoplimit: " << txoplimit << std::endl;
+        if (p1 < 0.98) { aifsn1 = 1;}
+        if (p2 < 0.98) { aifsn2 = 1;}
+        std::cout << "Aifsn1: " << aifsn1 << " Aifsn2: " << aifsn2 << std::endl;
     }
     mldParams params;
     params.No = 1;
-    params.Aifsns = {2, 2};
+    params.Aifsns = {aifsn1, aifsn2};
     params.CWmins = {1, 1};
     params.CWmaxs = {3, 3};
     params.MaxSlrcs = {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
     params.MaxSsrcs = {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
     params.RTS_CTS = {0, 0};
-    params.AmpduSizes = {1024 * 4 * (700 + 150), 1024 * 4 * (700 + 150)};
+    params.AmpduSizes = {0, 0};
     params.RedundancyFixedNumbers = {0, 0};
     params.RedundancyThresholds = {0.5, 0.5};
     params.TxopLimits = {txoplimit, txoplimit};
@@ -940,7 +943,7 @@ MsduGrouper::GetMeanTxopTime(Time period) {
 }
 
 std::vector<uint32_t> 
-MsduGrouper::GetMeanTxopMpduNum(Time period) {
+MsduGrouper::GetMeanTxMpduNum(Time period) {
     std::vector<uint32_t> meanTxopMpduNum{0, 0};
     if (period.IsStrictlyPositive())
     {
@@ -948,11 +951,11 @@ MsduGrouper::GetMeanTxopMpduNum(Time period) {
         {
             uint32_t txopmpdunum = 0;
             uint32_t txopcnt = 0;
-            for (const auto& it : m_txopNumList[linkId])
+            for (const auto& it : m_txtime_nmpdu_List[linkId])
             {
-                if (it.first > (uint32_t)(Simulator::Now().GetMicroSeconds() - period.GetMicroSeconds()))
+                if (std::get<0>(it) > (uint32_t)(Simulator::Now().GetMicroSeconds() - period.GetMicroSeconds()))
                 {
-                    txopmpdunum += it.second;
+                    txopmpdunum += std::get<2>(it);
                     txopcnt ++;
                 }
             }
@@ -994,5 +997,48 @@ MsduGrouper::GetStartTime(){
     return m_startTime;
 }
 
+Mac48Address 
+MsduGrouper::GetRecipient() {
+    return m_queueStats.m_bawqueue.begin()->first.first;
+}
+
+double 
+MsduGrouper::GetPpduDurationPerMpdu(uint8_t linkId, Time period) {
+    double ans = 1e-6;
+    if (period.IsStrictlyPositive())
+    {
+        uint32_t nmpdus = 0;
+        uint32_t times = 0;
+        for (const auto& it : m_txtime_nmpdu_List[linkId])
+        {
+            if (std::get<0>(it) > (uint32_t)(Simulator::Now().GetMicroSeconds() - period.GetMicroSeconds()))
+            {
+                nmpdus += std::get<2>(it);
+                times += std::get<1>(it);
+            }
+        }
+        ans = (double)times / (nmpdus == 0 ? 1 : nmpdus);
+    }
+    return ans;
+}
+
+uint32_t 
+MsduGrouper::GetMeanMpduSize() {
+    uint32_t size = 0;
+    uint32_t cnt = 0;
+    for (auto it = m_queueStats.m_mpduinfos.rbegin(); it != m_queueStats.m_mpduinfos.rend(); it++)
+    {
+        if (it->m_size > 0)
+        {
+            size += it->m_size;
+            cnt++;
+        }
+        if (cnt >= 100)
+        {
+            break;
+        }
+    }
+    return cnt == 0 ? 0 : size / cnt;
+}
 
 } // namespace ns3

@@ -606,6 +606,7 @@ class Txop : public Object
     uint32_t m_maxGroupSize; ///< Maximum size of each group.
     Time m_period;
     std::string m_jsonFileName;
+    bool m_reduandancyEnable;
 };
 
 } // namespace ns3

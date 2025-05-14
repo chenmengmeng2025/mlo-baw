@@ -472,7 +472,7 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
     Time now = Simulator::Now();
     std::list<Ptr<const WifiMpdu>> acked;
     // if (Simulator::Now() > Seconds(1)) {
-    //     std::cout << "Got Block Ack on Link " << (uint32_t)linkId << " " << recipient << std::endl;
+    //     std::cout << Simulator::Now() << " Got Block Ack on Link " << (uint32_t)linkId << " " << recipient << " tid = " << (uint32_t)tid << " m_mode = " << m_mode << std::endl;
     //     blockAck.Print(std::cout);
     //     std::cout << "队列 " << (it->second.second.begin() == it->second.second.end()) << std::endl;
     // }

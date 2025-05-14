@@ -29,7 +29,7 @@ NS_LOG_COMPONENT_DEFINE("TcpBulkSendExample");
 int
 main(int argc, char* argv[])
 {
-    bool tracing = false;
+    bool tracing = true;
     uint32_t maxBytes = 0;
 
     //
@@ -47,7 +47,7 @@ main(int argc, char* argv[])
     NS_LOG_INFO("Create nodes.");
     NodeContainer nodes;
     nodes.Create(2);
-
+  
     NS_LOG_INFO("Create channels.");
 
     //
@@ -65,7 +65,7 @@ main(int argc, char* argv[])
     //
     InternetStackHelper internet;
     internet.Install(nodes);
-
+    
     //
     // We've got the "hardware" in place.  Now we need to add IP addresses.
     //
@@ -87,7 +87,7 @@ main(int argc, char* argv[])
     ApplicationContainer sourceApps = source.Install(nodes.Get(0));
     sourceApps.Start(Seconds(0.0));
     sourceApps.Stop(Seconds(10.0));
-
+ 
     //
     // Create a PacketSinkApplication and install it on node 1
     //

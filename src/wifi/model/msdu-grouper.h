@@ -311,7 +311,7 @@ public:
      
     void EnableParamUpdate();
 
-    mldParams GetNewEdcaParameters(bool initial);
+    mldParams GetNewEdcaParameters(bool initial, uint16_t winSize = 256, double p1 = 1, double p2 = 1, double datarate1 = 0, double datarate2 = 0);
     
     std::pair<uint8_t, Time> GetNewLinkStates();
 
@@ -333,7 +333,13 @@ public:
 
     std::vector<uint64_t> GetMeanTxopTime(Time period);
 
-    std::vector<uint32_t> GetMeanTxopMpduNum(Time period);
+    std::vector<uint32_t> GetMeanTxMpduNum(Time period);
+
+    double GetPpduDurationPerMpdu(uint8_t linkId, Time period);
+    
+    uint32_t GetMeanMpduSize();
+
+    Mac48Address GetRecipient();
 
     void ClearStats();
 
@@ -351,7 +357,7 @@ public:
 
     std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint64_t>>> m_txopList; // 统计每次txop时间间隔 (txop开始时间, txop结束时间)
 
-    std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint32_t>>> m_txopNumList; // 统计每次获得txop时传输mpdu个数
+    std::unordered_map<uint8_t, std::vector<std::tuple<uint64_t, uint64_t, uint32_t>>> m_txtime_nmpdu_List; // 统计每次传输时的mpdu个数
 
     std::vector<uint32_t> m_inflighted; // 统计每条链路上正在传输个数
 
