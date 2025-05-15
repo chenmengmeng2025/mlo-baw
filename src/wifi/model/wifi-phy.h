@@ -287,7 +287,7 @@ class WifiPhy : public Object
     /**
      * Calculate transmission delay
      */
-    static Time CalculateTransmissionDelay(bool IsAggregation,size_t maxMpduCount,size_t maxMsduCount);
+    static Time CalculateTransmissionDelay(bool IsAggregation, size_t maxMpduCount,size_t maxMsduCount, Ptr<const WifiPsdu> psdu);
     /**
      * \return the preamble detection duration, which is the time correlation needs to detect the
      * start of an incoming frame.

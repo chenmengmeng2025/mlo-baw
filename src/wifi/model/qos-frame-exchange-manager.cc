@@ -455,10 +455,9 @@ QosFrameExchangeManager::IsWithinSizeAndTimeLimits(uint32_t ppduPayloadSize,
     //BE流量的ppduDurationLimit是Time::Min()
     Time transmissionDelay = MicroSeconds(0);
 
-    uint32_t currentMpduNumber = txParams.GetCurrentMpduNumber(receiver);
+    // uint32_t currentMpduNumber = txParams.GetCurrentMpduNumber(receiver);
     
     uint32_t amsduNumber = m_edca->GetMaxGroupSize();
-    m_phy->CalculateTransmissionDelay(txParams.m_txVector.IsAggregation(), currentMpduNumber , amsduNumber);
     
     if ((ppduDurationLimit.IsStrictlyPositive() && txTime  + transmissionDelay > ppduDurationLimit) ||
         (maxPpduDuration.IsStrictlyPositive() && txTime + transmissionDelay > maxPpduDuration))

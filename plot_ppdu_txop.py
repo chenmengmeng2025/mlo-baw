@@ -1,82 +1,95 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import argparse
 
-# 读取数据
-# df = pd.read_csv('PPDU_no_interference_no_newarch_txoplimits_0.000000_0.000000_link1Pct_0.004000.csv')
-df = pd.read_csv("PPDU.csv")
-# df['type'] = df['type'].astype(str)
+def parse_args():
+    parser = argparse.ArgumentParser(description='Plot PPDU Timeline')
+    parser.add_argument('--begin', type=int, default=1.5,
+                      help='Begin time for the plot (default: 1.5)')
+    parser.add_argument('--end', type=int, default=1.52,
+                      help='End time for the plot (default: 1.52)')
+    return parser.parse_args()
 
-color_map = {
-    '0': '#1f77b4',      # 蓝色
-    '1': '#2ca02c',      # 绿色
-    'OBSS1': '#ff7f0e',   # 橙色
-    'OBSS2': '#ffd700',   # 黄色
-    'MLD0' : '#d62728',   # 红色
-    'MLD1' : '#8c564b',   # 棕色
-}
+if __name__ == "__main__":
+    # 解析命令行参数
+    args = parse_args()
+    begin = int(args.begin * 1e6)
+    end = int(args.end * 1e6)
 
-def get_y(type_):
-    if type_ == '1' or type_ == 'OBSS2' or  type_ == 'MLD1':
-        return 1
-    elif type_ == '0' or type_ == 'OBSS1' or  type_ == 'MLD0':
-        return 0
-    else:
-        return 0
-        
+    # 读取数据
+    # df = pd.read_csv('PPDU_no_interference_no_newarch_txoplimits_0.000000_0.000000_link1Pct_0.004000.csv')
+    df = pd.read_csv("PPDU.csv")
+    # df['type'] = df['type'].astype(str)
 
-fig, ax = plt.subplots(figsize=(30, 4))
+    color_map = {
+        '0': '#1f77b4',      # 蓝色
+        '1': '#2ca02c',      # 绿色
+        'OBSS1': '#ff7f0e',   # 橙色
+        'OBSS2': '#ffd700',   # 黄色
+        'MLD0' : '#d62728',   # 红色
+        'MLD1' : '#8c564b',   # 棕色
+    }
 
-begin = 1500000
-end = 1520000
-for idx, row in df.iterrows():
-    linkId = str(row.iloc[0])
-    x_start = row.iloc[1]
-    x_end = row.iloc[2]
-    num = row.iloc[3]
-    if x_start > begin and x_start < end:
-        width = x_end - x_start
-        y = get_y(linkId)
-        color = color_map.get(str(linkId), 'gray')
-        rect = plt.Rectangle((x_start, y-0.4), width, 0.8, color=color, alpha=0.7, edgecolor='black')
-        ax.add_patch(rect)
-        ax.text(x_start + width/2, y, num,
-                ha='center', va='center', fontsize=8, color='black')
+    def get_y(type_):
+        if type_ == '1' or type_ == 'OBSS2' or  type_ == 'MLD1':
+            return 1
+        elif type_ == '0' or type_ == 'OBSS1' or  type_ == 'MLD0':
+            return 0
+        else:
+            return 0
+            
 
-# 读取txopPPDU.csv并画点
-txop_df = pd.read_csv('./Txop.csv')
-link_color = {0: 'purple', 1: 'red'}
+    fig, ax = plt.subplots(figsize=(30, 4))
 
-for idx, row in txop_df.iterrows():
-    link = row.iloc[0]
-    txopstart = row.iloc[1]
-    txopend = row.iloc[2]
-    if txopstart > begin and txopstart < end:
-        color = link_color.get(link, 'black')
-        y_pos = 0.6 if link == 1 else -0.4
-        # 三角形标txopstart
-        ax.scatter(txopstart, y_pos, marker='^' , alpha=0.7, color=color, s=10, label=f'link{link} start' if idx == 0 else "")
-        # 方形标txopend
-        ax.scatter(txopend, y_pos, marker='.', color=color,alpha=0.7, s=10, label=f'link{link} end' if idx == 0 else "")
+    for idx, row in df.iterrows():
+        linkId = str(row.iloc[0])
+        x_start = row.iloc[1]
+        x_end = row.iloc[2]
+        num = row.iloc[3]
+        if x_start > begin and x_start < end:
+            width = x_end - x_start
+            y = get_y(linkId)
+            color = color_map.get(str(linkId), 'gray')
+            rect = plt.Rectangle((x_start, y-0.4), width, 0.8, facecolor=color, alpha=0.7)
+            ax.add_patch(rect)
+            ax.text(x_start + width/2, y, num,
+                    ha='center', va='center', fontsize=8, color='black')
 
-# 设置y轴
-ax.set_yticks([0, 1])
-ax.set_yticklabels(['2.4 G & OBSS', '5 G & OBSS'])
-ax.set_xlabel('Time')
-ax.set_ylabel('Type')
-ax.set_title('PPDU Timeline')
+    # 读取txopPPDU.csv并画点
+    txop_df = pd.read_csv('./Txop.csv')
+    link_color = {0: 'purple', 1: 'red'}
 
-from matplotlib.patches import Patch
-legend_elements = [
-    Patch(facecolor=color_map['0'], edgecolor='black', label='2.4 G'),
-    Patch(facecolor=color_map['1'], edgecolor='black', label='5 G'),
-    Patch(facecolor=color_map['OBSS1'], edgecolor='black', label='OBSS 2G'),
-    Patch(facecolor=color_map['OBSS2'], edgecolor='black', label='OBSS 5G'),
-    Patch(facecolor='purple', edgecolor='black', label='link0 txop'),
-    Patch(facecolor='red', edgecolor='black', label='link1 txop'),
-]
-ax.legend(handles=legend_elements)
+    for idx, row in txop_df.iterrows():
+        link = row.iloc[0]
+        txopstart = row.iloc[1]
+        txopend = row.iloc[2]
+        if txopstart > begin and txopstart < end:
+            color = link_color.get(link, 'black')
+            y_pos = 0.6 if link == 1 else -0.4
+            # 三角形标txopstart
+            ax.scatter(txopstart, y_pos, marker='^' , alpha=0.7, color=color, s=10, label=f'link{link} start' if idx == 0 else "")
+            # 方形标txopend
+            ax.scatter(txopend, y_pos, marker='.', color=color,alpha=0.7, s=10, label=f'link{link} end' if idx == 0 else "")
 
-ax.set_ylim(-0.7, 1.7)
-ax.autoscale(enable=True, axis='x', tight=True)
-plt.tight_layout()
-plt.savefig('PPDU_Timeline.png', dpi=300)
+    # 设置y轴
+    ax.set_yticks([0, 1])
+    ax.set_yticklabels(['2.4 G & OBSS', '5 G & OBSS'])
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Type')
+    ax.set_title('PPDU Timeline')
+
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor=color_map['0'], edgecolor='black', label='2.4 G'),
+        Patch(facecolor=color_map['1'], edgecolor='black', label='5 G'),
+        Patch(facecolor=color_map['OBSS1'], edgecolor='black', label='OBSS 2G'),
+        Patch(facecolor=color_map['OBSS2'], edgecolor='black', label='OBSS 5G'),
+        Patch(facecolor='purple', edgecolor='black', label='link0 txop'),
+        Patch(facecolor='red', edgecolor='black', label='link1 txop'),
+    ]
+    ax.legend(handles=legend_elements)
+
+    ax.set_ylim(-0.7, 1.7)
+    ax.autoscale(enable=True, axis='x', tight=True)
+    plt.tight_layout()
+    plt.savefig('PPDU_Timeline.png', dpi=300)

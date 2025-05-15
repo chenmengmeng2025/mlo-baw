@@ -1071,7 +1071,7 @@ HtFrameExchangeManager::SendPsdu()
         // at the PHY-TXEND.confirm primitive" (section 10.3.2.9 or 10.22.2.2 of 802.11-2016).
         // aRxPHYStartDelay equals the time to transmit the PHY header.
         auto blockAcknowledgment = static_cast<WifiBlockAck*>(m_txParams.m_acknowledgment.get());
-        Time transmissionDelay = m_phy->CalculateTransmissionDelay(m_psdu->IsAggregate(), m_psdu->GetNMpdus(), m_psdu->GetNMsdus());
+        Time transmissionDelay = m_phy->CalculateTransmissionDelay(m_psdu->IsAggregate(), m_psdu->GetNMpdus(), m_psdu->GetNMsdus(), m_psdu);
         // std::cout << "SendPsdu BLOCK_ACK transmissionDelay: " << m_psdu->GetNMpdus() << " " << m_psdu->GetNMsdus() << " " << transmissionDelay.As(Time::US) << std::endl;
         Time timeout =
             txDuration + m_phy->GetSifs() + m_phy->GetSlot() +
@@ -1099,7 +1099,7 @@ HtFrameExchangeManager::SendPsdu()
         Ptr<QosTxop> edca = m_mac->GetQosTxop(tid);
         auto [reqHdr, hdr] = edca->PrepareBlockAckRequest(m_psdu->GetAddr1(), tid);
         GetBaManager(tid)->ScheduleBar(reqHdr, hdr);
-        Time transmissionDelay = m_phy->CalculateTransmissionDelay(m_psdu->IsAggregate(), m_psdu->GetNMpdus(), m_psdu->GetNMsdus());
+        Time transmissionDelay = m_phy->CalculateTransmissionDelay(m_psdu->IsAggregate(), m_psdu->GetNMpdus(), m_psdu->GetNMsdus(), m_psdu);
         Simulator::Schedule(txDuration + transmissionDelay, &HtFrameExchangeManager::TransmissionSucceeded, this);
     }
     else
