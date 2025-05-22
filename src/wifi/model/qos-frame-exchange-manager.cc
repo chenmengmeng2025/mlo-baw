@@ -457,7 +457,7 @@ QosFrameExchangeManager::IsWithinSizeAndTimeLimits(uint32_t ppduPayloadSize,
 
     // uint32_t currentMpduNumber = txParams.GetCurrentMpduNumber(receiver);
     
-    uint32_t amsduNumber = m_edca->GetMaxGroupSize();
+    // uint32_t amsduNumber = m_edca->GetMaxGroupSize();
     
     if ((ppduDurationLimit.IsStrictlyPositive() && txTime  + transmissionDelay > ppduDurationLimit) ||
         (maxPpduDuration.IsStrictlyPositive() && txTime + transmissionDelay > maxPpduDuration))

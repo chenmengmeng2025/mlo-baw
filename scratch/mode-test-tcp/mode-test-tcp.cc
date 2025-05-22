@@ -69,6 +69,7 @@ struct Stats {
     std::vector<double> occ;
     std::vector<double> datarate;
     std::vector<double> blocktimerate;
+    std::vector<double> severeblocktimerate;
     std::vector<double> blockrate;
     std::vector<uint32_t> blockCnt;
     std::vector<uint32_t> blockCnt_tr;
@@ -78,11 +79,11 @@ struct Stats {
     std::vector<uint32_t> maxAmpduLength;
     std::vector<uint32_t> meanAmpduLength;
     Stats(double tp, double pct, double tm, std::vector<double> t, std::vector<double> pr, 
-        std::vector<double> oc, std::vector<double> dr,  std::vector<double> btr,  std::vector<double> br,
+        std::vector<double> oc, std::vector<double> dr,  std::vector<double> btr, std::vector<double> sbtr,  std::vector<double> br,
         std::vector<uint32_t> bc,std::vector<uint32_t> bc2, std::vector<uint32_t> tn,
         std::vector<uint64_t> tt, mldParams pm, std::vector<uint32_t> maxl, std::vector<uint32_t> meanl)
     : throughput(tp), pct1(pct), time(tm), thpt(std::move(t)), p(std::move(pr)),
-        occ(std::move(oc)), datarate(std::move(dr)), blocktimerate(std::move(btr)), blockrate(std::move(br)),
+        occ(std::move(oc)), datarate(std::move(dr)), blocktimerate(std::move(btr)), severeblocktimerate(std::move(sbtr)), blockrate(std::move(br)),
         blockCnt(std::move(bc)), blockCnt_tr(std::move(bc2)), 
         txopNum(std::move(tn)), txopTime(std::move(tt)), params(std::move(pm)), maxAmpduLength(std::move(maxl)), meanAmpduLength(std::move(meanl))
         {}
@@ -128,9 +129,9 @@ GetRxBytes2(bool udp, const ApplicationContainer& serverApp, uint32_t payloadSiz
 }
 
 void
-SaveParams(mldParams pm, double pct1, double time, std::vector<double> thpt, std::vector<double> p, std::vector<double> occ, std::vector<double> datarate, std::vector<double> blocktimerate, std::vector<double> blockrate, std::vector<uint32_t> blockCnt, std::vector<uint32_t> blockCnt_tr, std::vector<uint64_t> txopTime, std::vector<uint32_t> txopNum, std::vector<uint32_t> maxAmpduLength, std::vector<uint32_t> meanAmpduLength)
+SaveParams(mldParams pm, double pct1, double time, std::vector<double> thpt, std::vector<double> p, std::vector<double> occ, std::vector<double> datarate, std::vector<double> blocktimerate,std::vector<double> severeblocktimerate, std::vector<double> blockrate, std::vector<uint32_t> blockCnt, std::vector<uint32_t> blockCnt_tr, std::vector<uint64_t> txopTime, std::vector<uint32_t> txopNum, std::vector<uint32_t> maxAmpduLength, std::vector<uint32_t> meanAmpduLength)
 {
-    Stats res{0.0, pct1, time, thpt, p, occ, datarate, blocktimerate, blockrate, blockCnt, blockCnt_tr, txopNum, txopTime, pm, maxAmpduLength, meanAmpduLength};
+    Stats res{0.0, pct1, time, thpt, p, occ, datarate, blocktimerate, severeblocktimerate, blockrate, blockCnt, blockCnt_tr, txopNum, txopTime, pm, maxAmpduLength, meanAmpduLength};
     results.push_back(res);
     Simulator::Schedule(NanoSeconds(1), [&](){
         for (auto & result : results)
@@ -344,8 +345,9 @@ main(int argc, char* argv[])
 
     double simT = 0;
     bool redundancy_enable = false;
-    bool param_update = true;
-    Time simT_delayEnd = NanoSeconds(2);
+    bool param_update = false;
+    uint32_t tcp_ack = 0b01;
+    Time simT_delayEnd = MicroSeconds(2);
     CommandLine cmd(__FILE__);
     std::filesystem::path filepath = __FILE__;
     cmd.AddValue("seed", "seed number", seedNumber);
@@ -357,7 +359,7 @@ main(int argc, char* argv[])
     cmd.AddValue("ch2", "channel id on 5 GHz", ch2);
     cmd.AddValue("bw1", "band width on 2.4 GHz", bw1);
     cmd.AddValue("bw2", "band width on 5 GHz", bw2);
-    cmd.AddValue("ratectrl", "rate control alg", rateCtrl);
+    cmd.AddValue("ratectrl", "rate control algorithm", rateCtrl);
     cmd.AddValue("bawsize", "BA Window Size", mpduBufferSize);
     cmd.AddValue("max_ampdusize", "Max AmpduSize of AP 0", maxAmpduSize);
     cmd.AddValue("max_ampdusize1", "Max AmpduSize of AP 1", maxAmpduSize1);
@@ -368,18 +370,19 @@ main(int argc, char* argv[])
     cmd.AddValue("period", "update period", period_update); // 更新参数的周期，统计周期为该值的一半
     cmd.AddValue("txop1", "TxopLimit on 2.4 G", txoplimit1);
     cmd.AddValue("txop2", "TxopLimit on 5 G", txoplimit2);
-    cmd.AddValue("sl", "Single Link if > 0", singleLink);
+    cmd.AddValue("sl", "transmit on Single Link if > 0", singleLink);
     cmd.AddValue("nss", "mimo", nss);
     cmd.AddValue("inference", "inference setting", inference);
     cmd.AddValue("redundancy", "redundancy setting", redundancy_enable);
     cmd.AddValue("param_update", "param update setting", param_update); // 如果为true，则每隔period会更新参数，如果开启grid_search，则为周期性遍历参数模式，如果关闭grid_search，则为自动更新参数模式（MLO算法来配置参数）
+    cmd.AddValue("tcpack", "tcp ack link setting", tcp_ack);
     cmd.Parse(argc, argv);
 
-    simT = period_update * 10 + 1;
+    if (simT == 0) simT = period_update * 10 + 1;
     Time period{Seconds(period_update)};
     if (!(inference & 0b01)) r1 = 1e-9;  
     if (!(inference & 0b10)) r2 = 1e-9;
-    Time tputInterval = period / 2; // interval for detailed throughput measurement
+    Time tputInterval = period; // interval for detailed throughput measurement
     std::string title;
     if (rateCtrl == "constant")
         title = "bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + "_mcs_" +
@@ -389,16 +392,15 @@ main(int argc, char* argv[])
     else title = "bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + "_ratectrl_" +
                             rateCtrl + "_interference_" +
                             std::to_string(r1) + "_" + std::to_string(r2) + "_txoplimits_" + 
-                            std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update);
+                            std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update) + "_seed_" + std::to_string(seedNumber);
 
-    std::string csv_file = (filepath.parent_path() / ("result_" + title + ".csv")).string();
+    std::string csv_file = (filepath.parent_path() / (title + ".csv")).string();
     std::cout << csv_file << std::endl;
-    // LogComponentEnable("PhyEntity", LOG_LEVEL_DEBUG);
     bool udp = false;
     uint8_t nLinks = 2;
     RngSeedManager::SetSeed(seedNumber);
     RngSeedManager::SetRun(seedNumber);
-    double txPower = 20; 
+    double txPower = 30; 
     bool useRts{false};
 
     int gi = 800;
@@ -408,12 +410,13 @@ main(int argc, char* argv[])
     std::vector<size_t> nStaSlds{1, 1};
     uint32_t payloadSize = 1448; // must fit in the max TX duration when transmitting at MCS 0 over an RU of 26 tones
     Time accessReqInterval{0};
-    uint32_t maxGroupSize = 2;
+    uint32_t maxGroupSize = 4;
     if (useRts)
     {
-        Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("0"));
+        // Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("0"));
         Config::SetDefault("ns3::WifiDefaultProtectionManager::EnableMuRts", BooleanValue(true));
     }
+
     // Config::SetDefault("ns3::WifiDefaultProtectionManager::EnableMuRts", BooleanValue(true));
     // Config::SetDefault("ns3::WifiMacQueue::MaxDelay", TimeValue(simulationTime * 2));
 
@@ -423,8 +426,8 @@ main(int argc, char* argv[])
          QueueSizeValue(QueueSize(QueueSizeUnit::PACKETS, std::numeric_limits<uint32_t>::max())));
 
     // Disable fragmentation
-    // Config::SetDefault("ns3::WifiRemoteStationManager::FragmentationThreshold",   
-    //     UintegerValue(std::numeric_limits<uint32_t>::max()));
+    Config::SetDefault("ns3::WifiRemoteStationManager::FragmentationThreshold",   
+        UintegerValue(std::numeric_limits<uint32_t>::max()));
 
     // Make retransmissions persistent
      Config::SetDefault("ns3::WifiRemoteStationManager::MaxSlrc",
@@ -434,8 +437,8 @@ main(int argc, char* argv[])
 
     uint32_t delAckCount = 2;
      // TCP Socket Config
-    Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(8388608));
-    Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(12582912));
+    Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(8388608)); // 8MB
+    Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(12582912)); // 12MB
     Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(10));
     Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(1448));
     Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(delAckCount)); 
@@ -547,6 +550,7 @@ main(int argc, char* argv[])
         phy.Set("MaxSupportedTxSpatialStreams", UintegerValue(nss));
         phy.Set("MaxSupportedRxSpatialStreams", UintegerValue(nss));
     }
+    phy.SetPcapDataLinkType(WifiPhyHelper::DLT_IEEE802_11_RADIO);
     phy.SetErrorRateModel("ns3::TableBasedErrorRateModel");
     phy.AddChannel(spectrumChannel_2, WIFI_SPECTRUM_2_4_GHZ);
     phy.AddChannel(spectrumChannel_5, WIFI_SPECTRUM_5_GHZ);
@@ -603,9 +607,7 @@ main(int argc, char* argv[])
                 "EnableBeaconJitter",
                 BooleanValue(false),
                 "Ssid",
-                SsidValue(bssSsid),
-                "BE_BlockAckThreshold",
-                UintegerValue(0));
+                SsidValue(bssSsid));
     apDev = wifi.Install(phy, mac, apNodes.Get(0));
     mac.SetType("ns3::StaWifiMac",
                 "Ssid",
@@ -727,10 +729,6 @@ main(int argc, char* argv[])
     positionAlloc->Add(Vector(distance[0], 0.0, 1)); // MLD 0
     positionAlloc->Add(Vector(distance[1], 0.0, 1)); // SLD 1
     positionAlloc->Add(Vector(0.0, distance[2], 1)); // SLD 2
-    // for (uint8_t i = 0; i < nStaMlds + nStaSlds[0] + nStaSlds[1]; ++i) {
-    //     if (i == 0) positionAlloc->Add(Vector(distance, 0.0, 0.0));
-    //     else positionAlloc->Add(Vector(Rng->GetValue()+200, Rng->GetValue(), 0));
-    // }
     mobility.SetPositionAllocator(positionAlloc);
     NodeContainer allNodes(apNodes, mldNodes, sldNodes2, sldNodes5);
     mobility.Install(allNodes);
@@ -777,15 +775,14 @@ main(int argc, char* argv[])
     ApplicationContainer dlserverAppObss5;
     // 1. DL TCP configure
     // DL tcp flow
-    uint16_t port = 9;
-    Address localAddress(InetSocketAddress(Ipv4Address::GetAny(), port));
+    Address localAddress(InetSocketAddress(Ipv4Address::GetAny(), 50000));
     PacketSinkHelper sink("ns3::TcpSocketFactory", localAddress);
     dlserverApp = sink.Install(mldNodes);
     seedNumber += sink.AssignStreams(mldNodes, seedNumber);
     dlserverApp.Start(Seconds(0.0));
     dlserverApp.Stop(simulationTime + simT_delayEnd);
 
-    UdpServerHelper server(port);
+    UdpServerHelper server(9);
     if (inference & 0b01) {
         dlserverAppObss2 = server.Install(sldNodes2);
         seedNumber += server.AssignStreams(sldNodes2, seedNumber);
@@ -805,21 +802,13 @@ main(int argc, char* argv[])
     const auto maxLoad5 = EhtPhy::GetDataRate(mcs[1], bandwidth[1] , NanoSeconds(gi), 1) * nss;
     const auto maxLoad =  (maxLoad2 + maxLoad5) * 2; 
     std::cout << "maxload = " << std::to_string((maxLoad2 + maxLoad5)/1e6) << "Mbps; 2.4 GHz: " <<  std::to_string(maxLoad2/1e6) << "Mbps, 5 GHz: " << std::to_string(maxLoad5/1e6) << "Mbps" << std::endl;
-    // const auto packetInterval = payloadSize * 8.0 / maxLoad;
     OnOffHelper onoff("ns3::TcpSocketFactory", Ipv4Address::GetAny());
-
-    // BulkSendHelper source("ns3::TcpSocketFactory", InetSocketAddress(mldNodeInterface.GetAddress(0), port));
-    // // Set the amount of data to send in bytes.  Zero is unlimited.
-    // source.SetAttribute("MaxBytes", UintegerValue(0));
-    // ApplicationContainer sourceApps = source.Install(apNodes.Get(0));
-    // sourceApps.Start(Seconds(1.0));
-    // sourceApps.Stop(simulationTime + simT_delayEnd);
     onoff.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
     onoff.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
     onoff.SetAttribute("PacketSize", UintegerValue(payloadSize));
     onoff.SetAttribute("DataRate", StringValue(std::to_string(maxLoad / 1e6) + "Mbps"));
     // onoff.SetAttribute("MaxBytes", UintegerValue(0));
-    AddressValue remoteAddress(InetSocketAddress(mldNodeInterface.GetAddress(0), port));
+    AddressValue remoteAddress(InetSocketAddress(mldNodeInterface.GetAddress(0), 50000));
     onoff.SetAttribute("Remote", remoteAddress);
     ApplicationContainer clientApp = onoff.Install(apNodes.Get(0));
     seedNumber += onoff.AssignStreams(apNodes.Get(0), seedNumber);
@@ -829,7 +818,7 @@ main(int argc, char* argv[])
     // AP 1
     if (inference & 0b01) {
         auto packetInterval2 = payloadSize * 8.0 / (maxLoad2 * r1);
-        UdpClientHelper client1(sldNodeInterface2.GetAddress(0), port);
+        UdpClientHelper client1(sldNodeInterface2.GetAddress(0), 9);
         client1.SetAttribute("MaxPackets", UintegerValue(0));
         client1.SetAttribute("Interval", TimeValue(Seconds(packetInterval2)));
         client1.SetAttribute("PacketSize", UintegerValue(payloadSize));
@@ -841,7 +830,7 @@ main(int argc, char* argv[])
     // AP 2
     if (inference & 0b10) {
         auto packetInterval5 = payloadSize * 8.0 / (maxLoad5 * r2);
-        UdpClientHelper client2(sldNodeInterface5.GetAddress(0), port);
+        UdpClientHelper client2(sldNodeInterface5.GetAddress(0), 9);
         client2.SetAttribute("MaxPackets", UintegerValue(0));
         client2.SetAttribute("Interval", TimeValue(Seconds(packetInterval5)));
         client2.SetAttribute("PacketSize", UintegerValue(payloadSize));
@@ -866,7 +855,14 @@ main(int argc, char* argv[])
         auto wifiDev = DynamicCast<WifiNetDevice>(*i);
         wifiDev->GetMac()->SetAttribute("ActiveProbing", BooleanValue(true));
         wifiDev->GetMac()->GetEhtConfiguration()->SetAttribute("TidToLinkMappingDl", StringValue(mldMappingStr));
-        wifiDev->GetMac()->GetEhtConfiguration()->SetAttribute("TidToLinkMappingUl",StringValue("0,1,2,3,4,5,6,7 0,1"));
+        if (tcp_ack == 0b11) {
+            wifiDev->GetMac()->GetEhtConfiguration()->SetAttribute("TidToLinkMappingUl",StringValue("0,1,2,3,4,5,6,7 0,1"));
+            std::cout << "TCP ACK on both 2.4G and 5G." << std::endl;
+        } else {
+            auto tcpAckLinkId = __builtin_ctz(tcp_ack);
+            std::cout << "TCP ACK on Link " <<  tcpAckLinkId << std::endl;
+            wifiDev->GetMac()->GetEhtConfiguration()->SetAttribute("TidToLinkMappingUl",StringValue("0,1,2,3,4,5,6,7 "+std::to_string(tcpAckLinkId)));
+        }
     }
 
     auto apWifiDev = DynamicCast<WifiNetDevice>(apDev.Get(0));
@@ -875,10 +871,11 @@ main(int argc, char* argv[])
 
 
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/UseExplicitBarAfterMissedBlockAck", BooleanValue(false)); // 开启隐式BAR
+    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/UseExplicitBarAfterMissedBlockAck", BooleanValue(false)); // 开启隐式BAR
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxGroupSize", UintegerValue(maxGroupSize));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Period", TimeValue(period));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode));
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(0x01 << 2)); // 只负责接收，无msdu_grouper
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode)); // mode = 1 表示 模式一(硬件仲裁)， mode = 2 表示 模式二(软件仲裁)
+    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(0x01 << 2)); // 只负责接收，无msdu_grouper, mode只要非0, 接收端就是新架构，BA只包含各自链路所收到的包的接收信息，各自维护自己的bitmap
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchEnable", BooleanValue(grid_search_enable));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/ParamUpdate", BooleanValue(param_update));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchParameter", StringValue("./scratch/params.json"));
@@ -918,19 +915,19 @@ main(int argc, char* argv[])
     std::cout << txopLimitList[0] << " " << txopLimitList[1] << std::endl;
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/TxopLimits", AttributeContainerValue<TimeValue>(txopLimitList));
 
-    phy.EnablePcap("ap0-trace", apDev.Get(0));
-    // phySld2.EnablePcap("ap1-trace", apDev.Get(1));
-    // phySld5.EnablePcap("ap2-trace", apDev.Get(1));
-    phy.EnablePcap("mld-trace", mldDev.Get(0));
-    // phySld2.EnablePcap("sld2-trace", sldDev2.Get(0));
-    // phySld5.EnablePcap("sld5-trace", sldDev5.Get(0));
+    phy.EnablePcap("ap0-trace-tcp", apDev.Get(0));
+    // phySld2.EnablePcap("ap1-trace-tcp", apDev.Get(1));
+    // phySld5.EnablePcap("ap2-trace-tcp", apDev.Get(1));
+    phy.EnablePcap("mld-trace-tcp", mldDev.Get(0));
+    // phySld2.EnablePcap("sld2-trace-tcp", sldDev2.Get(0));
+    // phySld5.EnablePcap("sld5-trace-tcp", sldDev5.Get(0));
     Config::ConnectWithoutContext("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GetNextParams", MakeCallback(&SaveParams));
     Config::ConnectWithoutContext("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GetTxopTimeStats",MakeCallback(&SaveTxopStats));
     
-    Simulator::Schedule(Seconds(1.0), &PrintIntermediateTput, udp, dlserverApp, payloadSize, period / 2, simulationTime + simT_delayEnd);
+    Simulator::Schedule(Seconds(1.0), &PrintIntermediateTput, udp, dlserverApp, payloadSize, tputInterval, simulationTime + simT_delayEnd);
     
     uint64_t rx_totalbytesStart = 0;
-    Time statsBeginTime = Seconds(1.0) + period / 2;
+    Time statsBeginTime = Seconds(1.0) + period;
     Simulator::Schedule(statsBeginTime, &GetRxBytes2, udp, dlserverApp, payloadSize, std::ref(rx_totalbytesStart));
     std::cout << "statsBeginTime: " << statsBeginTime.As(Time::S) << std::endl;
     Time statsEndTime = period * ((simulationTime + simT_delayEnd) / period).GetInt();
@@ -948,18 +945,17 @@ main(int argc, char* argv[])
     std::ofstream fout(csv_file, std::ios::out);
     fout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
             "MaxSsrc1, MaxSlrc2, MaxSsrc2, RedundancyThreshold1, RedundancyThreshold2, RedundancyFixedNumber1, "
-            "RedundancyFixedNumber2, BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, PSR1, PSR2, Occupancy Rate 1, Occupancy Rate 2, blocktimerate1, blocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, pct1, Throughput(Mbps)" << std::endl;
+            "RedundancyFixedNumber2, BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, PSR1, PSR2, Occupancy Rate 1, Occupancy Rate 2, blocktimerate1, blocktimerate2, severeblocktimerate1, severeblocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, pct1, Throughput(Mbps)" << std::endl;
     if (!results.empty()) {
-        for (const auto & res : results)
+        for (const auto& res : results)
         {
-            const mldParams & params = res.params;
-            fout << params.No << ", " << res.time << ", " << (uint32_t)mode << ", " << params.CWmins[0] << ", "
-                 << params.CWmaxs[0] << ", " << params.CWmins[1] << ", "
-                 << params.CWmaxs[1] << ", " << params.Aifsns[0] << ", "
-                 << params.Aifsns[1] << ", " << params.TxopLimits[0] << ", "
-                 << params.TxopLimits[1] << ", " << params.RTS_CTS[0] << ", "
-                 << params.RTS_CTS[1] << ", " << params.MaxSsrcs[0] << ", "
-                 << params.MaxSsrcs[0] << ", " << params.MaxSlrcs[1] << ", "
+            const mldParams& params = res.params;
+            fout << params.No << ", " << res.time << ", " << (uint32_t)mode << ", "
+                 << params.CWmins[0] << ", " << params.CWmaxs[0] << ", " << params.CWmins[1] << ", "
+                 << params.CWmaxs[1] << ", " << params.Aifsns[0] << ", " << params.Aifsns[1] << ", "
+                 << params.TxopLimits[0] << ", " << params.TxopLimits[1] << ", "
+                 << params.RTS_CTS[0] << ", " << params.RTS_CTS[1] << ", " << params.MaxSsrcs[0]
+                 << ", " << params.MaxSsrcs[0] << ", " << params.MaxSlrcs[1] << ", "
                  << params.MaxSlrcs[1] << ", " << params.RedundancyThresholds[0] << ", "
                  << params.RedundancyThresholds[1] << ", " << params.RedundancyFixedNumbers[0]
                  << ", " << params.RedundancyFixedNumbers[1] << ", " << res.blockCnt[0] << ", "
@@ -969,39 +965,44 @@ main(int argc, char* argv[])
                  << res.maxAmpduLength[1] << ", " << res.meanAmpduLength[0] << ", "
                  << res.meanAmpduLength[1] << ", " << res.p[0] << ", " << res.p[1] << ", "
                  << res.occ[0] << ", " << res.occ[1] << ", " << res.blocktimerate[0] << ", "
-                 << res.blocktimerate[1] << ", " << res.blockrate[0] << ", " << res.blockrate[1]
-                 << ", " << res.datarate[0] << ", " << res.datarate[1] << ", " << res.thpt[0]
-                 << ", " << res.thpt[1] << ", " << res.pct1 << ", " << res.throughput << std::endl;
+                 << res.blocktimerate[1] << ", " << res.severeblocktimerate[0] << ", "
+                 << res.severeblocktimerate[1] << ", " << res.blockrate[0] << ", "
+                 << res.blockrate[1] << ", " << res.datarate[0] << ", " << res.datarate[1] << ", "
+                 << res.thpt[0] << ", " << res.thpt[1] << ", " << res.pct1 << ", " << res.throughput
+                 << std::endl;
         }
         fout.close();
     }
-    
+    std::vector<double> res_throughputs;
     std::cout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
             "MaxSsrc1, MaxSlrc2, MaxSsrc2, RedundancyThreshold1, RedundancyThreshold2, RedundancyFixedNumber1, "
-            "RedundancyFixedNumber2, BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, PSR1, PSR2, Occupancy Rate 1, Occupancy Rate 2, blocktimerate1, blocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, pct1, Throughput(Mbps)" << std::endl;
+            "RedundancyFixedNumber2, BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, PSR1, PSR2, Occupancy Rate 1, Occupancy Rate 2, blocktimerate1, blocktimerate2, severeblocktimerate1, severeblocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, pct1, Throughput(Mbps)" << std::endl;
     if (!results.empty())
     for (const auto & res : results)
     {
-        const mldParams & params = res.params;
-        std::cout << params.No << ", " << res.time << ", " << (uint32_t)mode << ", " << params.CWmins[0] << ", "
-             << params.CWmaxs[0] << ", " << params.CWmins[1] << ", "
-             << params.CWmaxs[1] << ", " << params.Aifsns[0] << ", "
-             << params.Aifsns[1] << ", " << params.TxopLimits[0] << ", "
-             << params.TxopLimits[1] << ", " << params.RTS_CTS[0] << ", "
-             << params.RTS_CTS[1] << ", " << params.MaxSsrcs[0] << ", "
-             << params.MaxSsrcs[0] << ", " << params.MaxSlrcs[1] << ", "
-             << params.MaxSlrcs[1] << ", " << params.RedundancyThresholds[0] << ", "
-             << params.RedundancyThresholds[1] << ", " << params.RedundancyFixedNumbers[0]
-             << ", " << params.RedundancyFixedNumbers[1] << ", " << res.blockCnt[0] << ", "
-             << res.blockCnt[1] << ", " << res.blockCnt_tr[0] << ", " << res.blockCnt_tr[1]
-             << ", " << res.txopTime[0] << ", " << res.txopTime[1] << ", " << res.txopNum[0]
-             << ", " << res.txopNum[1] << ", " << res.maxAmpduLength[0] << ", "
-             << res.maxAmpduLength[1] << ", " << res.meanAmpduLength[0] << ", "
-             << res.meanAmpduLength[1] << ", " << res.p[0] << ", " << res.p[1] << ", "
-             << res.occ[0] << ", " << res.occ[1] << ", " << res.blocktimerate[0] << ", "
-             << res.blocktimerate[1] << ", " << res.blockrate[0] << ", " << res.blockrate[1]
-             << ", " << res.datarate[0] << ", " << res.datarate[1] << ", " << res.thpt[0]
-             << ", " << res.thpt[1] << ", " << res.pct1 << ", " << res.throughput << std::endl;
+        const mldParams& params = res.params;
+        std::cout << params.No << ", " << res.time << ", " << (uint32_t)mode << ", "
+                  << params.CWmins[0] << ", " << params.CWmaxs[0] << ", " << params.CWmins[1]
+                  << ", " << params.CWmaxs[1] << ", " << params.Aifsns[0] << ", "
+                  << params.Aifsns[1] << ", " << params.TxopLimits[0] << ", "
+                  << params.TxopLimits[1] << ", " << params.RTS_CTS[0] << ", " << params.RTS_CTS[1]
+                  << ", " << params.MaxSsrcs[0] << ", " << params.MaxSsrcs[0] << ", "
+                  << params.MaxSlrcs[1] << ", " << params.MaxSlrcs[1] << ", "
+                  << params.RedundancyThresholds[0] << ", " << params.RedundancyThresholds[1]
+                  << ", " << params.RedundancyFixedNumbers[0] << ", "
+                  << params.RedundancyFixedNumbers[1] << ", " << res.blockCnt[0] << ", "
+                  << res.blockCnt[1] << ", " << res.blockCnt_tr[0] << ", " << res.blockCnt_tr[1]
+                  << ", " << res.txopTime[0] << ", " << res.txopTime[1] << ", " << res.txopNum[0]
+                  << ", " << res.txopNum[1] << ", " << res.maxAmpduLength[0] << ", "
+                  << res.maxAmpduLength[1] << ", " << res.meanAmpduLength[0] << ", "
+                  << res.meanAmpduLength[1] << ", " << res.p[0] << ", " << res.p[1] << ", "
+                  << res.occ[0] << ", " << res.occ[1] << ", " << res.blocktimerate[0] << ", "
+                  << res.blocktimerate[1] << ", " << res.severeblocktimerate[0] << ", "
+                  << res.severeblocktimerate[1] << ", " << res.blockrate[0] << ", "
+                  << res.blockrate[1] << ", " << res.datarate[0] << ", " << res.datarate[1] << ", "
+                  << res.thpt[0] << ", " << res.thpt[1] << ", " << res.pct1 << ", "
+                  << res.throughput << std::endl;
+        res_throughputs.push_back(res.throughput);
     }
 
     std::ofstream file("throughput.csv", std::ios::out);
@@ -1014,5 +1015,33 @@ main(int argc, char* argv[])
         }
     }
     file.close();
+
+    auto calc_std_dev = [](std::vector<double>& v, int n) -> std::pair<double, double> {
+        auto start = v.end() - n;
+        double sum = std::accumulate(start, v.end(), 0.0);
+        double mean = sum / n;
+        double var = 0.0;
+        double mn = 1e5;
+        int idx = 0;
+        for (auto it = start; it != v.end(); ++it) {
+            double d = std::abs(*it - mean);
+            var += std::pow(d, 2);
+            if (d < mn) {
+                mn = d;
+                idx = v.end() - it;
+            }
+        }
+        std::cout << "use the " << idx << "th to the last of the result." << std::endl;
+        var /= n;
+        return std::make_pair(sqrt(var), mean);
+    };
+    auto ans = calc_std_dev(res_throughputs, 3);
+    double cv =  ans.first / ans.second;
+    std::cout << "standard deviation: " << ans.first << std::endl;
+    std::cout << "coeff of variation: " << cv * 100 << "% " << std::endl;
+    if (cv > 0.1) {
+        std::cout << "Coeff of variation > 10%, please set longer simulation time (use: --simt)" << std::endl;
+    }
+    std::cout << "Throughput = " << ans.second  << " Mbps."<< std::endl;
     return 0;
 }

@@ -494,6 +494,7 @@ class QosTxop : public Txop
                    std::vector<double> /* occupy rate */,
                    std::vector<double> /* avg data rate */,
                    std::vector<double> /* block time rate */,
+                   std::vector<double> /* severe block time rate */,
                    std::vector<double> /* block rate */,
                    std::vector<uint32_t> /* block cnt */,
                    std::vector<uint32_t> /* block cnt true */,

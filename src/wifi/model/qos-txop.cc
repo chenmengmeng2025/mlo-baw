@@ -194,7 +194,7 @@ QosTxop::DoInitialize()
 
         if(m_ac == AC_BE) {
             Simulator::Schedule(Seconds(1), &QosTxop::ScheduleUpdateEdcaParameters, this, GetMsduGrouper()->GetPeriod());  // MLO alg update Parameters
-            Simulator::Schedule(Seconds(1), &QosTxop::PrintStatsResult, this, Seconds(0.5)); // print period result
+            // Simulator::Schedule(Seconds(1), &QosTxop::PrintStatsResult, this, Seconds(0.5)); // print period result
         }
     }
 }
@@ -759,8 +759,10 @@ QosTxop::NotifyChannelAccessed(uint8_t linkId, Time txopDuration)
     GetLink(linkId).startTxop = Simulator::Now();
     GetLink(linkId).txopDuration = txopDuration;
     Txop::NotifyChannelAccessed(linkId);
-    if (m_mode & 0x03)
+    if (m_mode & 0x03) {
         GetMsduGrouper()->m_txopTimeBegin[linkId] = Simulator::Now().GetMicroSeconds();
+        // std::cout << "QosTxopBegin at " << Simulator::Now().GetNanoSeconds() << "ns" << std::endl;
+    }
 }
 
 std::optional<Time>
@@ -808,12 +810,12 @@ QosTxop::NotifyChannelReleased(uint8_t linkId)
     GetLink(linkId).access = NOT_REQUESTED;
 
     if (m_mode & 0x03) {
+        // std::cout << "QosTxopEnd at " << Simulator::Now().GetNanoSeconds() << "ns"<< std::endl;
         GetMsduGrouper()->SetTxopTimeEnd(Simulator::Now().GetMicroSeconds(), linkId);
         if(GetMsduGrouper()->IsParamUpdateEnabled()) {
             SetTxopLimit(MicroSeconds(m_alg_txop_limits[linkId]) * 32, linkId);
         }
     }
-
 }
 
 Time
@@ -994,27 +996,38 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
     if (Simulator::Now() <= Seconds(1)) {
         if (GetMsduGrouper()->IsGridSearchEnabled()) {
             auto next_params = GetMsduGrouper()->GetNextEdcaParameters(); // 设置默认参数，params.json中第一个参数
-            SetParams(next_params);
+            if(GetMsduGrouper()->IsParamUpdateEnabled()) {
+                SetParams(next_params);
+                std::cout << Simulator::Now().As(Time::S) << "s, GridSearch开启，设置初始EDCA参数成功" << std::endl;
+            } else {
+                std::cout << "GridSearch开启，设置初始EDCA参数失败" << std::endl;
+            }
         } else {
             auto params = GetMsduGrouper()->GetNewEdcaParameters(true);
-            SetParams(params);
+            if(GetMsduGrouper()->IsParamUpdateEnabled()) {
+                SetParams(params);
+                std::cout << Simulator::Now().As(Time::S) << "s, Auto开启，设置初始EDCA参数成功" << std::endl;
+            } else {
+                std::cout << "Auto开启，设置初始EDCA参数失败" << std::endl;
+            }
         }
         Simulator::Schedule(period, &QosTxop::ScheduleUpdateEdcaParameters, this, period);
         return;
     }
-    double Thp1 = GetMsduGrouper()->GetQueueStats().GetThroughput(0, period / 2);
-    double Thp2 = GetMsduGrouper()->GetQueueStats().GetThroughput(1, period / 2);
-    double p1 = GetMsduGrouper()->GetQueueStats().GetMpduSuccessRate(0, period / 2);
-    double p2 = GetMsduGrouper()->GetQueueStats().GetMpduSuccessRate(1, period / 2);
-    double chanrate1 = GetMsduGrouper()->GetQueueStats().GetChannelEfficiency(0, period / 2);
-    double chanrate2 = GetMsduGrouper()->GetQueueStats().GetChannelEfficiency(1, period / 2);
-    double avgdatarate1 = GetMsduGrouper()->GetQueueStats().GetAverageDataRate(0, period / 2);
-    double avgdatarate2 = GetMsduGrouper()->GetQueueStats().GetAverageDataRate(1, period / 2);
-    std::vector<double> blocktimerate = GetMsduGrouper()->GetQueueStats().GetBlockTimeRate(period / 2);
+    double Thp1 = GetMsduGrouper()->GetQueueStats().GetThroughput(0, period);
+    double Thp2 = GetMsduGrouper()->GetQueueStats().GetThroughput(1, period);
+    double p1 = GetMsduGrouper()->GetQueueStats().GetMpduSuccessRate(0, period);
+    double p2 = GetMsduGrouper()->GetQueueStats().GetMpduSuccessRate(1, period);
+    double chanrate1 = GetMsduGrouper()->GetQueueStats().GetChannelEfficiency(0, period);
+    double chanrate2 = GetMsduGrouper()->GetQueueStats().GetChannelEfficiency(1, period);
+    double avgdatarate1 = GetMsduGrouper()->GetQueueStats().GetAverageDataRate(0, period);
+    double avgdatarate2 = GetMsduGrouper()->GetQueueStats().GetAverageDataRate(1, period);
+    std::vector<double> blocktimerate = GetMsduGrouper()->GetQueueStats().GetBlockTimeRate(period);
+    std::vector<double> severeblocktimerate = GetMsduGrouper()->GetQueueStats().GetSevereBlockTimeRate(period);
     auto blockCnt_total = GetMsduGrouper()->GetQueueStats().GetBlockCnt(Seconds(0));
-    auto blockCnt = GetMsduGrouper()->GetQueueStats().GetBlockCnt(period / 2);
-    auto blockCnt_other_inflight = GetMsduGrouper()->GetQueueStats().GetBlockCnt_other_inflight(period / 2);
-    auto blockrate = GetMsduGrouper()->GetMeanBlockRate(period / 2);
+    auto blockCnt = GetMsduGrouper()->GetQueueStats().GetBlockCnt(period);
+    auto blockCnt_other_inflight = GetMsduGrouper()->GetQueueStats().GetBlockCnt_other_inflight(period);
+    auto blockrate = GetMsduGrouper()->GetMeanBlockRate(period);
     // auto bawqueue = GetMsduGrouper()->GetQueueStats().GetBawQueue();
     std::cout << "\n************ Update Time: " << Simulator::Now().GetSeconds() << "s************"
     << std::endl;
@@ -1027,11 +1040,13 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
     std::cout << "avg datarate on 2.4G: " << avgdatarate1 << "Mbps, avg datarate on 5G: " << avgdatarate2
                 << "Mbps" << std::endl;
     std::cout << "blocktimerate: " << blocktimerate[0] << ", " << blocktimerate[1] << std::endl;
+    std::cout << "severeblocktimerate: " << severeblocktimerate[0] << ", " << severeblocktimerate[1] << std::endl; // 卡窗导致的空口浪费
+    std::cout << "interference airtime waste rate: " << (1 - p1) * chanrate1 << ", " << (1 - p2) * chanrate2 << std::endl;
     std::cout << "blockrate: " << blockrate[0] << ", " << blockrate[1] << std::endl;
     std::cout << "blockCnt: " << blockCnt[0] << " , " << blockCnt[1] << std::endl;
     std::cout << "blockCnt when another link tx: " << blockCnt_other_inflight[0] << " , " << blockCnt_other_inflight[1] << std::endl;
-    std::vector<uint32_t> lengths1 = GetMsduGrouper()->GetQueueStats().GetRecentAMPDULengths(0, period / 2);
-    std::vector<uint32_t> lengths2 = GetMsduGrouper()->GetQueueStats().GetRecentAMPDULengths(1, period / 2);
+    std::vector<uint32_t> lengths1 = GetMsduGrouper()->GetQueueStats().GetRecentAMPDULengths(0, period);
+    std::vector<uint32_t> lengths2 = GetMsduGrouper()->GetQueueStats().GetRecentAMPDULengths(1, period);
     uint32_t maxlen1 = *std::max_element(lengths1.begin(), lengths1.end());
     uint32_t maxlen2 = *std::max_element(lengths2.begin(), lengths2.end());
     uint32_t meanlen1 = std::accumulate(lengths1.begin(), lengths1.end(), 0.0) / (lengths1.size() == 0 ? 1 : lengths1.size());
@@ -1042,8 +1057,8 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
     if (GetMsduGrouper()->IsGridSearchEnabled()) { // 网格搜索最优参数，场景需固定
         auto params = GetMsduGrouper()->GetCurrentEdcaParameters();
         auto next_params = GetMsduGrouper()->GetNextEdcaParameters();
-        const auto meanTxopTime = GetMsduGrouper()->GetMeanTxopTime(period / 2);
-        const auto meanTxMpduNum = GetMsduGrouper()->GetMeanTxMpduNum(period / 2);
+        const auto meanTxopTime = GetMsduGrouper()->GetMeanTxopTime(period);
+        const auto meanTxMpduNum = GetMsduGrouper()->GetMeanTxMpduNum(period);
         
         if (!TracedParamsAndStats.IsEmpty())
             TracedParamsAndStats(std::move(params),
@@ -1054,6 +1069,7 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
                                  {chanrate1, chanrate2},
                                  {avgdatarate1, avgdatarate2},
                                  blocktimerate,
+                                 severeblocktimerate,
                                  blockrate,
                                  blockCnt,
                                  blockCnt_other_inflight,
@@ -1074,15 +1090,14 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
     } else {
         auto address = GetMsduGrouper()->GetRecipient();
         auto winSize = GetBaBufferSize(address, 0);
-        std::cout << "recipient address: " << address <<  " " << winSize <<std::endl;
         
-        const auto& new_params = GetMsduGrouper()->GetNewEdcaParameters(false, winSize, p1, p2, avgdatarate1, avgdatarate2);
+        const auto& new_params = GetMsduGrouper()->GetNewEdcaParameters(false, winSize, p1, p2, avgdatarate1, avgdatarate2, chanrate1, chanrate2);
         if (new_params.No == 0) {
             Simulator::Schedule(period, &QosTxop::ScheduleUpdateEdcaParameters, this, period);
             return;
         }
-        const auto meanTxopTime = GetMsduGrouper()->GetMeanTxopTime(period / 2);
-        const auto meanTxopMpduNum = GetMsduGrouper()->GetMeanTxMpduNum(period / 2);
+        const auto meanTxopTime = GetMsduGrouper()->GetMeanTxopTime(period);
+        const auto meanTxopMpduNum = GetMsduGrouper()->GetMeanTxMpduNum(period);
         if (!TracedParamsAndStats.IsEmpty())
             TracedParamsAndStats(std::move(new_params),
                                  GetMsduGrouper()->GetLink1Pct(),
@@ -1092,6 +1107,7 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
                                  {chanrate1, chanrate2},
                                  {avgdatarate1, avgdatarate2},
                                  blocktimerate,
+                                 severeblocktimerate,
                                  blockrate,
                                  blockCnt,
                                  blockCnt_other_inflight,
@@ -1104,6 +1120,7 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
             TracedTxopTime(GetMsduGrouper()->m_txopList, GetMsduGrouper()->m_txtime_nmpdu_List);
 
         SetParams(new_params);
+        GetMsduGrouper()->ClearStats();
     }
 
     Simulator::Schedule(period, &QosTxop::ScheduleUpdateEdcaParameters, this, period);
@@ -1208,14 +1225,14 @@ QosTxop::SetParams(const mldParams & next_params) {
         SetAifsns(std::vector<uint8_t>(next_params.Aifsns.begin(), next_params.Aifsns.end()));
 
         // RTS/CTS 开启关闭
-        for (uint8_t i = 0; i < 2; ++ i) {
-            if (next_params.RTS_CTS[i]) m_mac->GetWifiRemoteStationManager(i)->SetRtsCtsThreshold(0);
-            else m_mac->GetWifiRemoteStationManager(i)->SetRtsCtsThreshold(std::numeric_limits<uint32_t>::max());
-        }
+        // for (uint8_t i = 0; i < 2; ++ i) {
+        //     if (next_params.RTS_CTS[i]) m_mac->GetWifiRemoteStationManager(i)->SetRtsCtsThreshold(0);
+        //     else m_mac->GetWifiRemoteStationManager(i)->SetRtsCtsThreshold(std::numeric_limits<uint32_t>::max());
+        // }
 
         // 聚合参数, MLO算法通过控制Txop来控制聚合长度，因此不修改这个参数
-        if (next_params.AmpduSizes[0] != 0)
-            m_mac->SetAttribute("BE_MaxAmpduSize", UintegerValue(next_params.AmpduSizes[0]));
+        // if (next_params.AmpduSizes[0] != 0)
+        //     m_mac->SetAttribute("BE_MaxAmpduSize", UintegerValue(next_params.AmpduSizes[0]));
 
         // 重传次数
         for (uint8_t i = 0; i < 2; ++ i) {
@@ -1226,7 +1243,7 @@ QosTxop::SetParams(const mldParams & next_params) {
         // 冗余参数
         GetMsduGrouper()->UpdateRedundancyThreshold(next_params.RedundancyThresholds);
 
-        GetMsduGrouper()->UpdateRedundancyFixedNumber(next_params.RedundancyFixedNumbers);
+        // GetMsduGrouper()->UpdateRedundancyFixedNumber(next_params.RedundancyFixedNumbers);
     }
 }
 } // namespace ns3

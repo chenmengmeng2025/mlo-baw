@@ -35,7 +35,7 @@ struct MPDUInfo
     uint32_t m_msduNum;
     uint32_t m_mpduSeqNo;
     bool m_rxstate;//发送成功为true，失败为false
-    bool m_txcount;//发送次数
+    int m_txcount;//发送次数
     uint8_t m_linkIds;// 0表示这个mpdu未被分配,1表示分配给链路1，2表示分配给链路2，3表示分配给链路1和2
     Time m_txTime;
     Time m_ackTime;
@@ -81,6 +81,8 @@ public:
 
     std::vector<double> GetBlockTimeRate(Time period);
 
+    std::vector<double> GetSevereBlockTimeRate(Time period);
+
     std::vector<uint32_t> GetBlockCnt(Time period);
 
     std::vector<uint32_t> GetBlockCnt_other_inflight(Time period);
@@ -115,8 +117,10 @@ public:
     std::vector<PPDUInfo> m_ppduinfos;
     std::vector<MPDUInfo> m_mpduinfos;
     std::vector<Time> blockwindow_begin;
+    std::vector<Time> severe_blockwindow_begin;
     std::vector<Time> blockwindow_Total;
     std::map<uint8_t, std::vector<std::pair<Time, Time>>> blockwindow_time;
+    std::map<uint8_t, std::vector<std::pair<Time, Time>>> severe_blockwindow_time;
     std::map<uint8_t, std::vector<Time>> blockwindow_time_other_inflight;
     std::map<std::pair<Mac48Address, uint8_t>, std::vector<WiFiBawQueueIt>> m_bawqueue;
     Ptr<WifiMac> m_mac;
@@ -311,7 +315,7 @@ public:
      
     void EnableParamUpdate();
 
-    mldParams GetNewEdcaParameters(bool initial, uint16_t winSize = 256, double p1 = 1, double p2 = 1, double datarate1 = 0, double datarate2 = 0);
+    mldParams GetNewEdcaParameters(bool initial, uint16_t winSize = 256, double p1 = 1, double p2 = 1, double datarate1 = 0, double datarate2 = 0, double occ1 = 0, double occ2 = 0);
     
     std::pair<uint8_t, Time> GetNewLinkStates();
 

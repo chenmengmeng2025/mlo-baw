@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # file = "./scratch/mode-test-udp-no-period/result_bw_20_160_mcs_6_11_interference_0.500000_0.000000_txoplimits_0_0_nss_2_thpt.csv"
-file = "./scratch/mode-test-udp-no-period/result_bw_20_160_mcs_6_11_interference_0.000000_0.500000_txoplimits_0_0_nss_2_thpt.csv"
+file = "./scratch/mode-test-tcp/bw_20_160_ratectrl_ideal_interference_0.000000_0.000000_txoplimits_0_0_nss_2_redundancy_0_txopauto_1_mode_1_sl_0_period_0.100000_seed_1.csv"
 df = pd.read_csv(file)
 
 # 创建图表和两个Y轴

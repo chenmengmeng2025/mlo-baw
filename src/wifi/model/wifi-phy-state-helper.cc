@@ -311,7 +311,7 @@ void
 WifiPhyStateHelper::SwitchToTx(Time txDuration,
                                const WifiConstPsduMap& psdus,
                                dBm_u txPower,
-                               const WifiTxVector& txVector)
+                               const WifiTxVector& txVector, Time transmissionDelay)
 {
     NS_LOG_FUNCTION(this << txDuration << psdus << txPower << txVector);
     if (!m_txTrace.IsEmpty())
@@ -340,14 +340,18 @@ WifiPhyStateHelper::SwitchToTx(Time txDuration,
         LogPreviousIdleAndCcaBusyStates();
         break;
     default:
+        std::cout << GetState() << std::endl;
         NS_FATAL_ERROR("Invalid WifiPhy state.");
         break;
     }
-    m_stateLogger(now, txDuration, WifiPhyState::TX);
-    m_previousStateChangeTime = now;
-    m_endTx = now + txDuration;
+    m_stateLogger(now, txDuration + transmissionDelay, WifiPhyState::TX);
+    m_previousStateChangeTime = now; // 此时PHY已经是TX状态
+    m_endTx = now + txDuration + transmissionDelay; // 延迟transmissionDelay结束TX状态
     m_startTx = now;
-    NotifyListeners(&WifiPhyListener::NotifyTxStart, txDuration, txPower);
+    Simulator::Schedule(transmissionDelay, [this, txDuration, txPower]() {
+        NotifyListeners(&WifiPhyListener::NotifyTxStart, txDuration, txPower);
+    });
+    // NotifyListeners(&WifiPhyListener::NotifyTxStart, txDuration, txPower);
 }
 
 void

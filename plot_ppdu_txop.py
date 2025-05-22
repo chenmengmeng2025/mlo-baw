@@ -4,9 +4,9 @@ import argparse
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Plot PPDU Timeline')
-    parser.add_argument('--begin', type=int, default=1.5,
+    parser.add_argument('--begin', type=float, default=1.5,
                       help='Begin time for the plot (default: 1.5)')
-    parser.add_argument('--end', type=int, default=1.52,
+    parser.add_argument('--end', type=float, default=1.52,
                       help='End time for the plot (default: 1.52)')
     return parser.parse_args()
 
@@ -63,7 +63,7 @@ if __name__ == "__main__":
         link = row.iloc[0]
         txopstart = row.iloc[1]
         txopend = row.iloc[2]
-        if txopstart > begin and txopstart < end:
+        if txopstart > begin and txopstart < end and txopend < end:
             color = link_color.get(link, 'black')
             y_pos = 0.6 if link == 1 else -0.4
             # 三角形标txopstart

@@ -1606,15 +1606,15 @@ Time WifiPhy::CalculateTransmissionDelay(bool IsAggregation, size_t maxMpduCount
     // IsAggregation = false;
     if (!(psdu->GetHeader(0).GetAddr1() == "00:00:00:00:00:05" || psdu->GetHeader(0).GetAddr1() == "00:00:00:00:00:06"))
         return transmissionDelay;
-    if (IsAggregation && WifiPhyBand::WIFI_PHY_BAND_2_4GHZ) {
+    if (IsAggregation && psdu->GetHeader(0).GetAddr1() == "00:00:00:00:00:05") {
         double delayInMicroseconds = 2 + (maxMpduCount * maxMsduCount * 32.0) / 3000.0 + maxMpduCount / 320.0 + 1.5;
         transmissionDelay = NanoSeconds(static_cast<int64_t>(delayInMicroseconds * 1000));  
     }
-    if (IsAggregation && WifiPhyBand::WIFI_PHY_BAND_5GHZ) {
+    if (IsAggregation && psdu->GetHeader(0).GetAddr1() == "00:00:00:00:00:06") {
         double delayInMicroseconds = 2 + (maxMpduCount * maxMsduCount * 32.0) / 3000.0 + (maxMpduCount / 320.0 + 1.5) * 2;
         transmissionDelay = NanoSeconds(static_cast<int64_t>(delayInMicroseconds * 1000));  
     }
-    // if (IsAggregation) transmissionDelay = MicroSeconds(18); // constant delay
+    if (IsAggregation) transmissionDelay = MicroSeconds(18); // constant delay
     return transmissionDelay;
 }
 
@@ -2054,7 +2054,9 @@ WifiPhy::DoSend(const WifiConstPsduMap& psdus, const WifiTxVector& txVector, uin
     {
         NotifyMonitorSniffTx(psdu.second, GetFrequency(), txVector, psdu.first);
     }
-    m_state->SwitchToTx(txDuration + transmissionDelay, psdus, GetPower(txVector.GetTxPowerLevel()), txVector);
+
+    m_state->SwitchToTx(txDuration, psdus, GetPower(txVector.GetTxPowerLevel()), txVector, transmissionDelay); // 切换PHY层状态为TX状态
+    // m_state->SwitchToTx(txDuration, psdus, GetPower(txVector.GetTxPowerLevel()), txVector, transmissionDelay);
     if (m_wifiRadioEnergyModel &&
         m_wifiRadioEnergyModel->GetMaximumTimeInState(WifiPhyState::TX) < txDuration)
     {
@@ -2076,6 +2078,8 @@ WifiPhy::DoSend(const WifiConstPsduMap& psdus, const WifiTxVector& txVector, uin
         // PpduTxDuration(ppdu, txDuration, linkId);
     }
     // Schedule the StartTx call after the transmission delay
+
+    // std::cout << "To StartTx after transmission delay = " << transmissionDelay << std::endl;
     Simulator::Schedule(transmissionDelay, &WifiPhy::StartTx, this, ppdu);
     // StartTx(ppdu);
     ppdu->ResetTxVector();

@@ -788,7 +788,7 @@ Txop::DoInitialize()
         m_grouper = Create<MsduGrouper>(m_maxGroupSize, 4096, m_queue, m_mac, m_mode, m_period);
         if(m_reduandancyEnable) {
             std::cout << "允许冗余模式开启" << std::endl;
-            m_grouper->UpdateRedundancyFixedNumber({1, 1});
+            m_grouper->UpdateRedundancyFixedNumber({0, 1});
         }
         m_grouper->SetLink1Pct(m_link1Pct);
         if (m_gs_enable) m_grouper->EnableGridSearch(m_jsonFileName);

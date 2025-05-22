@@ -306,8 +306,11 @@ MultiModelSpectrumChannel::StartTx(Ptr<SpectrumSignalParameters> txParams)
                                 m_propagationLoss->CalcRxPower(0, txMobility, receiverMobility);
                         }
                         NS_LOG_LOGIC("propagationGainDb = " << propagationGainDb << " dB");
+                        // std::cout << "propagationGainDb = " << propagationGainDb << " dB" << std::endl;
                         pathLossDb -= propagationGainDb;
                     }
+                    // if (receiverMobility->GetPosition() == Vector(0, 0, 1)) 
+                    //     std::cout << txMobility->GetPosition() << " -> " << receiverMobility->GetPosition() << " pathLossDb = " << pathLossDb << std::endl;
                     NS_LOG_LOGIC("total pathLoss = " << pathLossDb << " dB");
                     // Gain trace
                     m_gainTrace(txMobility,
@@ -333,7 +336,7 @@ MultiModelSpectrumChannel::StartTx(Ptr<SpectrumSignalParameters> txParams)
                 }
 
                 if (rxNetDevice)
-                {
+                {   
                     // the receiver has a NetDevice, so we expect that it is attached to a Node
                     auto dstNode = rxNetDevice->GetNode()->GetId();
                     Simulator::ScheduleWithContext(dstNode,

@@ -15,7 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
-#include "ns3/string.h"
+
 #include "ns3/attribute-container.h"
 #include "ns3/command-line.h"
 #include "ns3/config.h"
@@ -48,7 +48,6 @@
 #include "ns3/wifi-utils.h"
 #include "ns3/yans-wifi-helper.h"
 #include "ns3/ipv4-address-helper.h"
-#include "ns3/wifi-tx-stats-helper.h"
 
 #define PI 3.1415926535
 
@@ -114,22 +113,28 @@ PrintIntermediateTput(std::vector<uint64_t>& rxBytes,
 int
 main(int argc, char* argv[])
 {
+
     uint32_t seedNumber = 1;
     uint8_t nLinks = 2;
     RngSeedManager::SetSeed(seedNumber);
     RngSeedManager::SetRun(seedNumber);
     double txPower = 16; 
-    bool udp{true};
+    bool udp{false};
     bool downlink{true};
     bool uplink{false};
     bool useRts{false};
     int gi = 800;
-    uint16_t mpduBufferSize{64};
+    uint16_t mpduBufferSize{128};
+    uint16_t paddingDelayUsec{32};
+    uint16_t transitionDelayUsec{128};
+    bool switchAuxPhy{true};
+    uint16_t auxPhyChWidth{20};
+    bool auxPhyTxCapable{true};
     Time simulationTime{"10s"};
     std::string dlAckSeqType{"NO-OFDMA"};
     meter_u distance{1.0};
     std::size_t nStaMlds{1};
-    std::vector<std::size_t> nStaSlds{0, 0};
+    std::vector<std::size_t> nStaSlds{3, 2};
     bool enableUlOfdma{false};
     bool enableBsrp{false};
     uint32_t payloadSize = 700; // must fit in the max TX duration when transmitting at MCS 0 over an RU of 26 tones
@@ -191,7 +196,6 @@ main(int argc, char* argv[])
         dataModeStr = "EhtMcs" + std::to_string(mcs[i]);
         nonHtRefRateMbps = EhtPhy::GetNonHtReferenceRate(mcs[i]) / 1e6;
         ctrlRateStr = "OfdmRate" + std::to_string(nonHtRefRateMbps) + "Mbps";
-        std::cout << "Link " << std::to_string(i) <<" ControlRate: " << ctrlRateStr << " DataMode: " << dataModeStr << std::endl;
         wifi.SetRemoteStationManager(i, 
                                         "ns3::ConstantRateWifiManager",
                                         "DataMode", StringValue(dataModeStr),
@@ -267,6 +271,7 @@ main(int argc, char* argv[])
                 "MaxMissedBeacons", UintegerValue(std::numeric_limits<uint32_t>::max()), 
                 "Ssid", SsidValue(bssSsid));
     mldDev = wifi.Install(phy, mac, mldNodes.Get(0));
+
     sldDev2 = wifi2.Install(phySld2, mac, sldNodes2);
     sldDev5 = wifi5.Install(phySld5, mac, sldNodes5);
 
@@ -281,8 +286,7 @@ main(int argc, char* argv[])
     // print mac address of slds
     Ptr<WifiMac> mac_sld;
     for (int i = 0; i < 2; ++i) { 
-        if (nStaSlds[i])
-            std::cout << "sldDevice " << "linkId " << std::to_string(i) << ":" << std::endl;
+        std::cout << "sldDevice " << "linkId " << std::to_string(i) << ":" << std::endl;
         for (auto j = 0; j < nStaSlds[i]; ++j) {
             if (i == 0) mac_sld = DynamicCast<WifiNetDevice>(sldDev2.Get(j))->GetMac();
             else mac_sld = DynamicCast<WifiNetDevice>(sldDev5.Get(j))->GetMac();
@@ -291,7 +295,7 @@ main(int argc, char* argv[])
         }
     }
     // 2. AP MAC 设置
-    uint64_t beaconInterval = 1024 * 100;
+    uint64_t beaconInterval = 1024 * 1000;
     if (dlAckSeqType != "NO-OFDMA")
     {
         mac.SetMultiUserScheduler("ns3::RrMultiUserScheduler",
@@ -325,7 +329,7 @@ main(int argc, char* argv[])
 
     // Set guard interval, MPDU buffer size, MaxAmsduSize, MaxAmpduSize
     int16_t amsdu_maxn = 1;
-    int16_t ampdu_maxn = 1;
+    int16_t ampdu_maxn = 64;
     Config::Set("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/HeConfiguration/GuardInterval",
                     TimeValue(NanoSeconds(gi)));
     Config::Set("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_MaxAmsduSize",
@@ -392,7 +396,7 @@ main(int argc, char* argv[])
             dlserverApp = server.Install(mldNodes);
             seedNumber += server.AssignStreams(mldNodes, seedNumber);
             dlserverApp.Start(Seconds(0.0));
-            dlserverApp.Stop(simulationTime + Seconds(1.2));
+            dlserverApp.Stop(simulationTime + Seconds(1.0));
 
             /* install clientapp */
             const auto packetInterval = payloadSize * 8.0 / maxLoad;
@@ -418,7 +422,7 @@ main(int argc, char* argv[])
             dlserverApp = packetSinkHelper.Install(mldNodes);
             seedNumber += packetSinkHelper.AssignStreams(mldNodes, seedNumber);
             dlserverApp.Start(Seconds(0.0));
-            dlserverApp.Stop(simulationTime + Seconds(1.1));
+            dlserverApp.Stop(simulationTime + Seconds(1.0));
 
             for (std::size_t i = 0; i < nStaMlds; i++)
             {
@@ -530,20 +534,13 @@ main(int argc, char* argv[])
         wifiDev->GetMac()->GetEhtConfiguration()->SetAttribute("TidToLinkMappingDl", StringValue(mldMappingStr));
         wifiDev->GetMac()->GetEhtConfiguration()->SetAttribute("TidToLinkMappingUl",StringValue(mldMappingStr));
     }
-
-    /* 数据统计模块 */
-    WifiTxStatsHelper ApStats;
-    ApStats.Enable(devices);
-    ApStats.Start(Seconds(0));
-    ApStats.Stop(simulationTime + Seconds(1.2));
-
     // AsciiTraceHelper asciiTrace;
     // phy.EnableAsciiAll(asciiTrace.CreateFileStream("single-bss-coex.tr"));
     phy.EnablePcap("ap-trace", apDev.Get(0));
     phy.EnablePcap("mld-trace", mldDev.Get(0));
-    // phy.EnablePcap("sld-2.4-trace", sldDev2);
-    // phy.EnablePcap("sld-5-trace", sldDev5);
-    Simulator::Stop(simulationTime + Seconds(1.2));
+    phy.EnablePcap("sld-2.4-trace", sldDev2);
+    phy.EnablePcap("sld-5-trace", sldDev5);
+    Simulator::Stop(simulationTime + Seconds(1.0));
     Simulator::Run();
     auto tolerance = 0.10;
     std::vector<uint64_t> ulCumulRxBytes(nStaMlds, 0);
@@ -554,27 +551,9 @@ main(int argc, char* argv[])
 
     dlCumulRxBytes = GetRxBytes(udp, dlserverApp, payloadSize);
     auto dlrxBytes = std::accumulate(dlCumulRxBytes.cbegin(), dlCumulRxBytes.cend(), 0.0);
-    auto dlthroughput = ((double)dlrxBytes * 8) / simulationTime.GetMicroSeconds(); // Mbit/s
+    auto dlthroughput = (dlrxBytes * 8) / simulationTime.GetMicroSeconds(); // Mbit/s
     std::cout << "UL Throughput: \t\t\t" << ulthroughput << " Mbit/s" << std::endl;
     std::cout << "DL Throughput: \t\t\t" << dlthroughput << " Mbit/s" << std::endl;
-
-    auto results = ApStats.GetFinalStatistics();
-    std::cout << "from, \t to, \t throughput on link 0(mbps),\t throughput on link 1(mbps), SuccessProbability on link 0, SuccessProbability on link 1, \t mean access delay on link 0(ms),\t mean access delay on link 1(ms)" << std::endl;
-    uint32_t from  = 0;
-    auto totalNodeNum = devices.GetN();
-    for (uint32_t i = 0; i < totalNodeNum; i++) {
-        for (uint32_t j = 0; j < totalNodeNum; j++) {
-            if (i == j) continue;
-            uint32_t from = i;
-            uint32_t to = j;
-            uint64_t rxBytes0 = results.m_numSuccessPerNodePairLink[{from, to}][0] * payloadSize;
-            uint64_t rxBytes1 = results.m_numSuccessPerNodePairLink[{from, to}][1] * payloadSize;
-            // std::cout << (double)(rxBytes0 + rxBytes1) * 8 / simulationTime.GetMicroSeconds() << std::endl;
-            // results.m_numFinalFailedPerNodePair[{from, to}]
-            std::cout << (int)from << ", " << (int)to << ", " << double(rxBytes0) * 8 / (simulationTime.GetSeconds()) / 1e6 << ", " << double(rxBytes1) * 8 / (simulationTime.GetSeconds()) / 1e6 << ", "
-            << results.m_meanAccessDelayPerNodePairLink[{from, to}][0] << ", " << results.m_meanAccessDelayPerNodePairLink[{from, to}][1] << std::endl;
-        }
-    }
     Simulator::Destroy();
     return 0;
 }

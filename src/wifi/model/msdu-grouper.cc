@@ -17,6 +17,7 @@ QueueStats::QueueStats(Time period, Ptr<WifiMac> mac)
     cycle_time = period;
     m_initialized = false;
     blockwindow_begin = {Seconds(0), Seconds(0)};
+    severe_blockwindow_begin = {Seconds(0), Seconds(0)};
     blockwindow_Total = {Seconds(0), Seconds(0)};
     m_mac = mac;
 }
@@ -26,6 +27,7 @@ QueueStats::QueueStats()
     cycle_time = Seconds(0.1);
     m_initialized = false;
     blockwindow_begin = {Seconds(0), Seconds(0)};
+    severe_blockwindow_begin = {Seconds(0), Seconds(0)};
     blockwindow_Total = {Seconds(0), Seconds(0)};
 }
 
@@ -167,7 +169,8 @@ QueueStats::GetAverageDataRate(uint8_t linkId, Time period)
             }
         }
     }
-    return datarate / totalduration.GetMicroSeconds();
+
+    return datarate / (totalduration.IsStrictlyPositive() ? totalduration.GetMicroSeconds() : 1);
 }
 
 std::vector<double>
@@ -190,6 +193,28 @@ QueueStats::GetBlockTimeRate(Time period)
         }
     }
     return blocktimerate;
+}
+
+std::vector<double>
+QueueStats::GetSevereBlockTimeRate(Time period)
+{
+    std::vector<double> severeblocktimerate{0, 0};
+    if (period.IsStrictlyPositive())
+    {
+        for (auto linkId = 0; linkId < 2; linkId++)
+        {
+            double blockTime = 0;
+            for (const auto& it : severe_blockwindow_time[linkId])
+            {
+                if (it.first > Simulator::Now() - period)
+                {
+                    blockTime += it.second.GetSeconds();
+                }
+            }
+            severeblocktimerate[linkId] = blockTime / period.GetSeconds();
+        }
+    }
+    return severeblocktimerate;
 }
 
 std::vector<uint32_t> 
@@ -431,7 +456,7 @@ MsduGrouper::SetLink1PctByQueuePowAvg(double thp1, double thp2)
 void
 MsduGrouper::AggregateMsdu(Ptr<WifiMpdu> msdu)
 {
-    if (m_mode == 0)
+    if (m_mode == 0 || m_maxGroupSize == 1)
         return;
     m_enqueueNum++;
     m_queueIds.insert(WifiMacQueueContainer::GetQueueId(msdu));
@@ -482,8 +507,6 @@ MsduGrouper::AddCurrentGroup(uint32_t itemgroup)
         m_currentGroup = (m_currentGroup + 1) % m_maxGroupNumber;
         m_currentCount = 0;
         m_firstMsdu = nullptr;
-        // std::cout << "current group add to " << m_currentGroup << std::endl;
-        // NS_LOG_DEBUG ("current group add to " << m_currentGroup);
     }
 }
 
@@ -728,17 +751,18 @@ MsduGrouper::UpdateAmpduSize(uint8_t linkId, uint32_t size)
     }
     if (Simulator::Now() > m_startTime + MilliSeconds(10))
     {
-        // if (size == 0) std::cout << Simulator::Now() << " 卡窗, 无包可传 on Link " << (uint32_t)linkId << std::endl;
         if (size < GetBAWindowThreshold(linkId))
-        {       
-            m_blockrateList[linkId].emplace_back(Simulator::Now(), (double)size / m_maxAmpduSize[linkId]);
-            if (!m_queueStats.blockwindow_begin[linkId].IsStrictlyPositive()) {
+        {
+            m_blockrateList[linkId].emplace_back(Simulator::Now(),
+                                                 (double)size / m_maxAmpduSize[linkId]);
+            if (!m_queueStats.blockwindow_begin[linkId].IsStrictlyPositive())
+            {
                 m_queueStats.blockwindow_begin[linkId] = Simulator::Now();
-                // std::cout << Simulator::Now() << " 卡窗开始 on Link " << (uint32_t)linkId << std::endl;
+                // std::cout << Simulator::Now() << " 卡窗开始 on Link " << (uint32_t)linkId <<
+                // std::endl;
             }
             if (m_inflighted[1 - linkId])
                 m_queueStats.blockwindow_time_other_inflight[linkId].push_back(Simulator::Now());
-            
         }
         else
         {
@@ -746,16 +770,35 @@ MsduGrouper::UpdateAmpduSize(uint8_t linkId, uint32_t size)
             {
                 m_queueStats.blockwindow_Total[linkId] +=
                     Simulator::Now() - m_queueStats.blockwindow_begin[linkId];
-                m_queueStats.blockwindow_time[linkId].emplace_back(m_queueStats.blockwindow_begin[linkId], Simulator::Now() - m_queueStats.blockwindow_begin[linkId]);
-                // std::cout << Simulator::Now() << " 卡窗结束 on Link " << (uint32_t)linkId << std::endl;
+                m_queueStats.blockwindow_time[linkId].emplace_back(
+                    m_queueStats.blockwindow_begin[linkId],
+                    Simulator::Now() - m_queueStats.blockwindow_begin[linkId]);
+                // std::cout << Simulator::Now() << " 卡窗结束 on Link " << (uint32_t)linkId <<
+                // std::endl;
                 m_queueStats.blockwindow_begin[linkId] = Seconds(0);
             }
         }
+        if (size == 0) {
+            if (!m_queueStats.severe_blockwindow_begin[linkId].IsStrictlyPositive())
+            {
+            m_queueStats.severe_blockwindow_begin[linkId] = Simulator::Now();
+            }
+        } else {
+            if (m_queueStats.severe_blockwindow_begin[linkId].IsStrictlyPositive())
+            {
+                m_queueStats.severe_blockwindow_time[linkId].emplace_back(
+                    m_queueStats.severe_blockwindow_begin[linkId],
+                    Simulator::Now() - m_queueStats.severe_blockwindow_begin[linkId]);
+                m_queueStats.severe_blockwindow_begin[linkId] = Seconds(0);
+            }
+        }
     }
-    if (size == 0 && (m_mode & 0x01)) {
+    if (size == 0 && (m_mode & 0x01))
+    {
         // 模式一只会在无包可发时才会开启冗余模式
-        if (m_redundancyFixedNumber[linkId]) {
-            std::cout << "开启冗余 on Link " << (uint32_t)linkId << std::endl;
+        if (m_redundancyFixedNumber[linkId])
+        {
+            // std::cout << "开启冗余 on Link " << (uint32_t)linkId << std::endl;
             SetRedundancyMode(linkId, 256);
         }
         return true;
@@ -778,19 +821,24 @@ MsduGrouper::GetCurrentEdcaParameters()
 }
 
 mldParams
-MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, double p2, double datarate1, double datarate2)
+MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, double p2, double datarate1, double datarate2, double occ1, double occ2)
 {
     uint32_t txoplimit = 0;
-    uint32_t aifsn1, aifsn2 = 2;
+    uint32_t aifsn1 = 2, aifsn2 = 2;
+    uint32_t tp = 0, tm = 0;
     if (!initial) {
         auto mpdusize = GetMeanMpduSize();
         std::cout << mpdusize << std::endl;
-        txoplimit = std::ceil((double) winSize / (p1 * datarate1 + p2 * datarate2) * mpdusize * 8 / 32);
-        // txoplimit = 0;
+        txoplimit = std::ceil((double) winSize / (p1 * occ1 * datarate1 + p2 * occ2 * datarate2) * mpdusize * 8 / 32);
         std::cout << "MLO Algorithm to Set Txoplimit: " << txoplimit << std::endl;
-        if (p1 < 0.98) { aifsn1 = 1;}
-        if (p2 < 0.98) { aifsn2 = 1;}
-        std::cout << "Aifsn1: " << aifsn1 << " Aifsn2: " << aifsn2 << std::endl;
+        if (txoplimit < 170) {
+            tp = std::ceil((1 - occ2) / occ2 * txoplimit);
+            tm = tp * datarate2 / datarate1;
+            if (txoplimit + tp > 170) tp = tm = 0;
+            if (txoplimit < tm) tm = tp = 0;
+        }
+        aifsn1 = 1 , aifsn2 = 1;
+        std::cout << "Aifsn1: " << aifsn1 << " Aifsn2: " << aifsn2 << " tp = " << tp << std::endl;
     }
     mldParams params;
     params.No = 1;
@@ -803,7 +851,8 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
     params.AmpduSizes = {0, 0};
     params.RedundancyFixedNumbers = {0, 0};
     params.RedundancyThresholds = {0.5, 0.5};
-    params.TxopLimits = {txoplimit, txoplimit};
+
+    params.TxopLimits = {txoplimit - tm, txoplimit + tp}; // 171
     return params;
 }
 

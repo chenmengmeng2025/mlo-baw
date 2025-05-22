@@ -760,7 +760,7 @@ InterferenceHelper::CalculatePayloadSnrPer(Ptr<Event> event,
      */
     const auto per =
         CalculatePayloadPer(event, channelWidth, &ni, band, staId, relativeMpduStartStop);
-
+    // std::cout << Simulator::Now() << " channelWidth = " << channelWidth << ", snr = " << snr << ", per = " << per << std::endl;
     return PhyEntity::SnrPer(snr, per);
 }
 

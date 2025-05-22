@@ -359,7 +359,7 @@ HtFrameExchangeManager::StartFrameExchange(Ptr<QosTxop> edca, Time availableTime
         NS_LOG_DEBUG("No frames available for transmission");
         if (edca->GetMsduGrouper())
         {
-            // std::cout << "No frames available for transmission on " << +m_linkId << std::endl;
+            // std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
             edca->GetMsduGrouper()->UpdateAmpduSize(m_linkId, 0);
             peekedItem = edca->PeekNextMpdu(m_linkId);
         }
@@ -1202,6 +1202,7 @@ HtFrameExchangeManager::ForwardPsduDown(Ptr<const WifiPsdu> psdu, WifiTxVector& 
     {
         txVector.SetAggregation(true);
     }
+    // std::cout << m_mac->GetAddress() <<  " ForwardPsduDown: " << Simulator::Now().GetNanoSeconds() << "ns" << std::endl;
     if (m_mac->GetNLinks() > 1) {
         m_phy->Send(psdu, txVector, m_linkId, m_mac->GetLinkTxStatus());
     } else m_phy->Send(psdu, txVector);

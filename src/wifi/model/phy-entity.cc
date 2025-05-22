@@ -599,7 +599,7 @@ PhyEntity::ScheduleEndOfMpdus(Ptr<Event> event)
     uint32_t totalAmpduSize = 0;
     double totalAmpduNumSymbols = 0.0;
     auto mpdu = psdu->begin();
-    // std::cout << "nMpdus: " << std::to_string(nMpdus) << "Link " << m_wifiPhy->GetFrequency() << std::endl;
+    
     for (size_t i = 0; i < nMpdus && mpdu != psdu->end(); ++mpdu)
     {
 

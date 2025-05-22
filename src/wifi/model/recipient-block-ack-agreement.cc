@@ -192,7 +192,8 @@ RecipientBlockAckAgreement::NotifyReceivedMpdu(Ptr<const WifiMpdu> mpdu, uint8_t
             m_scoreboard_asyn[linkId].At(m_scoreboard_asyn[linkId].GetWinSize() - 1) = true;
         }
         else {
-            std::cout << "distance > SEQNO_SPACE_HALF_SIZE before WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << std::endl; 
+            std::cout << "distance > SEQNO_SPACE_HALF_SIZE before WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << " m_mode" << m_mode << std::endl; 
+            std::cout << "seqno = " << mpduSeqNumber << std::endl;
             m_scoreboard_asyn[linkId].Advance(distance - m_scoreboard_asyn[linkId].GetWinSize() + 1);
             m_scoreboard_asyn[linkId].At(m_scoreboard_asyn[linkId].GetWinSize() - 1) = true;
             std::cout <<" after WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << std::endl;

@@ -464,6 +464,7 @@ FrameExchangeManager::StartProtection(const WifiTxParameters& txParams)
     switch (txParams.m_protection->method)
     {
     case WifiProtection::RTS_CTS:
+        std::cout << "RTS_CTS open" << std::endl;
         SendRts(txParams);
         break;
     case WifiProtection::CTS_TO_SELF:
