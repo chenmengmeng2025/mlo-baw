@@ -380,6 +380,7 @@ MsduGrouper::MsduGrouper(uint32_t maxGroupSize,
     m_inflighted = {0, 0};
     m_gs_enable = false;
     m_param_update = false;
+    m_redundancy_enable = 0; // 默认关闭冗余模式
 }
 
 MsduGrouper::~MsduGrouper()
@@ -720,6 +721,7 @@ MsduGrouper::GetRedundancyMode(uint8_t linkId)
 void
 MsduGrouper::SetRedundancyMode(uint8_t linkId, uint32_t re_num)
 {
+    if (re_num == 0) return; 
     m_redundancyMode = m_redundancyMode | (1 << linkId);
     m_maxRedundantPackets[linkId] = re_num;
     // std::cout << "Redundancy mode opened on Link " << uint32_t(linkId) << " MaxNum: " << re_num << std::endl;
@@ -793,25 +795,37 @@ MsduGrouper::UpdateAmpduSize(uint8_t linkId, uint32_t size)
             }
         }
     }
-    if (size == 0 && (m_mode & 0x01))
+
+    if (Simulator::Now() > m_startTime && size == 0 && (m_mode & 0x01))
     {
-        // 模式一只会在无包可发时才会开启冗余模式
-        if (m_redundancyFixedNumber[linkId])
+        uint32_t redundancy_num = 0;
+        if (m_redundancy_enable & (1 << linkId))
         {
             // std::cout << "开启冗余 on Link " << (uint32_t)linkId << std::endl;
-            SetRedundancyMode(linkId, 256);
+            uint32_t mpdusize = GetMeanMpduSize();
+            auto datarate = m_queueStats.GetAverageDataRate(linkId, m_period);
+            auto it = m_queueStats.m_ppduinfos.rbegin();
+            while(it!=m_queueStats.m_ppduinfos.rend() && (it->linkId & (1 << linkId))) {++it;};
+            if (it != m_queueStats.m_ppduinfos.rend() && it->txTime + it->txDuration > Simulator::Now() + MicroSeconds(32)) {
+                redundancy_num =  std::floor((it->txTime + it->txDuration - Simulator::Now()).GetMicroSeconds() * datarate / mpdusize / 8);
+                // if (redundancy_num > 0) std::cout << "开启冗余 on Link " << (uint32_t)linkId <<  ", redundancy_num = " << redundancy_num << std::endl;
+            }
+            SetRedundancyMode(linkId, redundancy_num);    
         }
-        return true;
+        return redundancy_num > 0;
     }
     return false;
 }
 
 mldParams
-MsduGrouper::GetNextEdcaParameters()
+MsduGrouper::GetNextEdcaParameters(bool initial)
 {
-    auto params = m_gs->GetNext();
-    m_current_params = params;
-    return params;
+    if (m_param_update || initial) {
+        auto params = m_gs->GetNext();
+        m_current_params = params;
+        return params;
+    }
+    else return m_current_params;
 }
 
 mldParams
@@ -823,36 +837,45 @@ MsduGrouper::GetCurrentEdcaParameters()
 mldParams
 MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, double p2, double datarate1, double datarate2, double occ1, double occ2)
 {
+    auto mpdusize = GetMeanMpduSize();
+    bool istcp = mpdusize / m_maxGroupSize > 1000;
     uint32_t txoplimit = 0;
     uint32_t aifsn1 = 2, aifsn2 = 2;
     uint32_t tp = 0, tm = 0;
-    if (!initial) {
-        auto mpdusize = GetMeanMpduSize();
-        std::cout << mpdusize << std::endl;
-        txoplimit = std::ceil((double) winSize / (p1 * occ1 * datarate1 + p2 * occ2 * datarate2) * mpdusize * 8 / 32);
-        std::cout << "MLO Algorithm to Set Txoplimit: " << txoplimit << std::endl;
-        if (txoplimit < 170) {
-            tp = std::ceil((1 - occ2) / occ2 * txoplimit);
-            tm = tp * datarate2 / datarate1;
-            if (txoplimit + tp > 170) tp = tm = 0;
-            if (txoplimit < tm) tm = tp = 0;
-        }
-        aifsn1 = 1 , aifsn2 = 1;
-        std::cout << "Aifsn1: " << aifsn1 << " Aifsn2: " << aifsn2 << " tp = " << tp << std::endl;
-    }
     mldParams params;
     params.No = 1;
-    params.Aifsns = {aifsn1, aifsn2};
     params.CWmins = {1, 1};
     params.CWmaxs = {3, 3};
+    params.Aifsns = {aifsn1, aifsn2};
+    params.RTS_CTS = {0, 0};
     params.MaxSlrcs = {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
     params.MaxSsrcs = {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
-    params.RTS_CTS = {0, 0};
+    params.TxopLimits = {0, 0}; // < 171
     params.AmpduSizes = {0, 0};
-    params.RedundancyFixedNumbers = {0, 0};
     params.RedundancyThresholds = {0.5, 0.5};
-
-    params.TxopLimits = {txoplimit - tm, txoplimit + tp}; // 171
+    params.RedundancyFixedNumbers = {0, 0};
+    if (!m_param_update || initial) {
+        params.No = 0;
+        return params;
+    }
+    txoplimit = std::ceil((double) winSize / (p1 * datarate1 + p2 * datarate2) * mpdusize * 8 / 32);
+    if (txoplimit * MicroSeconds(32) > MicroSeconds(5484)) {
+        txoplimit = std::ceil((double) (winSize / 2) / (p1 * datarate1 + p2 * datarate2) * mpdusize * 8 / 32);
+    }
+    std::cout << "MLO Algorithm to Set Txoplimit: " << txoplimit << std::endl;
+    params.TxopLimits = {txoplimit, txoplimit};
+    std::cout << "MLO Algorithm to Set Aifsn: (" << aifsn1 << ", " << aifsn2 << ")" << std::endl;
+    if (istcp) { // TCP流量才需要开启RTS/CTS，来避免与TCP ACK的干扰
+        std::cout << "TCP TRAFFIC" << std::endl;
+        if (occ1 * (1 - p1) > 0.1) {
+            params.RTS_CTS[0] = 1;
+            params.TxopLimits[0] ++;
+        }
+        if (occ2 * (1 - p2) > 0.1) {
+            params.RTS_CTS[1] = 1;
+            params.TxopLimits[0] ++;
+        }
+    }
     return params;
 }
 
@@ -1088,6 +1111,11 @@ MsduGrouper::GetMeanMpduSize() {
         }
     }
     return cnt == 0 ? 0 : size / cnt;
+}
+
+void 
+MsduGrouper::EnableRedundancyMode(){
+    m_redundancy_enable = 0b11;
 }
 
 } // namespace ns3

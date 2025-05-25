@@ -8,6 +8,7 @@ def parse_args():
                       help='Begin time for the plot (default: 1.5)')
     parser.add_argument('--end', type=float, default=1.52,
                       help='End time for the plot (default: 1.52)')
+    parser.add_argument("--tcp", action="store_true", help="Enable TCP mode")
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -15,7 +16,7 @@ if __name__ == "__main__":
     args = parse_args()
     begin = int(args.begin * 1e6)
     end = int(args.end * 1e6)
-
+    tcp = bool(args.tcp)
     # 读取数据
     # df = pd.read_csv('PPDU_no_interference_no_newarch_txoplimits_0.000000_0.000000_link1Pct_0.004000.csv')
     df = pd.read_csv("PPDU.csv")
@@ -79,17 +80,21 @@ if __name__ == "__main__":
     ax.set_title('PPDU Timeline')
 
     from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
+    
     legend_elements = [
         Patch(facecolor=color_map['0'], edgecolor='black', label='2.4 G'),
         Patch(facecolor=color_map['1'], edgecolor='black', label='5 G'),
         Patch(facecolor=color_map['OBSS1'], edgecolor='black', label='OBSS 2G'),
         Patch(facecolor=color_map['OBSS2'], edgecolor='black', label='OBSS 5G'),
-        Patch(facecolor='purple', edgecolor='black', label='link0 txop'),
-        Patch(facecolor='red', edgecolor='black', label='link1 txop'),
     ]
+    if tcp:
+        legend_elements += [Patch(facecolor='#d62728', edgecolor='black', label='TCP ACK 2G'),
+        Patch(facecolor='#8c564b', edgecolor='black', label='TCP ACK 5G'),]
+    
     ax.legend(handles=legend_elements)
 
     ax.set_ylim(-0.7, 1.7)
     ax.autoscale(enable=True, axis='x', tight=True)
     plt.tight_layout()
-    plt.savefig('PPDU_Timeline.png', dpi=300)
+    plt.savefig('PPDU_Timeline.png', dpi=400)

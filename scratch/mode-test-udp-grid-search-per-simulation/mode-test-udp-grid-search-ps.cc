@@ -91,7 +91,6 @@ struct Stats {
 std::vector<Stats> results;
 std::deque<uint32_t> throughputQueue;
 std::unordered_map<double, double> throughputMap;
-// std::unordered_map<double, std::pair<int, double>> blockinfoMap;
 
 int cnt = 0;
 
@@ -389,9 +388,9 @@ main(int argc, char* argv[])
                             std::to_string(r1) + "_" + std::to_string(r2) + "_txoplimits_" + 
                             std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update) + "_seed_" + std::to_string(seedNumber);
 
-    std::string csv_file = (filepath.parent_path() / (title + ".csv")).string();
+    std::string csv_file = (filepath.parent_path() / ("result_" + title + ".csv")).string();
     std::cout << csv_file << std::endl;
-    // LogComponentEnable("PhyEntity", LOG_LEVEL_DEBUG);
+
     bool udp = true;
     uint8_t nLinks = 2;
     RngSeedManager::SetSeed(seedNumber);
@@ -1021,9 +1020,8 @@ main(int argc, char* argv[])
     if (cv > 0.1) {
         std::cout << "Please set longer simulation time use: --simT" << std::endl;
     }
-    std::cout << "Throughput = " << ans.second << " Mbps" << std::endl;
+    std::cout << "Throughput = " << ans.second << std::endl;
 
     std::cout << "result saved: " << csv_file << std::endl;
-
     return 0;
 }

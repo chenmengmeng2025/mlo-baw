@@ -176,7 +176,7 @@ RecipientBlockAckAgreement::NotifyReceivedMpdu(Ptr<const WifiMpdu> mpdu, uint8_t
     } else {
         uint16_t mpduSeqNumber = mpdu->GetHeader().GetSequenceNumber();
         uint16_t distance = GetDistance(mpduSeqNumber, m_scoreboard_asyn[linkId].GetWinStart());
-        // if (Simulator::Now() > Seconds(1))
+        // if (Simulator::Now() > Seconds(3.075))
         //     std::cout << Simulator::Now() << "m_mode = " << m_mode << " Got snn = " << mpduSeqNumber << " on " << +linkId
         //               << "distance = " << distance
         //               << " winStart = " << m_scoreboard_asyn[linkId].GetWinStart() << " mpduSize = " << mpdu->GetPacketSize() << std::endl;
@@ -192,7 +192,7 @@ RecipientBlockAckAgreement::NotifyReceivedMpdu(Ptr<const WifiMpdu> mpdu, uint8_t
             m_scoreboard_asyn[linkId].At(m_scoreboard_asyn[linkId].GetWinSize() - 1) = true;
         }
         else {
-            std::cout << "distance > SEQNO_SPACE_HALF_SIZE before WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << " m_mode" << m_mode << std::endl; 
+            std::cout << "distance > SEQNO_SPACE_HALF_SIZE before WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << " m_mode " << m_mode << std::endl; 
             std::cout << "seqno = " << mpduSeqNumber << std::endl;
             m_scoreboard_asyn[linkId].Advance(distance - m_scoreboard_asyn[linkId].GetWinSize() + 1);
             m_scoreboard_asyn[linkId].At(m_scoreboard_asyn[linkId].GetWinSize() - 1) = true;
@@ -301,6 +301,12 @@ RecipientBlockAckAgreement::NotifyReceivedBar(uint16_t startingSequenceNumber, u
         {
             // reset the window and set WinStartR to SSN
             m_scoreboard_asyn[linkId].Reset(startingSequenceNumber);
+        }
+        else {
+            std::cout << "Received by BAR: distance > SEQNO_SPACE_HALF_SIZE before WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << " m_mode " << m_mode << std::endl; 
+            m_scoreboard_asyn[linkId].Advance(distance - m_scoreboard_asyn[linkId].GetWinSize() + 1);
+            m_scoreboard_asyn[linkId].At(m_scoreboard_asyn[linkId].GetWinSize() - 1) = true;
+            std::cout <<" after WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << std::endl;
         }
 
         distance = GetDistance(startingSequenceNumber, m_winStartB);

@@ -56,9 +56,67 @@
 #include <filesystem>
 #define PI 3.1415926535
 
+#include "ns3/seq-ts-size-frag-header.h"
+#include "ns3/bursty-helper.h"
+#include "ns3/burst-sink-helper.h"
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("mlo-obss-dl-ucp");
+
+
+std::string
+AddressToString (const Address &addr)
+{
+  std::stringstream addressStr;
+  addressStr << InetSocketAddress::ConvertFrom (addr).GetIpv4 () << ":"
+             << InetSocketAddress::ConvertFrom (addr).GetPort ();
+  return addressStr.str ();
+}
+
+void
+FragmentTx (Ptr<const Packet> fragment, const Address &from, const Address &to,
+            const SeqTsSizeFragHeader &header)
+{
+  NS_LOG_INFO ("Sent fragment " << header.GetFragSeq () << "/" << header.GetFrags ()
+                                << " of burst seq=" << header.GetSeq ()
+                                << " of header.GetSize ()=" << header.GetSize ()
+                                << " (fragment->GetSize ()=" << fragment->GetSize ()
+                                << ") bytes from " << AddressToString (from) << " to "
+                                << AddressToString (to) << " at " << header.GetTs ().As (Time::S));
+}
+
+void
+FragmentRx (Ptr<const Packet> fragment, const Address &from, const Address &to,
+            const SeqTsSizeFragHeader &header)
+{
+  NS_LOG_INFO ("Received fragment "
+               << header.GetFragSeq () << "/" << header.GetFrags () << " of burst seq="
+               << header.GetSeq () << " of header.GetSize ()=" << header.GetSize ()
+               << " (fragment->GetSize ()=" << fragment->GetSize () << ") bytes from "
+               << AddressToString (from) << " to " << AddressToString (to) << " at "
+               << header.GetTs ().As (Time::S));
+}
+
+void
+BurstTx (Ptr<const Packet> burst, const Address &from, const Address &to,
+         const SeqTsSizeFragHeader &header)
+{
+  NS_LOG_INFO ("Sent burst seq=" << header.GetSeq () << " of header.GetSize ()="
+                                 << header.GetSize () << " (burst->GetSize ()=" << burst->GetSize ()
+                                 << ") bytes from " << AddressToString (from) << " to "
+                                 << AddressToString (to) << " at " << header.GetTs ().As (Time::S));
+}
+
+void
+BurstRx (Ptr<const Packet> burst, const Address &from, const Address &to,
+         const SeqTsSizeFragHeader &header)
+{
+  NS_LOG_INFO ("Received burst seq="
+               << header.GetSeq () << " of header.GetSize ()=" << header.GetSize ()
+               << " (burst->GetSize ()=" << burst->GetSize () << ") bytes from "
+               << AddressToString (from) << " to " << AddressToString (to) << " at "
+               << header.GetTs ().As (Time::S));
+}
 
 struct Stats {
     double throughput;
@@ -92,7 +150,7 @@ struct Stats {
 std::vector<Stats> results;
 std::deque<uint32_t> throughputQueue;
 std::unordered_map<double, double> throughputMap;
-// std::unordered_map<double, std::pair<int, double>> blockinfoMap;
+
 
 int cnt = 0;
 
@@ -337,7 +395,7 @@ main(int argc, char* argv[])
 
     uint32_t txoplimit1 = 0, txoplimit2 = 0;
     uint32_t singleLink = 0;
-    uint32_t inference = 0b01;
+    uint32_t interference = 0b01;
     double period_update = 0.1;
     bool grid_search_enable = false;
     uint32_t nss = 2;
@@ -372,7 +430,7 @@ main(int argc, char* argv[])
     cmd.AddValue("txop2", "TxopLimit on 5 G", txoplimit2);
     cmd.AddValue("sl", "transmit on Single Link if > 0", singleLink);
     cmd.AddValue("nss", "mimo", nss);
-    cmd.AddValue("inference", "inference setting", inference);
+    cmd.AddValue("interference", "interference setting", interference);
     cmd.AddValue("redundancy", "redundancy setting", redundancy_enable);
     cmd.AddValue("param_update", "param update setting", param_update); // 如果为true，则每隔period会更新参数，如果开启grid_search，则为周期性遍历参数模式，如果关闭grid_search，则为自动更新参数模式（MLO算法来配置参数）
     cmd.AddValue("tcpack", "tcp ack link setting", tcp_ack);
@@ -380,8 +438,8 @@ main(int argc, char* argv[])
 
     if (simT == 0) simT = period_update * 10 + 1;
     Time period{Seconds(period_update)};
-    if (!(inference & 0b01)) r1 = 1e-9;  
-    if (!(inference & 0b10)) r2 = 1e-9;
+    if (!(interference & 0b01)) r1 = 1e-9;  
+    if (!(interference & 0b10)) r2 = 1e-9;
     Time tputInterval = period; // interval for detailed throughput measurement
     std::string title;
     if (rateCtrl == "constant")
@@ -633,7 +691,7 @@ main(int argc, char* argv[])
     DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationMLDSTA));
     DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(1)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationMLDSTA));
     // 2. 2.4G BSS 设置
-    if (inference & 0b01)
+    if (interference & 0b01)
     {
         mac.SetType("ns3::ApWifiMac",
             "BeaconInterval", TimeValue(MicroSeconds(beaconInterval)),
@@ -657,7 +715,7 @@ main(int argc, char* argv[])
         DynamicCast<WifiNetDevice>(apDev.Get(1))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationOBSS2G));
     }
     // 3. 5G BSS 设置
-    if (inference & 0b10)
+    if (interference & 0b10)
     {
         mac.SetType("ns3::ApWifiMac",
             "BeaconInterval", TimeValue(MicroSeconds(beaconInterval)),
@@ -721,8 +779,8 @@ main(int argc, char* argv[])
     mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
     
     std::vector<double> distance = {0, 1e3, 1e3};
-    if (inference & 0b01) distance[1] = 5;
-    if (inference & 0b10) distance[2] = 5;
+    if (interference & 0b01) distance[1] = 5;
+    if (interference & 0b10) distance[2] = 5;
     positionAlloc->Add(Vector(distance[0], 0.0, 0.0)); // AP 0
     positionAlloc->Add(Vector(distance[1], 0.0, 0.0)); // AP 1
     positionAlloc->Add(Vector(0.0, distance[2], 0.0)); // AP 2
@@ -750,7 +808,7 @@ main(int argc, char* argv[])
     for (size_t i = 0; i < nStaMlds; ++i) {
         std::cout << "  MLD-" << std::to_string(i) + ": " << mldNodeInterface.GetAddress(i) << std::endl;
     }
-    if (inference & 0b01) {
+    if (interference & 0b01) {
         address.SetBase("10.0.1.0", "255.255.255.0");
         apNodeInterface2 = address.Assign(apDev2.Get(0));
         sldNodeInterface2 = address.Assign(sldDev2);
@@ -759,7 +817,7 @@ main(int argc, char* argv[])
             std::cout << "  2.4 G SLD-" << std::to_string(i) + ": " << sldNodeInterface2.GetAddress(i) << std::endl;
         }
     }
-    if (inference & 0b10) {
+    if (interference & 0b10) {
         address.SetBase("10.0.2.0", "255.255.255.0");
         apNodeInterface5 = address.Assign(apDev5.Get(0));
         sldNodeInterface5 = address.Assign(sldDev5);
@@ -783,13 +841,13 @@ main(int argc, char* argv[])
     dlserverApp.Stop(simulationTime + simT_delayEnd);
 
     UdpServerHelper server(9);
-    if (inference & 0b01) {
+    if (interference & 0b01) {
         dlserverAppObss2 = server.Install(sldNodes2);
         seedNumber += server.AssignStreams(sldNodes2, seedNumber);
         dlserverAppObss2.Start(Seconds(0.2));
         dlserverAppObss2.Stop(simulationTime + simT_delayEnd);
     }
-    if (inference & 0b10) {
+    if (interference & 0b10) {
         dlserverAppObss5 = server.Install(sldNodes5);
         seedNumber += server.AssignStreams(sldNodes5, seedNumber);
         dlserverAppObss5.Start(Seconds(0.4));
@@ -816,7 +874,7 @@ main(int argc, char* argv[])
     clientApp.Stop(simulationTime + simT_delayEnd);
 
     // AP 1
-    if (inference & 0b01) {
+    if (interference & 0b01) {
         auto packetInterval2 = payloadSize * 8.0 / (maxLoad2 * r1);
         UdpClientHelper client1(sldNodeInterface2.GetAddress(0), 9);
         client1.SetAttribute("MaxPackets", UintegerValue(0));
@@ -828,7 +886,7 @@ main(int argc, char* argv[])
         clientApp1.Stop(simulationTime + simT_delayEnd);
     }
     // AP 2
-    if (inference & 0b10) {
+    if (interference & 0b10) {
         auto packetInterval5 = payloadSize * 8.0 / (maxLoad5 * r2);
         UdpClientHelper client2(sldNodeInterface5.GetAddress(0), 9);
         client2.SetAttribute("MaxPackets", UintegerValue(0));
@@ -1043,5 +1101,7 @@ main(int argc, char* argv[])
         std::cout << "Coeff of variation > 10%, please set longer simulation time (use: --simt)" << std::endl;
     }
     std::cout << "Throughput = " << ans.second  << " Mbps."<< std::endl;
+
+    std::cout << "result saved: " << csv_file << std::endl;
     return 0;
 }

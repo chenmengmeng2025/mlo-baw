@@ -657,7 +657,7 @@ HtFrameExchangeManager::SendDataFrame(Ptr<WifiMpdu> peekedItem,
         if (edca->GetMsduGrouper()->GetRedundancyMode(m_linkId))
             edca->GetMsduGrouper()->ResetRedundancyMode(m_linkId);
     }
-    // if (Simulator::Now()> Seconds(1.0) && edca->GetMsduGrouper()) {
+    // if (Simulator::Now()> Seconds(3.075) && edca->GetMsduGrouper()) {
     //     std::cout << Simulator::Now() << " SendDataFrame on Link " << (uint32_t)m_linkId << std::endl << "[";
     //     for (const auto & it : mpduList) {
     //         std::cout << it->GetHeader().GetSequenceNumber() << ", ";
@@ -740,7 +740,6 @@ HtFrameExchangeManager::NotifyReceivedNormalAck(Ptr<WifiMpdu> mpdu)
     {
         uint8_t tid = mpdu->GetHeader().GetQosTid();
         Ptr<QosTxop> edca = m_mac->GetQosTxop(tid);
-
         if (m_mac->GetBaAgreementEstablishedAsOriginator(mpdu->GetHeader().GetAddr1(), tid))
         {
             if (m_mac->GetNLinks() > 1)
@@ -755,7 +754,7 @@ HtFrameExchangeManager::NotifyReceivedNormalAck(Ptr<WifiMpdu> mpdu)
         }
     }
     else if (mpdu->GetHeader().IsAction())
-    {
+    {   
         auto addr1 = mpdu->GetHeader().GetAddr1();
         auto address = GetWifiRemoteStationManager()->GetMldAddress(addr1).value_or(addr1);
         WifiActionHeader actionHdr;
@@ -1202,7 +1201,6 @@ HtFrameExchangeManager::ForwardPsduDown(Ptr<const WifiPsdu> psdu, WifiTxVector& 
     {
         txVector.SetAggregation(true);
     }
-    // std::cout << m_mac->GetAddress() <<  " ForwardPsduDown: " << Simulator::Now().GetNanoSeconds() << "ns" << std::endl;
     if (m_mac->GetNLinks() > 1) {
         m_phy->Send(psdu, txVector, m_linkId, m_mac->GetLinkTxStatus());
     } else m_phy->Send(psdu, txVector);

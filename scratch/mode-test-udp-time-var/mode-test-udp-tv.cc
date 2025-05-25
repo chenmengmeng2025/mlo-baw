@@ -334,7 +334,7 @@ main(int argc, char* argv[])
 
     uint32_t txoplimit1 = 0, txoplimit2 = 0;
     uint32_t singleLink = 0;
-    uint32_t inference = 0b01;
+    uint32_t interference = 0b01;
     double period_update = 0.1;
     bool grid_search_enable = false;
     uint32_t nss = 2;
@@ -368,15 +368,16 @@ main(int argc, char* argv[])
     cmd.AddValue("txop2", "TxopLimit on 5 G", txoplimit2);
     cmd.AddValue("sl", "Single Link if > 0", singleLink);
     cmd.AddValue("nss", "mimo", nss);
-    cmd.AddValue("inference", "inference setting", inference);
+    cmd.AddValue("interference", "interference setting", interference);
     cmd.AddValue("redundancy", "redundancy setting", redundancy_enable);
     cmd.AddValue("param_update", "param update setting", param_update); 
     cmd.Parse(argc, argv);
 
     if (simT == 0) simT = period_update * 10 + 1;
+    simT = 9;
     Time period{Seconds(period_update)};
-    if (!(inference & 0b01)) r1 = 1e-9;  
-    if (!(inference & 0b10)) r2 = 1e-9;
+    if (!(interference & 0b01)) r1 = 1e-9;  
+    if (!(interference & 0b10)) r2 = 1e-9;
     Time tputInterval = period; // interval for detailed throughput measurement
     std::string title;
     if (rateCtrl == "constant")
@@ -389,7 +390,7 @@ main(int argc, char* argv[])
                             std::to_string(r1) + "_" + std::to_string(r2) + "_txoplimits_" + 
                             std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update);
 
-    std::string csv_file = (filepath.parent_path() / ("result_" + title + ".csv")).string();
+    std::string csv_file = (filepath.parent_path() / (title + ".csv")).string();
     std::cout << csv_file << std::endl;
     // LogComponentEnable("PhyEntity", LOG_LEVEL_DEBUG);
     bool udp = true;
@@ -620,7 +621,7 @@ main(int argc, char* argv[])
     }
 
     // 2. 2.4G BSS 设置
-    if (inference & 0b01)
+    if (interference & 0b01)
     {
         mac.SetType("ns3::ApWifiMac",
             "BeaconInterval", TimeValue(MicroSeconds(beaconInterval)),
@@ -644,7 +645,7 @@ main(int argc, char* argv[])
         DynamicCast<WifiNetDevice>(apDev.Get(1))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationOBSS2G));
     }
     // 3. 5G BSS 设置
-    if (inference & 0b10)
+    if (interference & 0b10)
     {
         mac.SetType("ns3::ApWifiMac",
             "BeaconInterval", TimeValue(MicroSeconds(beaconInterval)),
@@ -709,8 +710,8 @@ main(int argc, char* argv[])
     mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
     
     std::vector<double> distance = {0, 1e3, 1e3};
-    if (inference & 0b01) distance[1] = 5;
-    if (inference & 0b10) distance[2] = 5;
+    if (interference & 0b01) distance[1] = 5;
+    if (interference & 0b10) distance[2] = 5;
     positionAlloc->Add(Vector(distance[0], 0.0, 0.0)); // AP 0
     positionAlloc->Add(Vector(distance[1], 0.0, 0.0)); // AP 1
     positionAlloc->Add(Vector(0.0, distance[2], 0.0)); // AP 2
@@ -738,7 +739,7 @@ main(int argc, char* argv[])
     for (size_t i = 0; i < nStaMlds; ++i) {
         std::cout << "  MLD-" << std::to_string(i) + ": " << mldNodeInterface.GetAddress(i) << std::endl;
     }
-    if (inference & 0b01) {
+    if (interference & 0b01) {
         address.SetBase("10.0.1.0", "255.255.255.0");
         apNodeInterface2 = address.Assign(apDev2.Get(0));
         sldNodeInterface2 = address.Assign(sldDev2);
@@ -747,7 +748,7 @@ main(int argc, char* argv[])
             std::cout << "  2.4 G SLD-" << std::to_string(i) + ": " << sldNodeInterface2.GetAddress(i) << std::endl;
         }
     }
-    if (inference & 0b10) {
+    if (interference & 0b10) {
         address.SetBase("10.0.2.0", "255.255.255.0");
         apNodeInterface5 = address.Assign(apDev5.Get(0));
         sldNodeInterface5 = address.Assign(sldDev5);
@@ -770,13 +771,13 @@ main(int argc, char* argv[])
     dlserverApp.Start(Seconds(0.0));
     dlserverApp.Stop(simulationTime + simT_delayEnd);
 
-    if (inference & 0b01) {
+    if (interference & 0b01) {
         dlserverAppObss2 = server.Install(sldNodes2);
         seedNumber += server.AssignStreams(sldNodes2, seedNumber);
         dlserverAppObss2.Start(Seconds(0.2));
         dlserverAppObss2.Stop(simulationTime + simT_delayEnd);
     }
-    if (inference & 0b10) {
+    if (interference & 0b10) {
         dlserverAppObss5 = server.Install(sldNodes5);
         seedNumber += server.AssignStreams(sldNodes5, seedNumber);
         dlserverAppObss5.Start(Seconds(0.4));
@@ -800,7 +801,7 @@ main(int argc, char* argv[])
     clientApp.Stop(simulationTime + simT_delayEnd);
 
     // AP 1
-    if (inference & 0b01) {
+    if (interference & 0b01) {
         auto packetInterval2 = payloadSize * 8.0 / (maxLoad2 * r1);
         UdpClientHelper client1(sldNodeInterface2.GetAddress(0), port);
         client1.SetAttribute("MaxPackets", UintegerValue(0));
@@ -808,11 +809,11 @@ main(int argc, char* argv[])
         client1.SetAttribute("PacketSize", UintegerValue(payloadSize));
         ApplicationContainer clientApp1 = client1.Install(apNodes.Get(1));
         seedNumber += client1.AssignStreams(apNodes.Get(1), seedNumber);
-        clientApp1.Start(Seconds(1.0));
-        clientApp1.Stop(simulationTime + simT_delayEnd);
+        clientApp1.Start(Seconds(3.0));
+        clientApp1.Stop(Seconds(6.0));
     }
     // AP 2
-    if (inference & 0b10) {
+    if (interference & 0b10) {
         auto packetInterval5 = payloadSize * 8.0 / (maxLoad5 * r2);
         UdpClientHelper client2(sldNodeInterface5.GetAddress(0), port);
         client2.SetAttribute("MaxPackets", UintegerValue(0));
@@ -820,8 +821,8 @@ main(int argc, char* argv[])
         client2.SetAttribute("PacketSize", UintegerValue(payloadSize));
         ApplicationContainer clientApp2 = client2.Install(apNodes.Get(2));
         seedNumber += client2.AssignStreams(apNodes.Get(2), seedNumber);
-        clientApp2.Start(Seconds(1.0));
-        clientApp2.Stop(simulationTime + simT_delayEnd);
+        clientApp2.Start(Seconds(3.0));
+        clientApp2.Stop(Seconds(6.0));
     }
     // Enable TID-to-Link Mapping for AP and MLD STAs
     for (auto i = mldDev.Begin(); i != mldDev.End(); ++i)
@@ -952,6 +953,7 @@ main(int argc, char* argv[])
     }
     
     std::vector<double> res_throughputs;
+    double throughput_3_1_5_9 = 0;
     std::cout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
             "MaxSsrc1, MaxSlrc2, MaxSsrc2, RedundancyThreshold1, RedundancyThreshold2, RedundancyFixedNumber1, "
             "RedundancyFixedNumber2, BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, PSR1, PSR2, Occupancy Rate 1, Occupancy Rate 2, blocktimerate1, blocktimerate2, severeblocktimerate1, severeblocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, pct1, Throughput(Mbps)" << std::endl;
@@ -981,6 +983,7 @@ main(int argc, char* argv[])
                   << res.thpt[0] << ", " << res.thpt[1] << ", " << res.pct1 << ", "
                   << res.throughput << std::endl;
              res_throughputs.push_back(res.throughput);
+        if (res.time > 3 && res.time < 6) throughput_3_1_5_9 += res.throughput;
     }
 
     std::ofstream file("throughput.csv", std::ios::out);
@@ -1021,7 +1024,10 @@ main(int argc, char* argv[])
     if (cv > 0.1) {
         std::cout << "Please set longer simulation time use: --simT" << std::endl;
     }
-    std::cout << "Throughput = " << ans.second << std::endl;
+    std::cout << "Throughput = " << ans.second << " Mbps" << std::endl;
+
+    std::cout << "3~6s, Throughput = " << throughput_3_1_5_9  << " Mbps" << std::endl;
+    std::cout << "result saved: " << csv_file << std::endl;
 
 
     return 0;

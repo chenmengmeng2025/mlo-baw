@@ -554,8 +554,10 @@ QosTxop::PeekNextMpdu(uint8_t linkId, uint8_t tid, Mac48Address recipient, Ptr<c
                     {
                         NS_LOG_DEBUG("link" << +linkId << " 冗余，"
                                             << item->GetHeader().GetSequenceNumber() << "再次发送");
+                        bool isretry = item->GetHeader().IsRetry();
                         // std::cout << "The MPDU is inflighted on Link " << (uint32_t) (* linkIds.begin()) << ", but can be sent on Link " << (uint32_t)linkId << ", the SN is " << item->GetHeader().GetSequenceNumber()  << " cnt: " << GetMsduGrouper()->m_RedundantPacketCnt[linkId] << std::endl;
-                        break;
+                        if (isretry || linkId)
+                            break;
                     }
                 }
                 // if no BA agreement, we cannot have multiple MPDUs in-flight
@@ -995,7 +997,7 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
         return;
     if (Simulator::Now() <= Seconds(1)) {
         if (GetMsduGrouper()->IsGridSearchEnabled()) {
-            auto next_params = GetMsduGrouper()->GetNextEdcaParameters(); // 设置默认参数，params.json中第一个参数
+            auto next_params = GetMsduGrouper()->GetNextEdcaParameters(true); // 设置默认参数，params.json中第一个参数
             if(GetMsduGrouper()->IsParamUpdateEnabled()) {
                 SetParams(next_params);
                 std::cout << Simulator::Now().As(Time::S) << "s, GridSearch开启，设置初始EDCA参数成功" << std::endl;
@@ -1054,9 +1056,11 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
     std::cout << "maxAmpduLength: " << maxlen1 << ", " << maxlen2 << std::endl;
     std::cout << "meanAmpduLength: " << meanlen1 << ", " << meanlen2 << std::endl;
 
-    if (GetMsduGrouper()->IsGridSearchEnabled()) { // 网格搜索最优参数，场景需固定
+    if (GetMsduGrouper()->IsGridSearchEnabled()) 
+    {   // param_update = true -> 网格搜索最优参数: 搜索空间 -> params.json
+        // param_update = false -> Constant Params: the first params of params.json
         auto params = GetMsduGrouper()->GetCurrentEdcaParameters();
-        auto next_params = GetMsduGrouper()->GetNextEdcaParameters();
+        auto next_params = GetMsduGrouper()->GetNextEdcaParameters(false);
         const auto meanTxopTime = GetMsduGrouper()->GetMeanTxopTime(period);
         const auto meanTxMpduNum = GetMsduGrouper()->GetMeanTxMpduNum(period);
         
@@ -1087,15 +1091,15 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
         }
         SetParams(next_params);
         GetMsduGrouper()->ClearStats();
-    } else {
+    } 
+    else 
+    // param_update = true -> MLO Algorithm 
+    // param_update = false -> Constant Params
+    {
         auto address = GetMsduGrouper()->GetRecipient();
         auto winSize = GetBaBufferSize(address, 0);
         
         const auto& new_params = GetMsduGrouper()->GetNewEdcaParameters(false, winSize, p1, p2, avgdatarate1, avgdatarate2, chanrate1, chanrate2);
-        if (new_params.No == 0) {
-            Simulator::Schedule(period, &QosTxop::ScheduleUpdateEdcaParameters, this, period);
-            return;
-        }
         const auto meanTxopTime = GetMsduGrouper()->GetMeanTxopTime(period);
         const auto meanTxopMpduNum = GetMsduGrouper()->GetMeanTxMpduNum(period);
         if (!TracedParamsAndStats.IsEmpty())
@@ -1135,15 +1139,17 @@ QosTxop::IsLinkUp(uint8_t linkId)
 
 void 
 QosTxop::UpdateLinkStates() {
-    std::pair<uint8_t, Time> params = GetMsduGrouper()->GetNewLinkStates();
-    if (m_link_up != params.first)
-        Simulator::Schedule(params.second, &QosTxop::SetLinkUp, this, params.first);
+    std::pair<uint8_t, Time> linkstates = GetMsduGrouper()->GetNewLinkStates();
+    if (m_link_up != linkstates.first)
+        Simulator::Schedule(linkstates.second, &QosTxop::SetLinkUp, this, linkstates.first);
 }
 
 void 
 QosTxop::SetLinkUp(uint8_t newLinkUp) {
     m_link_up = newLinkUp;
 }
+
+
 
 void
 QosTxop::PrintStatsResult(Time period)
@@ -1182,7 +1188,6 @@ QosTxop::PrintStatsResult(Time period)
     auto blockCnt = GetMsduGrouper()->GetQueueStats().GetBlockCnt(period);
     auto blockCnt_other_inflight = GetMsduGrouper()->GetQueueStats().GetBlockCnt_other_inflight(period);
     auto blockrate = GetMsduGrouper()->GetMeanBlockRate(period);
-    // auto bawqueue = GetMsduGrouper()->GetQueueStats().GetBawQueue();
     std::cout << std::endl;
     std::cout << Simulator::Now().GetSeconds() << "s, MAC ADDR: " << m_mac->GetAddress() << ": ("
               << m_mode << "," << m_ac << ")" << std::endl;
@@ -1225,10 +1230,10 @@ QosTxop::SetParams(const mldParams & next_params) {
         SetAifsns(std::vector<uint8_t>(next_params.Aifsns.begin(), next_params.Aifsns.end()));
 
         // RTS/CTS 开启关闭
-        // for (uint8_t i = 0; i < 2; ++ i) {
-        //     if (next_params.RTS_CTS[i]) m_mac->GetWifiRemoteStationManager(i)->SetRtsCtsThreshold(0);
-        //     else m_mac->GetWifiRemoteStationManager(i)->SetRtsCtsThreshold(std::numeric_limits<uint32_t>::max());
-        // }
+        for (uint8_t i = 0; i < 2; ++ i) {
+            if (next_params.RTS_CTS[i]) m_mac->GetWifiRemoteStationManager(i)->SetRtsCtsThreshold(0);
+            else m_mac->GetWifiRemoteStationManager(i)->SetRtsCtsThreshold(std::numeric_limits<uint32_t>::max());
+        }
 
         // 聚合参数, MLO算法通过控制Txop来控制聚合长度，因此不修改这个参数
         // if (next_params.AmpduSizes[0] != 0)
@@ -1236,14 +1241,14 @@ QosTxop::SetParams(const mldParams & next_params) {
 
         // 重传次数
         for (uint8_t i = 0; i < 2; ++ i) {
-            m_mac->GetWifiRemoteStationManager(i)->SetMaxSlrc(next_params.MaxSlrcs[i]); // 7
-            m_mac->GetWifiRemoteStationManager(i)->SetMaxSsrc(next_params.MaxSsrcs[i]); // 4
+            m_mac->GetWifiRemoteStationManager(i)->SetMaxSlrc(next_params.MaxSlrcs[i]); 
+            m_mac->GetWifiRemoteStationManager(i)->SetMaxSsrc(next_params.MaxSsrcs[i]); 
         }
     
         // 冗余参数
         GetMsduGrouper()->UpdateRedundancyThreshold(next_params.RedundancyThresholds);
 
-        // GetMsduGrouper()->UpdateRedundancyFixedNumber(next_params.RedundancyFixedNumbers);
+        GetMsduGrouper()->UpdateRedundancyFixedNumber(next_params.RedundancyFixedNumbers);
     }
 }
 } // namespace ns3

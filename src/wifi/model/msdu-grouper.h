@@ -280,6 +280,8 @@ public:
 
     void ResetRedundancyMode(uint8_t linkId);
 
+    void EnableRedundancyMode();
+
     uint32_t GetBAWindowThreshold(uint8_t linkId);
 
     bool UpdateAmpduSize(uint8_t linkId, uint32_t size);
@@ -299,7 +301,7 @@ public:
      * 
      * cwmin, cwmax, txoplimits, aifsns, rts_cts, ampdusize
      */
-    mldParams GetNextEdcaParameters();
+    mldParams GetNextEdcaParameters(bool initial);
 
     mldParams GetCurrentEdcaParameters();
 
@@ -398,6 +400,7 @@ private:
     bool m_param_update;
     mldParams m_current_params;
 
+    uint32_t m_redundancy_enable;
 };
 
 } // namespace ns3

@@ -334,14 +334,14 @@ main(int argc, char* argv[])
 
     uint32_t txoplimit1 = 0, txoplimit2 = 0;
     uint32_t singleLink = 0;
-    uint32_t inference = 0b01;
+    uint32_t interference = 0b01;
     double period_update = 0.1;
-    bool grid_search_enable = false;
+    bool grid_search_enable = true;
+    bool param_update = true; // grid_search_enable & param_update should be true
     uint32_t nss = 2;
     uint8_t mode = 1;
 
     double simT = 0;
-    bool param_update = false;
     bool redundancy_enable = false;
     Time simT_delayEnd = NanoSeconds(2);
     CommandLine cmd(__FILE__);
@@ -368,15 +368,15 @@ main(int argc, char* argv[])
     cmd.AddValue("txop2", "TxopLimit on 5 G", txoplimit2);
     cmd.AddValue("sl", "Single Link if > 0", singleLink);
     cmd.AddValue("nss", "mimo", nss);
-    cmd.AddValue("inference", "inference setting", inference);
+    cmd.AddValue("interference", "interference setting", interference);
     cmd.AddValue("redundancy", "redundancy setting", redundancy_enable);
     cmd.AddValue("param_update", "param update setting", param_update); 
     cmd.Parse(argc, argv);
 
     if (simT == 0) simT = period_update * 10 + 1;
     Time period{Seconds(period_update)};
-    if (!(inference & 0b01)) r1 = 1e-9;  
-    if (!(inference & 0b10)) r2 = 1e-9;
+    if (!(interference & 0b01)) r1 = 1e-9;  
+    if (!(interference & 0b10)) r2 = 1e-9;
     Time tputInterval = period; // interval for detailed throughput measurement
     std::string title;
     if (rateCtrl == "constant")
@@ -387,7 +387,7 @@ main(int argc, char* argv[])
     else title = "bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + "_ratectrl_" +
                             rateCtrl + "_interference_" +
                             std::to_string(r1) + "_" + std::to_string(r2) + "_txoplimits_" + 
-                            std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update);
+                            std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update) + "_seed_" + std::to_string(seedNumber);
 
     std::string csv_file = (filepath.parent_path() / ("result_" + title + ".csv")).string();
     std::cout << csv_file << std::endl;
@@ -620,7 +620,7 @@ main(int argc, char* argv[])
     }
 
     // 2. 2.4G BSS 设置
-    if (inference & 0b01)
+    if (interference & 0b01)
     {
         mac.SetType("ns3::ApWifiMac",
             "BeaconInterval", TimeValue(MicroSeconds(beaconInterval)),
@@ -644,7 +644,7 @@ main(int argc, char* argv[])
         DynamicCast<WifiNetDevice>(apDev.Get(1))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationOBSS2G));
     }
     // 3. 5G BSS 设置
-    if (inference & 0b10)
+    if (interference & 0b10)
     {
         mac.SetType("ns3::ApWifiMac",
             "BeaconInterval", TimeValue(MicroSeconds(beaconInterval)),
@@ -709,8 +709,8 @@ main(int argc, char* argv[])
     mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
     
     std::vector<double> distance = {0, 1e3, 1e3};
-    if (inference & 0b01) distance[1] = 5;
-    if (inference & 0b10) distance[2] = 5;
+    if (interference & 0b01) distance[1] = 5;
+    if (interference & 0b10) distance[2] = 5;
     positionAlloc->Add(Vector(distance[0], 0.0, 0.0)); // AP 0
     positionAlloc->Add(Vector(distance[1], 0.0, 0.0)); // AP 1
     positionAlloc->Add(Vector(0.0, distance[2], 0.0)); // AP 2
@@ -738,7 +738,7 @@ main(int argc, char* argv[])
     for (size_t i = 0; i < nStaMlds; ++i) {
         std::cout << "  MLD-" << std::to_string(i) + ": " << mldNodeInterface.GetAddress(i) << std::endl;
     }
-    if (inference & 0b01) {
+    if (interference & 0b01) {
         address.SetBase("10.0.1.0", "255.255.255.0");
         apNodeInterface2 = address.Assign(apDev2.Get(0));
         sldNodeInterface2 = address.Assign(sldDev2);
@@ -747,7 +747,7 @@ main(int argc, char* argv[])
             std::cout << "  2.4 G SLD-" << std::to_string(i) + ": " << sldNodeInterface2.GetAddress(i) << std::endl;
         }
     }
-    if (inference & 0b10) {
+    if (interference & 0b10) {
         address.SetBase("10.0.2.0", "255.255.255.0");
         apNodeInterface5 = address.Assign(apDev5.Get(0));
         sldNodeInterface5 = address.Assign(sldDev5);
@@ -770,13 +770,13 @@ main(int argc, char* argv[])
     dlserverApp.Start(Seconds(0.0));
     dlserverApp.Stop(simulationTime + simT_delayEnd);
 
-    if (inference & 0b01) {
+    if (interference & 0b01) {
         dlserverAppObss2 = server.Install(sldNodes2);
         seedNumber += server.AssignStreams(sldNodes2, seedNumber);
         dlserverAppObss2.Start(Seconds(0.2));
         dlserverAppObss2.Stop(simulationTime + simT_delayEnd);
     }
-    if (inference & 0b10) {
+    if (interference & 0b10) {
         dlserverAppObss5 = server.Install(sldNodes5);
         seedNumber += server.AssignStreams(sldNodes5, seedNumber);
         dlserverAppObss5.Start(Seconds(0.4));
@@ -800,7 +800,7 @@ main(int argc, char* argv[])
     clientApp.Stop(simulationTime + simT_delayEnd);
 
     // AP 1
-    if (inference & 0b01) {
+    if (interference & 0b01) {
         auto packetInterval2 = payloadSize * 8.0 / (maxLoad2 * r1);
         UdpClientHelper client1(sldNodeInterface2.GetAddress(0), port);
         client1.SetAttribute("MaxPackets", UintegerValue(0));
@@ -812,7 +812,7 @@ main(int argc, char* argv[])
         clientApp1.Stop(simulationTime + simT_delayEnd);
     }
     // AP 2
-    if (inference & 0b10) {
+    if (interference & 0b10) {
         auto packetInterval5 = payloadSize * 8.0 / (maxLoad5 * r2);
         UdpClientHelper client2(sldNodeInterface5.GetAddress(0), port);
         client2.SetAttribute("MaxPackets", UintegerValue(0));

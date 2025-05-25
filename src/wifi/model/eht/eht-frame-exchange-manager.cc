@@ -331,7 +331,7 @@ EhtFrameExchangeManager::ForwardPsduDown(Ptr<const WifiPsdu> psdu, WifiTxVector&
 
     auto txDuration = WifiPhy::CalculateTxDuration(psdu, txVector, m_phy->GetPhyBand());
     Time transmissionDelay = m_phy->CalculateTransmissionDelay(txVector.IsAggregation(), psdu->GetNMpdus(), psdu->GetNMsdus(), psdu);
-
+    
     HeFrameExchangeManager::ForwardPsduDown(psdu, txVector);
     UpdateTxopEndOnTxStart(txDuration + transmissionDelay, psdu->GetDuration());
 

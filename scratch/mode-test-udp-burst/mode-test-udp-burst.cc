@@ -53,11 +53,69 @@
 #include "ns3/tcp-socket.h"
 #include <deque>
 #include <filesystem>
+
+#include "ns3/seq-ts-size-frag-header.h"
+#include "ns3/bursty-helper.h"
+#include "ns3/burst-sink-helper.h"
 #define PI 3.1415926535
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE("mlo-obss-dl-ucp");
+NS_LOG_COMPONENT_DEFINE("mlo-obss-dl-udp-burst");
+
+std::string
+AddressToString (const Address &addr)
+{
+  std::stringstream addressStr;
+  addressStr << InetSocketAddress::ConvertFrom (addr).GetIpv4 () << ":"
+             << InetSocketAddress::ConvertFrom (addr).GetPort ();
+  return addressStr.str ();
+}
+
+void
+FragmentTx (Ptr<const Packet> fragment, const Address &from, const Address &to,
+            const SeqTsSizeFragHeader &header)
+{
+  NS_LOG_INFO ("Sent fragment " << header.GetFragSeq () << "/" << header.GetFrags ()
+                                << " of burst seq=" << header.GetSeq ()
+                                << " of header.GetSize ()=" << header.GetSize ()
+                                << " (fragment->GetSize ()=" << fragment->GetSize ()
+                                << ") bytes from " << AddressToString (from) << " to "
+                                << AddressToString (to) << " at " << header.GetTs ().As (Time::S));
+}
+
+void
+FragmentRx (Ptr<const Packet> fragment, const Address &from, const Address &to,
+            const SeqTsSizeFragHeader &header)
+{
+  NS_LOG_INFO ("Received fragment "
+               << header.GetFragSeq () << "/" << header.GetFrags () << " of burst seq="
+               << header.GetSeq () << " of header.GetSize ()=" << header.GetSize ()
+               << " (fragment->GetSize ()=" << fragment->GetSize () << ") bytes from "
+               << AddressToString (from) << " to " << AddressToString (to) << " at "
+               << header.GetTs ().As (Time::S));
+}
+
+void
+BurstTx (Ptr<const Packet> burst, const Address &from, const Address &to,
+         const SeqTsSizeFragHeader &header)
+{
+  NS_LOG_INFO ("Sent burst seq=" << header.GetSeq () << " of header.GetSize ()="
+                                 << header.GetSize () << " (burst->GetSize ()=" << burst->GetSize ()
+                                 << ") bytes from " << AddressToString (from) << " to "
+                                 << AddressToString (to) << " at " << header.GetTs ().As (Time::S));
+}
+
+void
+BurstRx (Ptr<const Packet> burst, const Address &from, const Address &to,
+         const SeqTsSizeFragHeader &header)
+{
+  NS_LOG_INFO ("Received burst seq="
+               << header.GetSeq () << " of header.GetSize ()=" << header.GetSize ()
+               << " (burst->GetSize ()=" << burst->GetSize () << ") bytes from "
+               << AddressToString (from) << " to " << AddressToString (to) << " at "
+               << header.GetTs ().As (Time::S));
+}
 
 struct Stats {
     double throughput;
@@ -305,6 +363,7 @@ NotifyPpduTxDurationMLDAP(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linki
 int
 main(int argc, char* argv[])
 {
+    LogComponentEnable("mlo-obss-dl-udp-burst", LOG_LEVEL_INFO);
     if (std::filesystem::exists(txopOutputFile)) { 
         std::filesystem::remove(txopOutputFile);
     }
@@ -334,7 +393,7 @@ main(int argc, char* argv[])
 
     uint32_t txoplimit1 = 0, txoplimit2 = 0;
     uint32_t singleLink = 0;
-    uint32_t inference = 0b01;
+    uint32_t interference = 0b01;
     double period_update = 0.1;
     bool grid_search_enable = false;
     uint32_t nss = 2;
@@ -368,15 +427,16 @@ main(int argc, char* argv[])
     cmd.AddValue("txop2", "TxopLimit on 5 G", txoplimit2);
     cmd.AddValue("sl", "Single Link if > 0", singleLink);
     cmd.AddValue("nss", "mimo", nss);
-    cmd.AddValue("inference", "inference setting", inference);
+    cmd.AddValue("interference", "interference setting", interference);
     cmd.AddValue("redundancy", "redundancy setting", redundancy_enable);
     cmd.AddValue("param_update", "param update setting", param_update); 
     cmd.Parse(argc, argv);
 
     if (simT == 0) simT = period_update * 10 + 1;
+    simT = 4;
     Time period{Seconds(period_update)};
-    if (!(inference & 0b01)) r1 = 1e-9;  
-    if (!(inference & 0b10)) r2 = 1e-9;
+    if (!(interference & 0b01)) r1 = 1e-9;  
+    if (!(interference & 0b10)) r2 = 1e-9;
     Time tputInterval = period; // interval for detailed throughput measurement
     std::string title;
     if (rateCtrl == "constant")
@@ -387,7 +447,7 @@ main(int argc, char* argv[])
     else title = "bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + "_ratectrl_" +
                             rateCtrl + "_interference_" +
                             std::to_string(r1) + "_" + std::to_string(r2) + "_txoplimits_" + 
-                            std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update);
+                            std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update) + "_seed_" + std::to_string(seedNumber);
 
     std::string csv_file = (filepath.parent_path() / ("result_" + title + ".csv")).string();
     std::cout << csv_file << std::endl;
@@ -412,8 +472,7 @@ main(int argc, char* argv[])
         // Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("0"));
         Config::SetDefault("ns3::WifiDefaultProtectionManager::EnableMuRts", BooleanValue(true));
     }
-    // Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", UintegerValue(std::numeric_limits<uint32_t>::max()));
-    // Config::SetDefault("ns3::WifiDefaultProtectionManager::EnableMuRts", BooleanValue(true));
+
     // Config::SetDefault("ns3::WifiMacQueue::MaxDelay", TimeValue(simulationTime * 2));
 
     // Set infinitely long queue
@@ -422,8 +481,8 @@ main(int argc, char* argv[])
     //      QueueSizeValue(QueueSize(QueueSizeUnit::PACKETS, 1024)));
 
     // Disable fragmentation
-    Config::SetDefault("ns3::WifiRemoteStationManager::FragmentationThreshold",   
-        UintegerValue(std::numeric_limits<uint32_t>::max()));
+    // Config::SetDefault("ns3::WifiRemoteStationManager::FragmentationThreshold",   
+    //     UintegerValue(std::numeric_limits<uint32_t>::max()));
 
     // Make retransmissions persistent
      Config::SetDefault("ns3::WifiRemoteStationManager::MaxSlrc",
@@ -620,7 +679,7 @@ main(int argc, char* argv[])
     }
 
     // 2. 2.4G BSS 设置
-    if (inference & 0b01)
+    if (interference & 0b01)
     {
         mac.SetType("ns3::ApWifiMac",
             "BeaconInterval", TimeValue(MicroSeconds(beaconInterval)),
@@ -644,7 +703,7 @@ main(int argc, char* argv[])
         DynamicCast<WifiNetDevice>(apDev.Get(1))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationOBSS2G));
     }
     // 3. 5G BSS 设置
-    if (inference & 0b10)
+    if (interference & 0b10)
     {
         mac.SetType("ns3::ApWifiMac",
             "BeaconInterval", TimeValue(MicroSeconds(beaconInterval)),
@@ -709,8 +768,8 @@ main(int argc, char* argv[])
     mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
     
     std::vector<double> distance = {0, 1e3, 1e3};
-    if (inference & 0b01) distance[1] = 5;
-    if (inference & 0b10) distance[2] = 5;
+    if (interference & 0b01) distance[1] = 5;
+    if (interference & 0b10) distance[2] = 5;
     positionAlloc->Add(Vector(distance[0], 0.0, 0.0)); // AP 0
     positionAlloc->Add(Vector(distance[1], 0.0, 0.0)); // AP 1
     positionAlloc->Add(Vector(0.0, distance[2], 0.0)); // AP 2
@@ -738,7 +797,7 @@ main(int argc, char* argv[])
     for (size_t i = 0; i < nStaMlds; ++i) {
         std::cout << "  MLD-" << std::to_string(i) + ": " << mldNodeInterface.GetAddress(i) << std::endl;
     }
-    if (inference & 0b01) {
+    if (interference & 0b01) {
         address.SetBase("10.0.1.0", "255.255.255.0");
         apNodeInterface2 = address.Assign(apDev2.Get(0));
         sldNodeInterface2 = address.Assign(sldDev2);
@@ -747,7 +806,7 @@ main(int argc, char* argv[])
             std::cout << "  2.4 G SLD-" << std::to_string(i) + ": " << sldNodeInterface2.GetAddress(i) << std::endl;
         }
     }
-    if (inference & 0b10) {
+    if (interference & 0b10) {
         address.SetBase("10.0.2.0", "255.255.255.0");
         apNodeInterface5 = address.Assign(apDev5.Get(0));
         sldNodeInterface5 = address.Assign(sldDev5);
@@ -764,23 +823,32 @@ main(int argc, char* argv[])
     // 1. DL UDP configure
     // DL udp flow
     uint16_t port = 9;
+    uint16_t burstyPort = 50000;
     UdpServerHelper server(port);
     dlserverApp = server.Install(mldNodes);
     seedNumber += server.AssignStreams(mldNodes, seedNumber);
     dlserverApp.Start(Seconds(0.0));
     dlserverApp.Stop(simulationTime + simT_delayEnd);
 
-    if (inference & 0b01) {
-        dlserverAppObss2 = server.Install(sldNodes2);
-        seedNumber += server.AssignStreams(sldNodes2, seedNumber);
+    Ptr<BurstSink> burstSink2;
+    Ptr<BurstSink> burstSink5;
+    if (interference & 0b01) {
+        BurstSinkHelper burstSinkHelper("ns3::UdpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), burstyPort));
+        dlserverAppObss2 = burstSinkHelper.Install(sldNodes2);
         dlserverAppObss2.Start(Seconds(0.2));
         dlserverAppObss2.Stop(simulationTime + simT_delayEnd);
+        burstSink2 = dlserverAppObss2.Get(0)->GetObject<BurstSink> ();
+        burstSink2->TraceConnectWithoutContext ("BurstRx", MakeCallback (&BurstRx));
+        burstSink2->TraceConnectWithoutContext ("FragmentRx", MakeCallback (&FragmentRx));
     }
-    if (inference & 0b10) {
-        dlserverAppObss5 = server.Install(sldNodes5);
-        seedNumber += server.AssignStreams(sldNodes5, seedNumber);
+    if (interference & 0b10) {
+        BurstSinkHelper burstSinkHelper("ns3::UdpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), burstyPort));
+        dlserverAppObss5 = burstSinkHelper.Install(sldNodes5);
         dlserverAppObss5.Start(Seconds(0.4));
         dlserverAppObss5.Stop(simulationTime + simT_delayEnd);
+        burstSink5 = dlserverAppObss5.Get(0)->GetObject<BurstSink> ();
+        burstSink5->TraceConnectWithoutContext ("BurstRx", MakeCallback (&BurstRx));
+        burstSink5->TraceConnectWithoutContext ("FragmentRx", MakeCallback (&FragmentRx));
     }
 
     // AP 0
@@ -799,29 +867,37 @@ main(int argc, char* argv[])
     clientApp.Start(Seconds(1.0));
     clientApp.Stop(simulationTime + simT_delayEnd);
 
+    Ptr<BurstyApplication> burstyApp2;
+    Ptr<BurstyApplication> burstyApp5;
     // AP 1
-    if (inference & 0b01) {
-        auto packetInterval2 = payloadSize * 8.0 / (maxLoad2 * r1);
-        UdpClientHelper client1(sldNodeInterface2.GetAddress(0), port);
-        client1.SetAttribute("MaxPackets", UintegerValue(0));
-        client1.SetAttribute("Interval", TimeValue(Seconds(packetInterval2)));
-        client1.SetAttribute("PacketSize", UintegerValue(payloadSize));
-        ApplicationContainer clientApp1 = client1.Install(apNodes.Get(1));
-        seedNumber += client1.AssignStreams(apNodes.Get(1), seedNumber);
-        clientApp1.Start(Seconds(1.0));
-        clientApp1.Stop(simulationTime + simT_delayEnd);
+    if (interference & 0b01) {
+        BurstyHelper burstyHelper("ns3::UdpSocketFactory", InetSocketAddress(sldNodeInterface2.GetAddress(0), burstyPort)); 
+        burstyHelper.SetAttribute("FragmentSize", UintegerValue(700)); 
+        burstyHelper.SetBurstGenerator("ns3::SimpleBurstGenerator",
+                                        "PeriodRv", StringValue("ns3::ConstantRandomVariable[Constant=0.2]"), // 每2秒1个burst
+                                        "BurstSizeRv", StringValue("ns3::ConstantRandomVariable[Constant=700000]")); // 1000个Fragment
+        ApplicationContainer burstyApps = burstyHelper.Install(apNodes.Get(1));
+        burstyApp2 = burstyApps.Get(0)->GetObject<BurstyApplication>();
+        burstyApp2->TraceConnectWithoutContext ("FragmentTx", MakeCallback (&FragmentTx));
+        burstyApp2->TraceConnectWithoutContext ("BurstTx", MakeCallback (&BurstTx));
+        
+        burstyApps.Start(Seconds(1.0));
+        burstyApps.Stop(simulationTime);
     }
     // AP 2
-    if (inference & 0b10) {
-        auto packetInterval5 = payloadSize * 8.0 / (maxLoad5 * r2);
-        UdpClientHelper client2(sldNodeInterface5.GetAddress(0), port);
-        client2.SetAttribute("MaxPackets", UintegerValue(0));
-        client2.SetAttribute("Interval", TimeValue(Seconds(packetInterval5)));
-        client2.SetAttribute("PacketSize", UintegerValue(payloadSize));
-        ApplicationContainer clientApp2 = client2.Install(apNodes.Get(2));
-        seedNumber += client2.AssignStreams(apNodes.Get(2), seedNumber);
-        clientApp2.Start(Seconds(1.0));
-        clientApp2.Stop(simulationTime + simT_delayEnd);
+    if (interference & 0b10) {
+        BurstyHelper burstyHelper("ns3::UdpSocketFactory", InetSocketAddress(sldNodeInterface5.GetAddress(0), burstyPort)); 
+        burstyHelper.SetAttribute("FragmentSize", UintegerValue(512)); 
+        burstyHelper.SetBurstGenerator("ns3::SimpleBurstGenerator",
+                                        "PeriodRv", StringValue("ns3::ConstantRandomVariable[Constant=100e-3]"), // 每2秒1个burst
+                                        "BurstSizeRv", StringValue("ns3::ConstantRandomVariable[Constant=51200000]")); // 500包×256字节
+        ApplicationContainer burstyApps = burstyHelper.Install(apNodes.Get(2));
+        burstyApp5 = burstyApps.Get(0)->GetObject<BurstyApplication>();
+        burstyApp5->TraceConnectWithoutContext ("FragmentTx", MakeCallback (&FragmentTx));
+        burstyApp5->TraceConnectWithoutContext ("BurstTx", MakeCallback (&BurstTx));
+        
+        burstyApps.Start(Seconds(1.0));
+        burstyApps.Stop(simulationTime);
     }
     // Enable TID-to-Link Mapping for AP and MLD STAs
     for (auto i = mldDev.Begin(); i != mldDev.End(); ++i)
@@ -859,9 +935,9 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/RedundancyEnable", BooleanValue(redundancy_enable)); // 是否启用冗余模式
 
     /* BSS EDCA */
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{1,1}));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3,3}));
+    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
+    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{1,1}));
+    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3,3}));
 
     /* OBSS EDCA */
     //  Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2}));
@@ -876,9 +952,9 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
     
     // /* BSS EDCA */
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
     /* OBSS EDCA */
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2}));
     Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2}));
@@ -1021,8 +1097,15 @@ main(int argc, char* argv[])
     if (cv > 0.1) {
         std::cout << "Please set longer simulation time use: --simT" << std::endl;
     }
-    std::cout << "Throughput = " << ans.second << std::endl;
+    std::cout << "Throughput = " << ans.second << " Mbps"<< std::endl;
 
+    std::cout << "Total RX bursts: " << burstyApp2->GetTotalTxBursts () << "/"
+            << burstSink2->GetTotalRxBursts () << std::endl;
+    std::cout << "Total RX fragments: " << burstyApp2->GetTotalTxFragments () << "/"
+                << burstSink2->GetTotalRxFragments () << std::endl;
+    std::cout << "Total RX bytes: " << burstyApp2->GetTotalTxBytes () << "/"
+                << burstSink2->GetTotalRxBytes () << std::endl;
 
+    std::cout << "result saved: " << csv_file << std::endl;
     return 0;
 }

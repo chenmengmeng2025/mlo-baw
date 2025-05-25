@@ -451,16 +451,9 @@ QosFrameExchangeManager::IsWithinSizeAndTimeLimits(uint32_t ppduPayloadSize,
     NS_ASSERT_MSG(txParams.m_txDuration, "TX duration not yet computed");
     auto txTime = txParams.m_txDuration.value();
     NS_LOG_DEBUG("PPDU duration: " << txTime.As(Time::MS));
-
-    //BE流量的ppduDurationLimit是Time::Min()
-    Time transmissionDelay = MicroSeconds(0);
-
-    // uint32_t currentMpduNumber = txParams.GetCurrentMpduNumber(receiver);
     
-    // uint32_t amsduNumber = m_edca->GetMaxGroupSize();
-    
-    if ((ppduDurationLimit.IsStrictlyPositive() && txTime  + transmissionDelay > ppduDurationLimit) ||
-        (maxPpduDuration.IsStrictlyPositive() && txTime + transmissionDelay > maxPpduDuration))
+    if ((ppduDurationLimit.IsStrictlyPositive() && txTime > ppduDurationLimit) ||
+        (maxPpduDuration.IsStrictlyPositive() && txTime > maxPpduDuration))
     {
         NS_LOG_DEBUG(
             "the frame does not meet the constraint on max PPDU duration or PPDU duration limit");

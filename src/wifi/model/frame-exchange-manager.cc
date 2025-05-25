@@ -532,10 +532,10 @@ FrameExchangeManager::SendMpdu()
         // at the PHY-TXEND.confirm primitive" (section 10.3.2.9 or 10.22.2.2 of 802.11-2016).
         // aRxPHYStartDelay equals the time to transmit the PHY header.
         auto normalAcknowledgment = static_cast<WifiNormalAck*>(m_txParams.m_acknowledgment.get());
-
+        Time transmissionDelay = m_phy->CalculateTransmissionDelay(m_mpdu->GetNMsdus() >= 1, 1, m_mpdu->GetNMsdus(), Create<WifiPsdu>(m_mpdu, false));
         Time timeout =
             txDuration + m_phy->GetSifs() + m_phy->GetSlot() +
-            m_phy->CalculatePhyPreambleAndHeaderDuration(normalAcknowledgment->ackTxVector);
+            m_phy->CalculatePhyPreambleAndHeaderDuration(normalAcknowledgment->ackTxVector) + transmissionDelay;
         NS_ASSERT(!m_txTimer.IsRunning());
         m_txTimer.Set(WifiTxTimer::WAIT_NORMAL_ACK,
                       timeout,
@@ -896,7 +896,7 @@ FrameExchangeManager::SendNormalAck(const WifiMacHeader& hdr,
     SnrTag tag;
     tag.Set(dataSnr);
     packet->AddPacketTag(tag);
-
+    if (Simulator::Now() > Seconds(3.078)) std::cout << "SendNormalAck: " << hdr.GetSequenceNumber() << " " << ackTxVector.GetChannelWidth() << " duration: " << duration << std::endl;
     ForwardMpduDown(Create<WifiMpdu>(packet, ack), ackTxVector);
 }
 

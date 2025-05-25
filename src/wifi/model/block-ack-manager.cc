@@ -379,7 +379,9 @@ BlockAckManager::NotifyGotAck(uint8_t linkId, Ptr<const WifiMpdu> mpdu)
     NS_ASSERT(it->second.first.IsEstablished());
 
     it->second.first.NotifyAckedMpdu(mpdu);
-
+    if (Simulator::Now() > Seconds(3.075)) {
+        std::cout << Simulator::Now() << " Got Normal Ack on Link " << (uint32_t)linkId << " " << recipient << " tid = " << (uint32_t)tid << " m_mode = " << m_mode << " snn = " << mpdu->GetHeader().GetSequenceNumber() << std::endl;
+    }
     if (m_mode) {
         NS_ASSERT(m_linkRPtrSyncEnabled[linkId]);
         it->second.first.m_linkRPtr[linkId] = it->second.first.m_txWindow.GetWinStart();
@@ -471,7 +473,7 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
     NS_ASSERT(blockAck.IsCompressed() || blockAck.IsExtendedCompressed() || blockAck.IsMultiSta());
     Time now = Simulator::Now();
     std::list<Ptr<const WifiMpdu>> acked;
-    // if (Simulator::Now() > Seconds(1)) {
+    // if (Simulator::Now() > Seconds(3.075)) {
     //     std::cout << Simulator::Now() << " Got Block Ack on Link " << (uint32_t)linkId << " " << recipient << " tid = " << (uint32_t)tid << " m_mode = " << m_mode << std::endl;
     //     blockAck.Print(std::cout);
     //     std::cout << "队列 " << (it->second.second.begin() == it->second.second.end()) << std::endl;
