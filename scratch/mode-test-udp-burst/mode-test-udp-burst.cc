@@ -432,8 +432,7 @@ main(int argc, char* argv[])
     cmd.AddValue("param_update", "param update setting", param_update); 
     cmd.Parse(argc, argv);
 
-    if (simT == 0) simT = period_update * 10 + 1;
-    simT = 4;
+    if (simT == 0) simT = 4;
     Time period{Seconds(period_update)};
     if (!(interference & 0b01)) r1 = 1e-9;  
     if (!(interference & 0b10)) r2 = 1e-9;
@@ -481,8 +480,8 @@ main(int argc, char* argv[])
     //      QueueSizeValue(QueueSize(QueueSizeUnit::PACKETS, 1024)));
 
     // Disable fragmentation
-    // Config::SetDefault("ns3::WifiRemoteStationManager::FragmentationThreshold",   
-    //     UintegerValue(std::numeric_limits<uint32_t>::max()));
+    Config::SetDefault("ns3::WifiRemoteStationManager::FragmentationThreshold",   
+        UintegerValue(std::numeric_limits<uint32_t>::max()));
 
     // Make retransmissions persistent
      Config::SetDefault("ns3::WifiRemoteStationManager::MaxSlrc",
@@ -887,10 +886,10 @@ main(int argc, char* argv[])
     // AP 2
     if (interference & 0b10) {
         BurstyHelper burstyHelper("ns3::UdpSocketFactory", InetSocketAddress(sldNodeInterface5.GetAddress(0), burstyPort)); 
-        burstyHelper.SetAttribute("FragmentSize", UintegerValue(512)); 
+        burstyHelper.SetAttribute("FragmentSize", UintegerValue(700)); 
         burstyHelper.SetBurstGenerator("ns3::SimpleBurstGenerator",
-                                        "PeriodRv", StringValue("ns3::ConstantRandomVariable[Constant=100e-3]"), // 每2秒1个burst
-                                        "BurstSizeRv", StringValue("ns3::ConstantRandomVariable[Constant=51200000]")); // 500包×256字节
+                                        "PeriodRv", StringValue("ns3::ConstantRandomVariable[Constant=0.2]"), // 每2秒1个burst
+                                        "BurstSizeRv", StringValue("ns3::ConstantRandomVariable[Constant=700000]")); // 1000个Fragment
         ApplicationContainer burstyApps = burstyHelper.Install(apNodes.Get(2));
         burstyApp5 = burstyApps.Get(0)->GetObject<BurstyApplication>();
         burstyApp5->TraceConnectWithoutContext ("FragmentTx", MakeCallback (&FragmentTx));
@@ -935,9 +934,9 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/RedundancyEnable", BooleanValue(redundancy_enable)); // 是否启用冗余模式
 
     /* BSS EDCA */
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{1,1}));
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3,3}));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{1,1}));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3,3}));
 
     /* OBSS EDCA */
     //  Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2}));
@@ -952,9 +951,9 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
     
     // /* BSS EDCA */
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
+    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
+    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
+    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
     /* OBSS EDCA */
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2}));
     Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2}));
