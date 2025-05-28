@@ -339,9 +339,12 @@ QosTxop::GetBaStartingSequence(Mac48Address address, uint8_t tid) const
 uint16_t
 QosTxop::GetBaStartingSequence(Mac48Address address, uint8_t tid, uint8_t linkId) const
 {
-    // if (m_mode & 0x01)
-    // std::cout << "StartingSequence on Link " << +linkId << " " <<  m_baManager->GetOriginatorStartingSequence(address, tid) <<" " <<m_baManager->GetOriginatorRptr(address, tid, linkId) << std::endl;
-    if (m_mode & 0x03) return m_baManager->GetOriginatorRptr(address, tid, linkId);
+    if (m_mode & 0x03) {
+        // 海思发送端新架构模拟
+        // 发送前更新自己读指针到最新
+        m_baManager->UpdateRptr(address, tid, linkId); // 更新自己的读指针 max(2G, 5G)
+        return m_baManager->GetOriginatorRptr(address, tid, linkId);
+    }
     return m_baManager->GetOriginatorStartingSequence(address, tid);
 }
 
@@ -445,13 +448,6 @@ QosTxop::PeekNextMpdu(uint8_t linkId, uint8_t tid, Mac48Address recipient, Ptr<c
     };
 
     auto item = peek();
-    // if (m_mode & 0x01 && Simulator::Now() > Seconds(2.1)) {
-    //     std::cout << Simulator::Now() << " " << (item == nullptr) << " Link: " << +linkId << " tid: " << +tid << std::endl;
-    //     if (item) std::cout << "peek: " << item->GetHeader().GetSequenceNumber() << std::endl;
-    //     else {
-    //         std::cout << "peek: nullptr on link " << +linkId << std::endl;
-    //     }
-    // }
     // remove old packets (must be retransmissions or in flight, otherwise they did
     // not get a sequence number assigned)
     while (item && !item->IsFragment())
@@ -476,14 +472,38 @@ QosTxop::PeekNextMpdu(uint8_t linkId, uint8_t tid, Mac48Address recipient, Ptr<c
             m_queue->Remove(mpdu);
             continue;
         }
-        // if (m_mode & 0x04) {
-        //     if (item) std::cout << item->GetPacketSize() << " " << item->GetHeader().GetSequenceNumber() << std::endl;
-        // }
-        if ( m_mode & 0x02 )
+
+        if (m_mode & 0x02)
         {   
+            if (auto linkIds = item->GetInFlightLinkIds(); !linkIds.empty())
+            {
+                // if no BA agreement, we cannot have multiple MPDUs in-flight
+                if (item->GetHeader().IsQosData() &&
+                    !m_mac->GetBaAgreementEstablishedAsOriginator(item->GetHeader().GetAddr1(),
+                                                                item->GetHeader().GetQosTid()))
+                {
+                    NS_LOG_DEBUG("No BA agreement and an MPDU is already in-flight");
+                    return nullptr;
+                }
+            }
+            // 没有分配给当前链路
+            //      开了冗余->如果已经在另一条链路上发送->选中
+            //      没开冗余->跳过
             // std::cout << "mode 2" << IsLinkAllocated(linkId, item->GetAllocatedLink()) << std::endl;
             if(!IsLinkAllocated(linkId, item->GetAllocatedLink()) && item->GetPacket()->GetAdjustment() != item->GetPacketSize())
             {
+                //没有分配给本链路，已经在其他链路发送过的mpdu
+                if (auto linkIds = item->GetInFlightLinkIds(); !linkIds.empty()) // MPDU is in-flight
+                {
+                    GetMsduGrouper()->m_inflighted[*linkIds.begin()] ++; 
+                    if(GetMsduGrouper()->GetRedundancyMode(linkId) && GetMsduGrouper()->AvailableRedundancy(linkId))
+                    {
+                        NS_LOG_DEBUG("link" << +linkId << " 冗余，"
+                                            << item->GetHeader().GetSequenceNumber() << "再次发送");
+                        // GetMsduGrouper()->NotifyPacketRedundancy(item);
+                        break;
+                    }
+                }
                 // peek the next sequence number and check if it is within the transmit window
                 WifiMacHeader& hdr = item->GetHeader();
                 // in case of QoS data frame
@@ -496,14 +516,10 @@ QosTxop::PeekNextMpdu(uint8_t linkId, uint8_t tid, Mac48Address recipient, Ptr<c
 
                     if (m_mac->GetBaAgreementEstablishedAsOriginator(recipient, tid) &&
                         !IsInWindow(sequence,
-                                    GetBaStartingSequence(recipient, tid),
+                                    GetBaStartingSequence(recipient, tid, linkId),
                                     GetBaBufferSize(recipient, tid)))
                     {
                         NS_LOG_DEBUG("Packet beyond the end of the current transmit window");
-                        // std::cout<<"Search mpdu for link "<<+linkId<<std::endl;
-                        // std::cout<<"Packet beyond the end of the current transmit window"<<std::endl;
-                        // std::cout<<"BaStartingSequence "<<GetBaStartingSequence(recipient, tid)<<std::endl;
-                        // std::cout<<"BaBufferSize "<<GetBaBufferSize(recipient, tid)<<std::endl;
                         return nullptr; //如果此MPDU已经超出窗口,后面将要搜索的MPDU肯定也以已经超出
                     }
                 }
@@ -516,32 +532,22 @@ QosTxop::PeekNextMpdu(uint8_t linkId, uint8_t tid, Mac48Address recipient, Ptr<c
                 item = peek();
                 continue;
             }
+            //分配给当前链路
             if (auto linkIds = item->GetInFlightLinkIds(); !linkIds.empty()) // MPDU is in-flight
             {
-                // This MPDU has already been sent on other links, but can still be sent on this link.
-                // mode2 中在其他链路上发送过的肯定是未分配到当前链路上的
-                // 冗余个数不如设置为另一条链路的平均聚合个数*失败率
+                // 分配到这条链路但是在这条链路之外的链路发送过，也就是该mpdu分配到了两个链路
                 if (!linkIds.contains(linkId))
                 {
                     NS_LOG_DEBUG(*item <<" This MPDU has already been sent on other links, but can still be sent on link "<<+linkId);
                     break;
                 }
-                // if no BA agreement, we cannot have multiple MPDUs in-flight
-                if (item->GetHeader().IsQosData() &&
-                    !m_mac->GetBaAgreementEstablishedAsOriginator(item->GetHeader().GetAddr1(),
-                                                                item->GetHeader().GetQosTid()))
-                {
-                    NS_LOG_DEBUG("No BA agreement and an MPDU is already in-flight");
-                    return nullptr;
-                }
-
                 NS_LOG_DEBUG("Skipping in flight MPDU: " << *item);
                 mpdu = item;
                 item = peek();
                 continue;
             }
         }
-        else if ( m_mode & 0x01 )
+        else if (m_mode & 0x01)
         {
             // if (m_link_up & (1 << linkId) != 1) return nullptr;
             if (auto linkIds = item->GetInFlightLinkIds(); !linkIds.empty()) // MPDU is in-flight
@@ -1055,6 +1061,8 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
     uint32_t meanlen2 = std::accumulate(lengths2.begin(), lengths2.end(), 0.0) / (lengths2.size() == 0 ? 1 : lengths2.size());
     std::cout << "maxAmpduLength: " << maxlen1 << ", " << maxlen2 << std::endl;
     std::cout << "meanAmpduLength: " << meanlen1 << ", " << meanlen2 << std::endl;
+
+    GetMsduGrouper()->SaveThroughput(GetTxopLimits()[0].GetMicroSeconds() / 32, GetTxopLimits()[1].GetMicroSeconds() / 32, Thp1 + Thp2);
 
     if (GetMsduGrouper()->IsGridSearchEnabled()) 
     {   // param_update = true -> 网格搜索最优参数: 搜索空间 -> params.json

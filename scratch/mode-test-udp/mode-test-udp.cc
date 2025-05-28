@@ -341,9 +341,14 @@ main(int argc, char* argv[])
     uint8_t mode = 1;
 
     double simT = 0;
+    double transmission_delay = 0;
     bool param_update = false;
     bool redundancy_enable = false;
+    bool logsender = false;
+    bool logreceiver = false;
+    bool logmode = false;
     Time simT_delayEnd = NanoSeconds(2);
+    uint32_t maxGroupSize = 4;
     CommandLine cmd(__FILE__);
     std::filesystem::path filepath = __FILE__;
     cmd.AddValue("seed", "seed number", seedNumber);
@@ -368,9 +373,14 @@ main(int argc, char* argv[])
     cmd.AddValue("txop2", "TxopLimit on 5 G", txoplimit2);
     cmd.AddValue("sl", "Single Link if > 0", singleLink);
     cmd.AddValue("nss", "mimo", nss);
+    cmd.AddValue("maxgroupsize", "maxgroupsize", maxGroupSize);
+    cmd.AddValue("delay", "delay setting", transmission_delay); // 传输延时，单位为微秒
     cmd.AddValue("interference", "interference setting", interference);
     cmd.AddValue("redundancy", "redundancy setting", redundancy_enable);
     cmd.AddValue("param_update", "param update setting", param_update); 
+    cmd.AddValue("logsender", "new transmitter architecture log setting", logsender);
+    cmd.AddValue("logreceiver", "new receiver architecture log setting", logreceiver);
+    cmd.AddValue("logmode", "mode log setting", logmode);
     cmd.Parse(argc, argv);
 
     if (simT == 0) simT = period_update * 10 + 1;
@@ -388,7 +398,10 @@ main(int argc, char* argv[])
                             rateCtrl + "_interference_" +
                             std::to_string(r1) + "_" + std::to_string(r2) + "_txoplimits_" + 
                             std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update) + "_seed_" + std::to_string(seedNumber);
-
+    if (mode && logmode) mode = mode | (1 << 4);
+    if (mode && logsender) mode = mode | (1 << 5);
+    uint8_t mode_recv = 1 << 2;
+    if (mode_recv && logreceiver) mode_recv = mode_recv | (1 << 6);
     std::string csv_file = (filepath.parent_path() / (title + ".csv")).string();
     std::cout << csv_file << std::endl;
     // LogComponentEnable("PhyEntity", LOG_LEVEL_DEBUG);
@@ -405,8 +418,7 @@ main(int argc, char* argv[])
     size_t nStaMlds{1};
     std::vector<size_t> nStaSlds{1, 1};
     uint32_t payloadSize = 700; // must fit in the max TX duration when transmitting at MCS 0 over an RU of 26 tones
-    Time accessReqInterval{0};
-    uint32_t maxGroupSize = 4;
+
     if (useRts) // 默认不使用RTS CTS
     {
         // Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("0"));
@@ -597,6 +609,17 @@ main(int argc, char* argv[])
                 "Ssid",
                 SsidValue(bssSsid));
     apDev = wifi.Install(phy, mac, apNodes.Get(0));
+    // Set AP transmission delay
+    if (transmission_delay >= 0) { // 固定时延
+        DynamicCast<WifiNetDevice>(apDev.Get(0))->GetPhy(0)->SetTransmissionDelay(MicroSeconds(transmission_delay));
+        DynamicCast<WifiNetDevice>(apDev.Get(0))->GetPhy(1)->SetTransmissionDelay(MicroSeconds(transmission_delay));
+    } 
+    else 
+    { // 使用公式计算时延
+        DynamicCast<WifiNetDevice>(apDev.Get(0))->GetPhy(0)->SetTransmissionDelay(MicroSeconds(-1));
+        DynamicCast<WifiNetDevice>(apDev.Get(0))->GetPhy(1)->SetTransmissionDelay(MicroSeconds(-1));
+    }
+
     mac.SetType("ns3::StaWifiMac",
                 "Ssid",
                 SsidValue(bssSsid),
@@ -852,7 +875,7 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxGroupSize", UintegerValue(maxGroupSize));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Period", TimeValue(period));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode)); // mode = 1 表示 模式一(硬件仲裁)， mode = 2 表示 模式二(软件仲裁)
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(0x01 << 2)); // 只负责接收，无msdu_grouper, mode只要非0, 接收端就是新架构，BA只包含各自链路所收到的包的接收信息，各自维护自己的bitmap
+    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode_recv)); // 只负责接收，无msdu_grouper, mode只要非0, 接收端就是新架构，BA只包含各自链路所收到的包的接收信息，各自维护自己的bitmap
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchEnable", BooleanValue(grid_search_enable)); // 是否开启网格搜索，用于静态场景下的最优参数搜索，只有在param_update = true时才会更新参数
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/ParamUpdate", BooleanValue(param_update));
     // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchParameter", StringValue("./scratch/params.json")); // 网格搜索使用的参数集合

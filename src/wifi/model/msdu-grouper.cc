@@ -381,6 +381,7 @@ MsduGrouper::MsduGrouper(uint32_t maxGroupSize,
     m_gs_enable = false;
     m_param_update = false;
     m_redundancy_enable = 0; // 默认关闭冗余模式
+    m_triggered_txop_asyn = false;
 }
 
 MsduGrouper::~MsduGrouper()
@@ -847,7 +848,7 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
     params.CWmins = {1, 1};
     params.CWmaxs = {3, 3};
     params.Aifsns = {aifsn1, aifsn2};
-    params.RTS_CTS = {0, 0};
+    params.RTS_CTS = {1, 0};
     params.MaxSlrcs = {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
     params.MaxSsrcs = {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
     params.TxopLimits = {0, 0}; // < 171
@@ -865,16 +866,36 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
     std::cout << "MLO Algorithm to Set Txoplimit: " << txoplimit << std::endl;
     params.TxopLimits = {txoplimit, txoplimit};
     std::cout << "MLO Algorithm to Set Aifsn: (" << aifsn1 << ", " << aifsn2 << ")" << std::endl;
-    if (istcp) { // TCP流量才需要开启RTS/CTS，来避免与TCP ACK的干扰
+    if (istcp) { // TCP流量才需要细致调整TxopLimt，来避免与2.4G上的TCP ACK的干扰
         std::cout << "TCP TRAFFIC" << std::endl;
-        if (occ1 * (1 - p1) > 0.1) {
-            params.RTS_CTS[0] = 1;
-            params.TxopLimits[0] ++;
+        // if (occ1 * (1 - p1) > 0.1) {
+        //     params.RTS_CTS[0] = 1;
+        //     // params.TxopLimits[0] --;
+        // }
+        if (m_triggered_txop_asyn) {
+            uint32_t txoplimit1 = (double) 64 * (mpdusize * datarate1 - 120 * datarate2 ) / (datarate1 + datarate2) / (datarate1);
+            uint32_t txoplimit2 = (double) 64 * (120 + mpdusize) / (datarate1 + datarate2);
+            params.TxopLimits[0] = 39;
+            params.TxopLimits[1] = 62;
+            // tm = std::ceil((double)txoplimit / 25 * p2 * datarate2 / p1 / datarate1);
+            // tm = std::min(tm, params.TxopLimits[0]);
+            // tp = tm * (p1 * datarate1) / (p2 * datarate2);
+            // // tp = 0;
+            // std::cout << "tm, tp: " << tm << ", " << tp << std::endl;
+            // params.TxopLimits[0] = params.TxopLimits[0] - tm;
+            // params.TxopLimits[0] = params.TxopLimits[0] + tp;
+        } else {
+            uint32_t txoplimit1 = (double) 64 * (mpdusize * datarate1 - 120 * datarate2 ) / (datarate1 + datarate2) / (datarate1);
+            uint32_t txoplimit2 = (double) 64 * (120 + mpdusize) / (datarate1 + datarate2);
+            params.TxopLimits[0] = 39;
+            params.TxopLimits[1] = 62;
+            // params.TxopLimits = {m_best_txopLimits.first, m_best_txopLimits.second};
+            // std::cout << "Use Best TxopLimits: " << m_best_txopLimits.first << ", " << m_best_txopLimits.second << std::endl;
         }
-        if (occ2 * (1 - p2) > 0.1) {
-            params.RTS_CTS[1] = 1;
-            params.TxopLimits[0] ++;
-        }
+        // if (occ2 * (1 - p2) > 0.1) {
+        //     // params.RTS_CTS[1] = 1;
+        //     params.TxopLimits[1] ++;
+        // }
     }
     return params;
 }
@@ -1116,6 +1137,37 @@ MsduGrouper::GetMeanMpduSize() {
 void 
 MsduGrouper::EnableRedundancyMode(){
     m_redundancy_enable = 0b11;
+}
+
+void 
+MsduGrouper::SaveThroughput(uint32_t txop1, uint32_t txop2, double throughput) {
+    m_throughputList[std::make_pair(txop1, txop2)] = std::make_pair(Simulator::Now(), throughput);
+    if (throughput < 0.8 * (m_queueStats.GetAverageDataRate(0, m_period) + m_queueStats.GetAverageDataRate(1, m_period)) ) m_triggered_txop_asyn = true;
+    else m_triggered_txop_asyn = false;
+    double thpt = 0;
+    for (auto it = m_throughputList.begin(); it != m_throughputList.end();)
+    {
+        if (it->second.first < Simulator::Now() - 5 * m_period)
+        {
+            it = m_throughputList.erase(it);
+        } 
+        else
+        {
+            if (it->second.second > thpt)
+            {
+                thpt = it->second.second;
+                m_best_txopLimits = it->first;
+            }
+            it++;
+        }
+    }
+    std::cout << "Best TxopLimits: " << m_best_txopLimits.first << ", " << m_best_txopLimits.second
+              << " with throughput: " << thpt << std::endl;
+}
+
+uint8_t 
+MsduGrouper::GetMode() {
+    return m_mode;
 }
 
 } // namespace ns3

@@ -457,7 +457,7 @@ class BlockAckManager : public Object
      * \param recipient the recipient MAC address  
      * \param tid Traffic ID
      */
-    void UpdateRptr(const Mac48Address& recipient, uint8_t tid, uint8_t linkId);
+    bool UpdateRptr(const Mac48Address& recipient, uint8_t tid, uint8_t linkId);
 
     /**
      * Set whether a link is in TX or ACK mode.

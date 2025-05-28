@@ -17,6 +17,7 @@ if __name__ == "__main__":
     begin = int(args.begin * 1e6)
     end = int(args.end * 1e6)
     tcp = bool(args.tcp)
+    tcp = True
     # 读取数据
     # df = pd.read_csv('PPDU_no_interference_no_newarch_txoplimits_0.000000_0.000000_link1Pct_0.004000.csv')
     df = pd.read_csv("PPDU.csv")

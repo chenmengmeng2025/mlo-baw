@@ -297,9 +297,13 @@ CtrlBAckResponseHeader::Print(std::ostream& os) const
         //    << m_baInfo[0].m_startingSeq << std::dec;
 
         os << "TID_INFO=" << m_tidInfo << ", StartingSeq=" << m_baInfo[0].m_startingSeq << std::dec;
-        os << std::endl << "bitmap = 0x";
+        os << std::endl << "\tbitmap = 0b";
         for(const auto & b : m_baInfo[0].m_bitmap) {
-            os << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b) << " ";
+            for (int i = 0; i < 8; ++i) {
+                os << ((b >> i) & 1);
+            }
+            // os << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b) << " ";
+            os << " ";
         }
         os << std::endl << std::dec;
     }

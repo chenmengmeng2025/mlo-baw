@@ -287,7 +287,7 @@ class WifiPhy : public Object
     /**
      * Calculate transmission delay
      */
-    static Time CalculateTransmissionDelay(bool IsAggregation, size_t maxMpduCount,size_t maxMsduCount, Ptr<const WifiPsdu> psdu);
+    Time CalculateTransmissionDelay(bool IsAggregation, size_t maxMpduCount,size_t maxMsduCount, Ptr<const WifiPsdu> psdu);
     /**
      * \return the preamble detection duration, which is the time correlation needs to detect the
      * start of an incoming frame.
@@ -1277,6 +1277,8 @@ class WifiPhy : public Object
      */
     typedef void (*SignalTransmissionCallback)(Ptr<const WifiPpdu> ppdu,
                                                const WifiTxVector& txVector);
+    
+    void SetTransmissionDelay(Time delay);
 
   protected:
     void DoInitialize() override;
@@ -1656,6 +1658,8 @@ class WifiPhy : public Object
     bool m_notifyRxMacHeaderEnd;     //!< whether the PHY is capable of notifying MAC header RX end
 
     Callback<void> m_capabilitiesChangedCallback; //!< Callback when PHY capabilities changed
+
+    Time m_transmissionDelay; // 固定时延，如果为0，则表示无时延，如果小于0，则使用公式计算时延，如果大于0，则表示固定时延
 };
 
 /**

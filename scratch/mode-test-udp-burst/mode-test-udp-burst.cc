@@ -400,9 +400,14 @@ main(int argc, char* argv[])
     uint8_t mode = 1;
 
     double simT = 0;
+    double transmission_delay = 0;
     bool param_update = false;
     bool redundancy_enable = false;
+    bool logsender = false;
+    bool logreceiver = false;
+    bool logmode = false;
     Time simT_delayEnd = NanoSeconds(2);
+    uint32_t maxGroupSize = 4;
     CommandLine cmd(__FILE__);
     std::filesystem::path filepath = __FILE__;
     cmd.AddValue("seed", "seed number", seedNumber);
@@ -427,9 +432,14 @@ main(int argc, char* argv[])
     cmd.AddValue("txop2", "TxopLimit on 5 G", txoplimit2);
     cmd.AddValue("sl", "Single Link if > 0", singleLink);
     cmd.AddValue("nss", "mimo", nss);
+    cmd.AddValue("maxgroupsize", "maxgroupsize", maxGroupSize);
+    cmd.AddValue("delay", "delay setting", transmission_delay); // 传输延时，单位为微秒
     cmd.AddValue("interference", "interference setting", interference);
     cmd.AddValue("redundancy", "redundancy setting", redundancy_enable);
     cmd.AddValue("param_update", "param update setting", param_update); 
+    cmd.AddValue("logsender", "new transmitter architecture log setting", logsender);
+    cmd.AddValue("logreceiver", "new receiver architecture log setting", logreceiver);
+    cmd.AddValue("logmode", "mode log setting", logmode);
     cmd.Parse(argc, argv);
 
     if (simT == 0) simT = 4;
@@ -447,6 +457,10 @@ main(int argc, char* argv[])
                             rateCtrl + "_interference_" +
                             std::to_string(r1) + "_" + std::to_string(r2) + "_txoplimits_" + 
                             std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update) + "_seed_" + std::to_string(seedNumber);
+    if (mode && logmode) mode = mode | (1 << 4);
+    if (mode && logsender) mode = mode | (1 << 5);
+    uint8_t mode_recv = 1 << 2;
+    if (mode_recv && logreceiver) mode_recv = mode_recv | (1 << 6);
 
     std::string csv_file = (filepath.parent_path() / ("result_" + title + ".csv")).string();
     std::cout << csv_file << std::endl;
@@ -480,8 +494,8 @@ main(int argc, char* argv[])
     //      QueueSizeValue(QueueSize(QueueSizeUnit::PACKETS, 1024)));
 
     // Disable fragmentation
-    Config::SetDefault("ns3::WifiRemoteStationManager::FragmentationThreshold",   
-        UintegerValue(std::numeric_limits<uint32_t>::max()));
+    // Config::SetDefault("ns3::WifiRemoteStationManager::FragmentationThreshold",   
+    //     UintegerValue(std::numeric_limits<uint32_t>::max()));
 
     // Make retransmissions persistent
      Config::SetDefault("ns3::WifiRemoteStationManager::MaxSlrc",
@@ -927,7 +941,7 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxGroupSize", UintegerValue(maxGroupSize));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Period", TimeValue(period));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode)); // mode = 1 表示 模式一(硬件仲裁)， mode = 2 表示 模式二(软件仲裁)
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(0x01 << 2)); // 只负责接收，无msdu_grouper, mode只要非0, 接收端就是新架构，BA只包含各自链路所收到的包的接收信息，各自维护自己的bitmap
+    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode_recv)); // 只负责接收，无msdu_grouper, mode只要非0, 接收端就是新架构，BA只包含各自链路所收到的包的接收信息，各自维护自己的bitmap
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchEnable", BooleanValue(grid_search_enable)); // 是否开启网格搜索，用于静态场景下的最优参数搜索，只有在param_update = true时才会更新参数
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/ParamUpdate", BooleanValue(param_update));
     // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchParameter", StringValue("./scratch/params.json")); // 网格搜索使用的参数集合
@@ -946,14 +960,14 @@ main(int argc, char* argv[])
     //  Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3}));
     //  Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3}));
 
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
+    // Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
+    // Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
+    // Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
     
     // /* BSS EDCA */
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
     /* OBSS EDCA */
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2}));
     Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2}));

@@ -120,7 +120,7 @@ void
 RecipientBlockAckAgreement::NotifyReceivedMpdu(Ptr<const WifiMpdu> mpdu, uint8_t linkId)
 {
     NS_LOG_FUNCTION(this << *mpdu);
-    if (m_mode == 0) {
+    if (!(m_mode & 0b0111)) {
         uint16_t mpduSeqNumber = mpdu->GetHeader().GetSequenceNumber();
         uint16_t distance = GetDistance(mpduSeqNumber, m_scoreboard.GetWinStart());
         /* Update the scoreboard (see Section 10.24.7.3 of 802.11-2016) */
@@ -176,6 +176,12 @@ RecipientBlockAckAgreement::NotifyReceivedMpdu(Ptr<const WifiMpdu> mpdu, uint8_t
     } else {
         uint16_t mpduSeqNumber = mpdu->GetHeader().GetSequenceNumber();
         uint16_t distance = GetDistance(mpduSeqNumber, m_scoreboard_asyn[linkId].GetWinStart());
+        if (m_mode & 0b0100'0000) { // log receiver only
+            std::cout << Simulator::Now() << " ReceivedMpdu: snn = " << mpduSeqNumber << " on Link " << +linkId
+                      << " distance = " << distance
+                      << " winStart = " << m_scoreboard_asyn[linkId].GetWinStart()
+                      << " mpduSize = " << mpdu->GetPacketSize() << " m_mode = " << m_mode << std::endl;
+        }
         // if (Simulator::Now() > Seconds(3.075))
         //     std::cout << Simulator::Now() << "m_mode = " << m_mode << " Got snn = " << mpduSeqNumber << " on " << +linkId
         //               << "distance = " << distance
@@ -191,12 +197,11 @@ RecipientBlockAckAgreement::NotifyReceivedMpdu(Ptr<const WifiMpdu> mpdu, uint8_t
             m_scoreboard_asyn[linkId].Advance(distance - m_scoreboard_asyn[linkId].GetWinSize() + 1);
             m_scoreboard_asyn[linkId].At(m_scoreboard_asyn[linkId].GetWinSize() - 1) = true;
         }
-        else {
-            std::cout << "distance > SEQNO_SPACE_HALF_SIZE before WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << " m_mode " << m_mode << std::endl; 
-            std::cout << "seqno = " << mpduSeqNumber << std::endl;
+        else { // 忽略单链路BA协议中 2^11 限制，过于旧的包可能会影响bitmap的起始指针
+            if (m_mode & 0b0010'0100) std::cout << "distance > SEQNO_SPACE_HALF_SIZE, seqno = " << mpduSeqNumber  << ", before WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << std::endl; 
             m_scoreboard_asyn[linkId].Advance(distance - m_scoreboard_asyn[linkId].GetWinSize() + 1);
             m_scoreboard_asyn[linkId].At(m_scoreboard_asyn[linkId].GetWinSize() - 1) = true;
-            std::cout <<" after WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << std::endl;
+            if (m_mode & 0b0010'0100) std::cout << "after WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << std::endl;
         }
 
         distance = GetDistance(mpduSeqNumber, m_winStartB);
@@ -254,7 +259,7 @@ RecipientBlockAckAgreement::NotifyReceivedBar(uint16_t startingSequenceNumber, u
 {
     NS_LOG_FUNCTION(this << startingSequenceNumber);
 
-    if (m_mode == 0) {
+    if (!(m_mode & 0b0111)) {
         uint16_t distance = GetDistance(startingSequenceNumber, m_scoreboard.GetWinStart());
 
         /* Update the scoreboard (see Section 10.24.7.3 of 802.11-2016) */
@@ -289,7 +294,11 @@ RecipientBlockAckAgreement::NotifyReceivedBar(uint16_t startingSequenceNumber, u
         }
     } else {
         uint16_t distance = GetDistance(startingSequenceNumber, m_scoreboard_asyn[linkId].GetWinStart());
-
+        if (m_mode & 0b0100'0000) { // log receiver only
+            std::cout << Simulator::Now() << " ReceivedBar: startingSeqno = " << startingSequenceNumber << " on Link " << +linkId
+                      << " distance = " << distance
+                      << " winStart = " << m_scoreboard_asyn[linkId].GetWinStart() << std::endl;
+        }
         /* Update the scoreboard (see Section 10.24.7.3 of 802.11-2016) */
         if (distance > 0 && distance < m_scoreboard_asyn[linkId].GetWinSize())
         {
@@ -302,11 +311,11 @@ RecipientBlockAckAgreement::NotifyReceivedBar(uint16_t startingSequenceNumber, u
             // reset the window and set WinStartR to SSN
             m_scoreboard_asyn[linkId].Reset(startingSequenceNumber);
         }
-        else {
-            std::cout << "Received by BAR: distance > SEQNO_SPACE_HALF_SIZE before WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << " m_mode " << m_mode << std::endl; 
+        else { // 忽略单链路BA协议中 2^11 限制，过于旧的包可能会影响bitmap的起始指针
+            std::cout << "ReceivedBar: distance > SEQNO_SPACE_HALF_SIZE, startingseqno = " << startingSequenceNumber  << ", before WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << " m_mode " << m_mode << std::endl; 
             m_scoreboard_asyn[linkId].Advance(distance - m_scoreboard_asyn[linkId].GetWinSize() + 1);
             m_scoreboard_asyn[linkId].At(m_scoreboard_asyn[linkId].GetWinSize() - 1) = true;
-            std::cout <<" after WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << std::endl;
+            std::cout << "after WinStart = " << m_scoreboard_asyn[linkId].GetWinStart() << std::endl;
         }
 
         distance = GetDistance(startingSequenceNumber, m_winStartB);
@@ -350,7 +359,7 @@ RecipientBlockAckAgreement::FillBlockAckBitmap(CtrlBAckResponseHeader* blockAckH
         // range (WinEndR – 63) to WinStartR (Sec. 10.24.7.5 of 802.11-2016).
         // We set it to WinStartR
         uint16_t ssn;
-        if (m_mode == 0) 
+        if (!(m_mode & 0b0111)) 
             ssn = m_scoreboard.GetWinStart();
         else
             ssn = m_scoreboard_asyn[linkId].GetWinStart(); 
@@ -358,7 +367,7 @@ RecipientBlockAckAgreement::FillBlockAckBitmap(CtrlBAckResponseHeader* blockAckH
         blockAckHeader->SetStartingSequence(ssn, index);
         blockAckHeader->ResetBitmap(index);
 
-        if (m_mode == 0) {
+        if (!(m_mode & 0b0111)) {
             for (std::size_t i = 0; i < m_scoreboard.GetWinSize(); i++)
             {
                 if (m_scoreboard.At(i))

@@ -393,7 +393,8 @@ WifiPhy::WifiPhy()
       m_txSpatialStreams(1),
       m_rxSpatialStreams(1),
       m_wifiRadioEnergyModel(nullptr),
-      m_timeLastPreambleDetected(Seconds(0))
+      m_timeLastPreambleDetected(Seconds(0)),
+      m_transmissionDelay(Seconds(0))
 {
     NS_LOG_FUNCTION(this);
     m_random = CreateObject<UniformRandomVariable>();
@@ -1603,9 +1604,12 @@ WifiPhy::CalculateTxDuration(const WifiConstPsduMap& psduMap,
 
 Time WifiPhy::CalculateTransmissionDelay(bool IsAggregation, size_t maxMpduCount, size_t maxMsduCount, Ptr<const WifiPsdu> psdu) {
     Time transmissionDelay = NanoSeconds(0); 
-    // IsAggregation = false;
     if (!(psdu->GetHeader(0).GetAddr1() == "00:00:00:00:00:05" || psdu->GetHeader(0).GetAddr1() == "00:00:00:00:00:06") || !psdu->GetHeader(0).IsData())
         return transmissionDelay;
+    if (IsAggregation && m_transmissionDelay.IsPositive()) {
+        return m_transmissionDelay; // constant delay
+    }
+    // calculate transmission delay based on the number of MPDUs and MSDUs
     if (IsAggregation && psdu->GetHeader(0).GetAddr1() == "00:00:00:00:00:05") {
         double delayInMicroseconds = 2 + (maxMpduCount * maxMsduCount * 32.0) / 3000.0 + maxMpduCount / 320.0 + 1.5;
         transmissionDelay = NanoSeconds(static_cast<int64_t>(delayInMicroseconds * 1000));  
@@ -1614,7 +1618,6 @@ Time WifiPhy::CalculateTransmissionDelay(bool IsAggregation, size_t maxMpduCount
         double delayInMicroseconds = 2 + (maxMpduCount * maxMsduCount * 32.0) / 3000.0 + (maxMpduCount / 320.0 + 1.5) * 2;
         transmissionDelay = NanoSeconds(static_cast<int64_t>(delayInMicroseconds * 1000));  
     }
-    if (IsAggregation) transmissionDelay = MicroSeconds(0); // constant delay
     return transmissionDelay;
 }
 
@@ -2047,7 +2050,7 @@ WifiPhy::DoSend(const WifiConstPsduMap& psdus, const WifiTxVector& txVector, uin
 
     const auto txPower = DbmToW(GetTxPowerForTransmission(ppdu) + GetTxGain());
     NotifyTxBegin(psdus, txPower); // PHY TX开始
-    TxBeginUpdateLinkTxStatus(linkId, linkStatus); // 更新LinkTx状态
+    TxBeginUpdateLinkTxStatus(linkId, std::ref(linkStatus)); // 更新LinkTx状态
     if (!m_phyTxPsduBeginTrace.IsEmpty())
     {
         m_phyTxPsduBeginTrace(psdus, txVector, txPower);
@@ -2571,6 +2574,11 @@ WifiPhy::GetSubcarrierSpacing() const
         break;
     }
     return subcarrierSpacing;
+}
+
+void 
+WifiPhy::SetTransmissionDelay(Time delay) {
+    m_transmissionDelay = delay;
 }
 
 } // namespace ns3

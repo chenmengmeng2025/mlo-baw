@@ -347,8 +347,12 @@ public:
 
     Mac48Address GetRecipient();
 
+    void SaveThroughput(uint32_t txop1, uint32_t txop2, double throughput);
+
     void ClearStats();
 
+    uint8_t GetMode();
+    
     friend class QueueStats;
     std::vector<uint32_t> m_maxRedundantPackets; // 最大冗余包数量
     std::vector<uint32_t> m_RedundantPacketCnt;
@@ -401,6 +405,10 @@ private:
     mldParams m_current_params;
 
     uint32_t m_redundancy_enable;
+
+    std::map<std::pair<uint32_t, uint32_t>, std::pair<Time, double>> m_throughputList; // 统计每次txop间隔的吞吐量
+    bool m_triggered_txop_asyn;
+    std::pair<uint32_t, uint32_t> m_best_txopLimits;
 };
 
 } // namespace ns3
