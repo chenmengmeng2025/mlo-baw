@@ -895,7 +895,7 @@ FrameExchangeManager::SendNormalAck(const WifiMacHeader& hdr,
     SnrTag tag;
     tag.Set(dataSnr);
     packet->AddPacketTag(tag);
-    if (Simulator::Now() > Seconds(3.078)) std::cout << "SendNormalAck: " << hdr.GetSequenceNumber() << " " << ackTxVector.GetChannelWidth() << " duration: " << duration << std::endl;
+    // std::cout << Simulator::Now() << " SendNormalAck: " << hdr.GetSequenceNumber() << " " << ackTxVector.GetChannelWidth() << " duration: " << duration << std::endl;
     ForwardMpduDown(Create<WifiMpdu>(packet, ack), ackTxVector);
 }
 

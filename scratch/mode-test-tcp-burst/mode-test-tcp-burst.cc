@@ -854,13 +854,13 @@ main(int argc, char* argv[])
 
     /* Setting applications */
     uint16_t port = 50000;
-    uint16_t burstyPort = 50000;
+    uint16_t burstyPort = 9;
     ApplicationContainer dlserverApp;
     ApplicationContainer dlserverAppObss2;
     ApplicationContainer dlserverAppObss5;
     // 1. DL TCP configure
     // DL tcp flow
-    Address localAddress(InetSocketAddress(Ipv4Address::GetAny(), 50000));
+    Address localAddress(InetSocketAddress(Ipv4Address::GetAny(), port));
     PacketSinkHelper sink("ns3::TcpSocketFactory", localAddress);
     dlserverApp = sink.Install(mldNodes);
     seedNumber += sink.AssignStreams(mldNodes, seedNumber);

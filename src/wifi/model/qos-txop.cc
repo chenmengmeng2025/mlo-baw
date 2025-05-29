@@ -450,6 +450,8 @@ QosTxop::PeekNextMpdu(uint8_t linkId, uint8_t tid, Mac48Address recipient, Ptr<c
     auto item = peek();
     // remove old packets (must be retransmissions or in flight, otherwise they did
     // not get a sequence number assigned)
+    if (!IsLinkUp(linkId)) return nullptr;
+
     while (item && !item->IsFragment())
     {
         if (item->GetHeader().IsCtl())
@@ -558,12 +560,13 @@ QosTxop::PeekNextMpdu(uint8_t linkId, uint8_t tid, Mac48Address recipient, Ptr<c
                     GetMsduGrouper()->m_inflighted[*linkIds.begin()] ++; 
                     if(GetMsduGrouper() && GetMsduGrouper()->GetRedundancyMode(linkId) && GetMsduGrouper()->AvailableRedundancy(linkId))
                     {
-                        NS_LOG_DEBUG("link" << +linkId << " 冗余，"
+                        NS_LOG_DEBUG("Link " << +linkId << " 冗余，"
                                             << item->GetHeader().GetSequenceNumber() << "再次发送");
                         bool isretry = item->GetHeader().IsRetry();
-                        // std::cout << "The MPDU is inflighted on Link " << (uint32_t) (* linkIds.begin()) << ", but can be sent on Link " << (uint32_t)linkId << ", the SN is " << item->GetHeader().GetSequenceNumber()  << " cnt: " << GetMsduGrouper()->m_RedundantPacketCnt[linkId] << std::endl;
-                        if (isretry || linkId)
+                        if (isretry || linkId) {
+                            if (m_mode & (1 << 5)) std::cout << isretry << "The MPDU is inflighted on Link " << (uint32_t) (* linkIds.begin()) << ", but can be sent on Link " << (uint32_t)linkId << ", the SN is " << item->GetHeader().GetSequenceNumber()  << " cnt: " << GetMsduGrouper()->m_RedundantPacketCnt[linkId] << std::endl;
                             break;
+                        }
                     }
                 }
                 // if no BA agreement, we cannot have multiple MPDUs in-flight

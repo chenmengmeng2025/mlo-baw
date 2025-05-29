@@ -332,7 +332,7 @@ main(int argc, char* argv[])
     uint16_t mpduBufferSize{256};
     uint32_t maxAmpduSize{1024 * 4 * (1448 + 100)}; // 1048575
     uint32_t maxAmpduSize1{32 * (1448 + 100)};
-    uint32_t maxAmpduSize2{32 * (1448 + 100)}; // payload = 700
+    uint32_t maxAmpduSize2{32 * (1448 + 100)}; // payload = 1448
 
     uint32_t txoplimit1 = 0, txoplimit2 = 0;
     uint32_t singleLink = 0;
@@ -847,8 +847,8 @@ main(int argc, char* argv[])
         client1.SetAttribute("PacketSize", UintegerValue(payloadSize));
         ApplicationContainer clientApp1 = client1.Install(apNodes.Get(1));
         seedNumber += client1.AssignStreams(apNodes.Get(1), seedNumber);
-        clientApp1.Start(Seconds(3.0));
-        clientApp1.Stop(Seconds(6.0));
+        clientApp1.Start(Seconds(4.0));
+        clientApp1.Stop(Seconds(7.0));
     }
     // AP 2
     if (interference & 0b10) {

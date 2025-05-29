@@ -359,12 +359,15 @@ HtFrameExchangeManager::StartFrameExchange(Ptr<QosTxop> edca, Time availableTime
         NS_LOG_DEBUG("No frames available for transmission");
         if (edca->GetMsduGrouper())
         {
-            // std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
+            std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
             edca->GetMsduGrouper()->UpdateAmpduSize(m_linkId, 0); // 通过UpdateAmpduSize，让算法决定是否开启冗余，然后重新Peek
             peekedItem = edca->PeekNextMpdu(m_linkId);
         }
         if (!peekedItem)
             return false;
+        else {
+            std::cout << Simulator::Now() << " Peeked item: " << peekedItem->GetHeader().GetSequenceNumber() << std::endl;
+        }
     }
 
     const WifiMacHeader& hdr = peekedItem->GetHeader();
@@ -632,10 +635,12 @@ HtFrameExchangeManager::SendDataFrame(Ptr<WifiMpdu> peekedItem,
         if (edca->GetMsduGrouper()->GetMode() & 1 << 5) // sender log
         {
             std::cout << Simulator::Now() << " SendDataFrame on Link " << (uint32_t)m_linkId << std::endl << "[";
-            for (const auto & it : mpduList) {
-                std::cout << it->GetHeader().GetSequenceNumber() << ", ";
-            }
-            std::cout << "], 长度 = " << mpduList.size() << ", mpduSize = " << mpduList[0]->GetPacketSize() << std::endl;
+            if (!mpduList.empty()) {
+                for (const auto & it : mpduList) {
+                    std::cout << it->GetHeader().GetSequenceNumber() << ", ";
+                }
+                std::cout << "], 长度 = " << mpduList.size() << ", mpduSize = " << mpduList[0]->GetPacketSize() << std::endl;
+            } else std::cout << mpdu->GetHeader().GetSequenceNumber() <<  "], 长度 = 1" << std::endl;
         }
     }
     // if (Simulator::Now()> Seconds(3.075) && edca->GetMsduGrouper()) {
@@ -1183,7 +1188,7 @@ HtFrameExchangeManager::ForwardPsduDown(Ptr<const WifiPsdu> psdu, WifiTxVector& 
         txVector.SetAggregation(true);
     }
     if (m_mac->GetNLinks() > 1) {
-        if (m_mac->GetQosTxop(*psdu->GetTids().begin())->GetMode() & 0x03)
+        if (psdu->GetTids().size() && m_mac->GetQosTxop(*psdu->GetTids().begin())->GetMode() & 0x03)
         { // 模式一 or 模式二
             // bool logfl = m_mac->GetQosTxop(*psdu->GetTids().begin())->GetMode() & (1 << 5);
             // if (logfl) {

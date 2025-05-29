@@ -230,7 +230,6 @@ NotifyPpduTxDurationOBSS2G(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t link
 {
     if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
         return;
-    // std::cout << "NotifyPpduTxDuration: " << Simulator::Now().GetSeconds() << std::endl;
     Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
     uint32_t nmpdus = 0;
     if (psdu->IsAggregate())
@@ -424,8 +423,6 @@ main(int argc, char* argv[])
         // Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("0"));
         Config::SetDefault("ns3::WifiDefaultProtectionManager::EnableMuRts", BooleanValue(true));
     }
-    // Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", UintegerValue(std::numeric_limits<uint32_t>::max()));
-    // Config::SetDefault("ns3::WifiDefaultProtectionManager::EnableMuRts", BooleanValue(true));
     // Config::SetDefault("ns3::WifiMacQueue::MaxDelay", TimeValue(simulationTime * 2));
 
     // Set infinitely long queue

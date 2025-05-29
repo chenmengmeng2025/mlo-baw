@@ -406,8 +406,8 @@ private:
 
     uint32_t m_redundancy_enable;
 
-    std::map<std::pair<uint32_t, uint32_t>, std::pair<Time, double>> m_throughputList; // 统计每次txop间隔的吞吐量
-    bool m_triggered_txop_asyn;
+    std::vector<std::tuple<uint32_t, uint32_t, double>> m_throughputList; // 统计每次txop间隔的吞吐量
+    bool m_trigger_update;
     std::pair<uint32_t, uint32_t> m_best_txopLimits;
 };
 

@@ -478,8 +478,6 @@ main(int argc, char* argv[])
     size_t nStaMlds{1};
     std::vector<size_t> nStaSlds{1, 1};
     uint32_t payloadSize = 700; // must fit in the max TX duration when transmitting at MCS 0 over an RU of 26 tones
-    Time accessReqInterval{0};
-    uint32_t maxGroupSize = 4;
     if (useRts) // 默认不使用RTS CTS
     {
         // Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("0"));

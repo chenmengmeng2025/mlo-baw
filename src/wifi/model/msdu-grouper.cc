@@ -381,7 +381,7 @@ MsduGrouper::MsduGrouper(uint32_t maxGroupSize,
     m_gs_enable = false;
     m_param_update = false;
     m_redundancy_enable = 0; // 默认关闭冗余模式
-    m_triggered_txop_asyn = false;
+    m_trigger_update = false;
 }
 
 MsduGrouper::~MsduGrouper()
@@ -809,7 +809,7 @@ MsduGrouper::UpdateAmpduSize(uint8_t linkId, uint32_t size)
             while(it!=m_queueStats.m_ppduinfos.rend() && (it->linkId & (1 << linkId))) {++it;};
             if (it != m_queueStats.m_ppduinfos.rend() && it->txTime + it->txDuration > Simulator::Now() + MicroSeconds(32)) {
                 redundancy_num =  std::floor((it->txTime + it->txDuration - Simulator::Now()).GetMicroSeconds() * datarate / mpdusize / 8);
-                // if (redundancy_num > 0) std::cout << "开启冗余 on Link " << (uint32_t)linkId <<  ", redundancy_num = " << redundancy_num << std::endl;
+                if (redundancy_num > 0) std::cout << "开启冗余 on Link " << (uint32_t)linkId <<  ", redundancy_num = " << redundancy_num << std::endl;
             }
             SetRedundancyMode(linkId, redundancy_num);    
         }
@@ -848,7 +848,7 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
     params.CWmins = {1, 1};
     params.CWmaxs = {3, 3};
     params.Aifsns = {aifsn1, aifsn2};
-    params.RTS_CTS = {1, 0};
+    params.RTS_CTS = {0, 0};
     params.MaxSlrcs = {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
     params.MaxSsrcs = {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
     params.TxopLimits = {0, 0}; // < 171
@@ -868,34 +868,24 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
     std::cout << "MLO Algorithm to Set Aifsn: (" << aifsn1 << ", " << aifsn2 << ")" << std::endl;
     if (istcp) { // TCP流量才需要细致调整TxopLimt，来避免与2.4G上的TCP ACK的干扰
         std::cout << "TCP TRAFFIC" << std::endl;
-        // if (occ1 * (1 - p1) > 0.1) {
-        //     params.RTS_CTS[0] = 1;
-        //     // params.TxopLimits[0] --;
-        // }
-        if (m_triggered_txop_asyn) {
-            uint32_t txoplimit1 = (double) 64 * (mpdusize * datarate1 - 120 * datarate2 ) / (datarate1 + datarate2) / (datarate1);
-            uint32_t txoplimit2 = (double) 64 * (120 + mpdusize) / (datarate1 + datarate2);
-            params.TxopLimits[0] = 39;
-            params.TxopLimits[1] = 62;
+        if (p1 < 0.8)
+        if (m_trigger_update) {
+            auto [txop1, txop2, thpt] = *m_throughputList.rbegin();
+            
             // tm = std::ceil((double)txoplimit / 25 * p2 * datarate2 / p1 / datarate1);
             // tm = std::min(tm, params.TxopLimits[0]);
             // tp = tm * (p1 * datarate1) / (p2 * datarate2);
             // // tp = 0;
             // std::cout << "tm, tp: " << tm << ", " << tp << std::endl;
-            // params.TxopLimits[0] = params.TxopLimits[0] - tm;
-            // params.TxopLimits[0] = params.TxopLimits[0] + tp;
+            params.TxopLimits[0] = 1;
+            params.TxopLimits[1] = 100;
         } else {
-            uint32_t txoplimit1 = (double) 64 * (mpdusize * datarate1 - 120 * datarate2 ) / (datarate1 + datarate2) / (datarate1);
-            uint32_t txoplimit2 = (double) 64 * (120 + mpdusize) / (datarate1 + datarate2);
-            params.TxopLimits[0] = 39;
-            params.TxopLimits[1] = 62;
-            // params.TxopLimits = {m_best_txopLimits.first, m_best_txopLimits.second};
-            // std::cout << "Use Best TxopLimits: " << m_best_txopLimits.first << ", " << m_best_txopLimits.second << std::endl;
+            if (m_throughputList.size() < 3) {
+                return params;
+            }
+            params.TxopLimits = {m_best_txopLimits.first, m_best_txopLimits.second};
+            std::cout << "Use Best TxopLimits: " << m_best_txopLimits.first << ", " << m_best_txopLimits.second << std::endl;
         }
-        // if (occ2 * (1 - p2) > 0.1) {
-        //     // params.RTS_CTS[1] = 1;
-        //     params.TxopLimits[1] ++;
-        // }
     }
     return params;
 }
@@ -1141,27 +1131,29 @@ MsduGrouper::EnableRedundancyMode(){
 
 void 
 MsduGrouper::SaveThroughput(uint32_t txop1, uint32_t txop2, double throughput) {
-    m_throughputList[std::make_pair(txop1, txop2)] = std::make_pair(Simulator::Now(), throughput);
-    if (throughput < 0.8 * (m_queueStats.GetAverageDataRate(0, m_period) + m_queueStats.GetAverageDataRate(1, m_period)) ) m_triggered_txop_asyn = true;
-    else m_triggered_txop_asyn = false;
+    m_throughputList.emplace_back(txop1, txop2, throughput);
+    
+    if (throughput < 0.9 * 0.9 * (m_queueStats.GetAverageDataRate(0, m_period) + m_queueStats.GetAverageDataRate(1, m_period)) ) m_trigger_update = true;
+    else {
+        m_trigger_update = !(m_throughputList.size() >= 5); // use the best params of history
+    }
+    
+    if (m_throughputList.size() > 5) {
+        m_throughputList.erase(m_throughputList.begin());
+    }
+
     double thpt = 0;
-    for (auto it = m_throughputList.begin(); it != m_throughputList.end();)
+    for (auto it = m_throughputList.begin(); it != m_throughputList.end(); it++)
     {
-        if (it->second.first < Simulator::Now() - 5 * m_period)
+        auto tmp = std::get<2>(*it);
+        if (tmp > thpt)
         {
-            it = m_throughputList.erase(it);
-        } 
-        else
-        {
-            if (it->second.second > thpt)
-            {
-                thpt = it->second.second;
-                m_best_txopLimits = it->first;
-            }
-            it++;
+            thpt = tmp;
+            m_best_txopLimits = {std::get<0>(*it), std::get<1>(*it)};
         }
     }
-    std::cout << "Best TxopLimits: " << m_best_txopLimits.first << ", " << m_best_txopLimits.second
+    if (!m_trigger_update)
+    std::cout << "Use Best TxopLimits: " << m_best_txopLimits.first << ", " << m_best_txopLimits.second
               << " with throughput: " << thpt << std::endl;
 }
 
