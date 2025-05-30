@@ -859,8 +859,8 @@ main(int argc, char* argv[])
         client2.SetAttribute("PacketSize", UintegerValue(payloadSize));
         ApplicationContainer clientApp2 = client2.Install(apNodes.Get(2));
         seedNumber += client2.AssignStreams(apNodes.Get(2), seedNumber);
-        clientApp2.Start(Seconds(3.0));
-        clientApp2.Stop(Seconds(6.0));
+        clientApp2.Start(Seconds(4.0));
+        clientApp2.Stop(Seconds(7.0));
     }
     // Enable TID-to-Link Mapping for AP and MLD STAs
     for (auto i = mldDev.Begin(); i != mldDev.End(); ++i)

@@ -359,14 +359,13 @@ HtFrameExchangeManager::StartFrameExchange(Ptr<QosTxop> edca, Time availableTime
         NS_LOG_DEBUG("No frames available for transmission");
         if (edca->GetMsduGrouper())
         {
-            std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
+            // std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
             edca->GetMsduGrouper()->UpdateAmpduSize(m_linkId, 0); // 通过UpdateAmpduSize，让算法决定是否开启冗余，然后重新Peek
             peekedItem = edca->PeekNextMpdu(m_linkId);
         }
-        if (!peekedItem)
+        if (!peekedItem) {
+            // 卡TCP窗，此时需要尽可能减少对TCP ACK的干扰
             return false;
-        else {
-            std::cout << Simulator::Now() << " Peeked item: " << peekedItem->GetHeader().GetSequenceNumber() << std::endl;
         }
     }
 

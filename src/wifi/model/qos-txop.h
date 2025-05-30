@@ -398,6 +398,13 @@ class QosTxop : public Txop
      */
     uint8_t GetAifsn(uint8_t linkId) const override;
 
+    
+    bool IsLinkUp(uint8_t linkId);
+
+    void UpdateLinkStates();
+
+    void SetLinkUp(uint8_t newLinkUp);
+    
   protected:
     /**
      * Structure holding information specific to a single link. Here, the meaning of
@@ -435,12 +442,6 @@ class QosTxop : public Txop
     void PrintStatsResult(Time period);
 
     void SetParams(const mldParams& next_params);
-
-    bool IsLinkUp(uint8_t linkId);
-
-    void UpdateLinkStates();
-
-    void SetLinkUp(uint8_t newLinkUp);
 
   private:
     /// allow AggregationCapableTransmissionListener class access

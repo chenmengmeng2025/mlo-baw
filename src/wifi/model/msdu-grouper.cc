@@ -382,6 +382,8 @@ MsduGrouper::MsduGrouper(uint32_t maxGroupSize,
     m_param_update = false;
     m_redundancy_enable = 0; // 默认关闭冗余模式
     m_trigger_update = false;
+    m_maxtxoplimit = 0;
+    m_ampduLimits = {-1, -1};
 }
 
 MsduGrouper::~MsduGrouper()
@@ -797,7 +799,7 @@ MsduGrouper::UpdateAmpduSize(uint8_t linkId, uint32_t size)
         }
     }
 
-    if (Simulator::Now() > m_startTime && size == 0 && (m_mode & 0x01))
+    if (Simulator::Now() > m_startTime && size == 0 && (m_mode & 0x01)) // 硬卡窗，开启冗余
     {
         uint32_t redundancy_num = 0;
         if (m_redundancy_enable & (1 << linkId))
@@ -809,7 +811,7 @@ MsduGrouper::UpdateAmpduSize(uint8_t linkId, uint32_t size)
             while(it!=m_queueStats.m_ppduinfos.rend() && (it->linkId & (1 << linkId))) {++it;};
             if (it != m_queueStats.m_ppduinfos.rend() && it->txTime + it->txDuration > Simulator::Now() + MicroSeconds(32)) {
                 redundancy_num =  std::floor((it->txTime + it->txDuration - Simulator::Now()).GetMicroSeconds() * datarate / mpdusize / 8);
-                if (redundancy_num > 0) std::cout << "开启冗余 on Link " << (uint32_t)linkId <<  ", redundancy_num = " << redundancy_num << std::endl;
+                // if (redundancy_num > 0) std::cout << "开启冗余 on Link " << (uint32_t)linkId <<  ", redundancy_num = " << redundancy_num << std::endl;
             }
             SetRedundancyMode(linkId, redundancy_num);    
         }
@@ -836,7 +838,7 @@ MsduGrouper::GetCurrentEdcaParameters()
 }
 
 mldParams
-MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, double p2, double datarate1, double datarate2, double occ1, double occ2)
+MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, double p2, double datarate1, double datarate2, double occ1, double occ2, double thp1, double thp2)
 {
     auto mpdusize = GetMeanMpduSize();
     bool istcp = mpdusize / m_maxGroupSize > 1000;
@@ -857,36 +859,76 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
     params.RedundancyFixedNumbers = {0, 0};
     if (!m_param_update || initial) {
         params.No = 0;
+        m_current_params = params;
         return params;
     }
+    int maxtxoplimit1 = std::ceil(std::min(winSize * mpdusize * 8 / datarate1 / 32, 170.));
+    int maxtxoplimit2 = std::ceil(std::min(winSize * mpdusize * 8 / datarate2 / 32, 170.));
+    m_maxtxoplimit = std::min(maxtxoplimit1, maxtxoplimit2);
     txoplimit = std::ceil((double) winSize / (p1 * datarate1 + p2 * datarate2) * mpdusize * 8 / 32);
-    if (txoplimit * MicroSeconds(32) > MicroSeconds(5484)) {
+    if (txoplimit > m_maxtxoplimit) {
         txoplimit = std::ceil((double) (winSize / 2) / (p1 * datarate1 + p2 * datarate2) * mpdusize * 8 / 32);
     }
     std::cout << "MLO Algorithm to Set Txoplimit: " << txoplimit << std::endl;
     params.TxopLimits = {txoplimit, txoplimit};
     std::cout << "MLO Algorithm to Set Aifsn: (" << aifsn1 << ", " << aifsn2 << ")" << std::endl;
-    if (istcp) { // TCP流量才需要细致调整TxopLimt，来避免与2.4G上的TCP ACK的干扰
-        std::cout << "TCP TRAFFIC" << std::endl;
-        if (p1 < 0.8)
-        if (m_trigger_update) {
-            auto [txop1, txop2, thpt] = *m_throughputList.rbegin();
-            
-            // tm = std::ceil((double)txoplimit / 25 * p2 * datarate2 / p1 / datarate1);
-            // tm = std::min(tm, params.TxopLimits[0]);
-            // tp = tm * (p1 * datarate1) / (p2 * datarate2);
-            // // tp = 0;
-            // std::cout << "tm, tp: " << tm << ", " << tp << std::endl;
-            params.TxopLimits[0] = 1;
-            params.TxopLimits[1] = 100;
+    if (istcp) { 
+        // 减少对TCP ACK的干扰，避免TCP窗过小
+        if (p1 < 0.9) {
+            params.RTS_CTS[0] = 1;
+            params.CWmins[0] = 15;
+            params.CWmaxs[0] = 1023;
         } else {
-            if (m_throughputList.size() < 3) {
-                return params;
-            }
-            params.TxopLimits = {m_best_txopLimits.first, m_best_txopLimits.second};
-            std::cout << "Use Best TxopLimits: " << m_best_txopLimits.first << ", " << m_best_txopLimits.second << std::endl;
+            params.RTS_CTS[0] = m_current_params.RTS_CTS[0];
+            params.CWmins[0] = m_current_params.CWmins[0];
+            params.CWmaxs[0] = m_current_params.CWmaxs[0];
         }
+        // TCP流量不能通过简单通过调整TxopLimits来实现对齐，原因是TCP流量有拥塞控制机制，队列可能没有包，这样如果TxopLimits设置过大，会导致大段空口的浪费
+        // 通过控制最大聚合数，来实现对齐
+        std::cout << "TCP TRAFFIC" << std::endl;
+        params.TxopLimits = {0, 0};
+        int n1 = 0, n2 = 0;
+        int QOSDATA = mpdusize * 8;
+        int TCPACK = 60 * 8 * m_maxGroupSize; // 一个MPDU对应的TCPACK大小 
+        // n2 * QOSDATA / datarate2 >= n1 * QOSDATA / datarate1 + (n1 + n2) * TCPACK / datarate1
+        for (n1 = 0; n1 < 256; n1++) {
+            n2 = winSize - n1;
+            if (n2 * QOSDATA / datarate2 <= n1 * QOSDATA / datarate1 + (n1 + n2) * TCPACK / datarate1) {
+                n1 --;
+                n2 ++;
+                break;
+            }
+        }
+        std::cout << "n1: " << n1 << " n2: " << n2 << std::endl;
+        if (n1 < 0) {
+            n1 = 0; // 关闭2.4G链路
+            n2 = -1; // 表示5G上尽可能聚合最大数量的包
+        }
+        m_ampduLimits = {n1, n2};
+        // Ptr<NormalRandomVariable> normalRandom = CreateObject<NormalRandomVariable>();
+        // int maxtp = std::ceil(txoplimit / (datarate2 / datarate1));
+        // auto mean = maxtp / 2;
+        // normalRandom->SetAttribute("Mean", DoubleValue(mean));
+        // normalRandom->SetAttribute("Variance", DoubleValue(mean / 2));
+
+
+        
+        if (p2 < 0.9) params.RTS_CTS[1] = 1;
+        // if (m_trigger_update) {
+        //     auto [txop1, txop2, thpt] = *m_throughputList.rbegin();
+        //     // std::cout << "tm, tp: " << tm << ", " << tp << std::endl;
+        //     params.TxopLimits[0] = 82;
+        //     params.TxopLimits[1] = 130;
+        // } else {
+        //     if (m_throughputList.size() < 3) {
+        //         return params;
+        //     }
+
+        //     params.TxopLimits = {m_best_txopLimits.first, m_best_txopLimits.second};
+        //     std::cout << "Use Best TxopLimits: " << m_best_txopLimits.first << ", " << m_best_txopLimits.second << std::endl;
+        // }
     }
+    m_current_params = params;
     return params;
 }
 
@@ -1152,7 +1194,7 @@ MsduGrouper::SaveThroughput(uint32_t txop1, uint32_t txop2, double throughput) {
             m_best_txopLimits = {std::get<0>(*it), std::get<1>(*it)};
         }
     }
-    if (!m_trigger_update)
+    if (!m_trigger_update && m_param_update)
     std::cout << "Use Best TxopLimits: " << m_best_txopLimits.first << ", " << m_best_txopLimits.second
               << " with throughput: " << thpt << std::endl;
 }
@@ -1162,4 +1204,15 @@ MsduGrouper::GetMode() {
     return m_mode;
 }
 
-} // namespace ns3
+uint32_t 
+MsduGrouper::GetAmpduLimit(uint8_t linkId) {
+    if (m_ampduLimits[linkId] < 0) return std::numeric_limits<uint32_t>::max();
+    return m_ampduLimits[linkId];
+} 
+
+void 
+MsduGrouper::SetAmpduLimit(uint8_t linkId, int limit) {
+    m_ampduLimits[linkId] = limit;
+}
+
+}// namespace ns3

@@ -388,8 +388,12 @@ QosFrameExchangeManager::TryAddMpdu(Ptr<const WifiMpdu> mpdu,
     {
         ppduDurationLimit = availableTime - *protectionTime - *acknowledgmentTime;
     }
-
-    if (!IsWithinLimitsIfAddMpdu(mpdu, txParams, ppduDurationLimit))
+    uint32_t maxNMpdus = std::numeric_limits<uint32_t>::max();
+    if (m_edca->GetMode() & 0x03) {
+        uint8_t linkId = m_phy->GetPhyBand() == WIFI_PHY_BAND_2_4GHZ ? 0 : 1;
+        maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit(linkId);
+    }
+    if (!IsWithinLimitsIfAddMpdu(mpdu, txParams, ppduDurationLimit) || txParams.GetCurrentMpduNumber(mpdu->GetHeader().GetAddr1()) > maxNMpdus)
     {
         // adding MPDU failed, undo the addition of the MPDU and restore protection and
         // acknowledgment methods if they were swapped

@@ -484,9 +484,8 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
     //     blockAck.Print(std::cout);
     //     std::cout << "队列 " << (it->second.second.begin() == it->second.second.end()) << std::endl;
     // }
-    if (Simulator::Now() > Seconds(1.72))
-    std::cout << "队列 " << (it->second.second.begin() == it->second.second.end()) << std::endl;
     bool logfl = m_mode & (1 << 5);
+    std::vector<uint32_t> recv_seqs;
     if (logfl && (m_mode & 0x03)) {
         std::cout << Simulator::Now() << " Got Block Ack on Link " << (uint32_t)linkId << " " << recipient << " tid = " << (uint32_t)tid << " m_mode = " << m_mode << std::endl;
         blockAck.Print(std::cout << "\t");
@@ -495,12 +494,10 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
     {
         uint16_t currentSeq = (*queueIt)->GetHeader().GetSequenceNumber();
         NS_LOG_DEBUG("Current seq=" << currentSeq);
-        if (Simulator::Now() > Seconds(1.72))
-        std::cout << currentSeq << " " << blockAck.IsPacketReceived(currentSeq, index) << std::endl;
         if (blockAck.IsPacketReceived(currentSeq, index))
         {
             it->second.first.NotifyAckedMpdu(*queueIt);
-
+            if (logfl) recv_seqs.push_back(currentSeq);
             // 海思新架构模拟
             // 移动读指针到最新，与全局读指针保持一致
             if (m_mode & 0x03) {
@@ -524,12 +521,17 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
             ++queueIt;
         }
     }
-    // if (Simulator::Now() > Seconds(1.165)) std::cout << nSuccessfulMpdus << " MPDUs acknowledged" << std::endl;
+    if (logfl) {
+        std::cout << "Received Mpdus: [";
+        for (auto seq : recv_seqs) {
+            std::cout << seq << ", ";
+        }
+        std::cout << "], nSuccessfulMpdus = " << nSuccessfulMpdus << std::endl;
+    }
     // 同步linkId链路的信息到其他链路 , 无论是否传输成功，均要将自己的读指针和全局读指针进行同步
     if (m_mode & 0x03) {
         NS_ASSERT(m_linkRPtrSyncEnabled[linkId]);
         it->second.first.m_linkRPtr[linkId] = it->second.first.m_txWindow.GetWinStart();
-        std::cout << "WinStart: " << it->second.first.m_txWindow.GetWinStart() << std::endl;
         SyncRptr(recipient, tid, linkId);
     }
     // Dequeue all acknowledged MPDUs at once

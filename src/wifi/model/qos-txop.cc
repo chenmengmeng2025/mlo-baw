@@ -1107,14 +1107,13 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
     // param_update = true -> MLO Algorithm 
     // param_update = false -> Constant Params
     {
-        auto address = GetMsduGrouper()->GetRecipient();
-        auto winSize = GetBaBufferSize(address, 0);
-        
-        const auto& new_params = GetMsduGrouper()->GetNewEdcaParameters(false, winSize, p1, p2, avgdatarate1, avgdatarate2, chanrate1, chanrate2);
+        auto winSize = GetBaBufferSize(GetMsduGrouper()->GetRecipient(), 0);
+        auto params = GetMsduGrouper()->GetCurrentEdcaParameters();
+        const auto& new_params = GetMsduGrouper()->GetNewEdcaParameters(false, winSize, p1, p2, avgdatarate1, avgdatarate2, chanrate1, chanrate2, Thp1, Thp2);
         const auto meanTxopTime = GetMsduGrouper()->GetMeanTxopTime(period);
         const auto meanTxopMpduNum = GetMsduGrouper()->GetMeanTxMpduNum(period);
         if (!TracedParamsAndStats.IsEmpty())
-            TracedParamsAndStats(std::move(new_params),
+            TracedParamsAndStats(std::move(params),
                                  GetMsduGrouper()->GetLink1Pct(),
                                  Simulator::Now().GetSeconds(),
                                  {Thp1, Thp2},
@@ -1159,8 +1158,6 @@ void
 QosTxop::SetLinkUp(uint8_t newLinkUp) {
     m_link_up = newLinkUp;
 }
-
-
 
 void
 QosTxop::PrintStatsResult(Time period)

@@ -95,7 +95,7 @@ public:
      */
     std::vector<uint32_t> GetRecentAMPDULengths(uint8_t linkId, Time period);
     /**
-     * \brief 获取BawQueue，这个队列我没有按照固定大小来设置，所以不保证大小一定为4096
+     * \brief 获取BawQueue
      * \return 一个包含了BawQueue的map，key是接收者地址和链路ID，value是一个包含了WiFiBawQueueIt的vector
      */
     std::map<std::pair<Mac48Address, uint8_t>, std::vector<WiFiBawQueueIt>>& GetBawQueue() {return m_bawqueue;}
@@ -317,7 +317,7 @@ public:
      
     void EnableParamUpdate();
 
-    mldParams GetNewEdcaParameters(bool initial, uint16_t winSize = 256, double p1 = 1, double p2 = 1, double datarate1 = 0, double datarate2 = 0, double occ1 = 0, double occ2 = 0);
+    mldParams GetNewEdcaParameters(bool initial, uint16_t winSize = 256, double p1 = 1, double p2 = 1, double datarate1 = 0, double datarate2 = 0, double occ1 = 0, double occ2 = 0, double thp1 = 0, double thp2 = 0);
     
     std::pair<uint8_t, Time> GetNewLinkStates();
 
@@ -346,6 +346,10 @@ public:
     uint32_t GetMeanMpduSize();
 
     Mac48Address GetRecipient();
+
+    uint32_t GetAmpduLimit(uint8_t linkId);
+
+    void SetAmpduLimit(uint8_t linkId, int limit);
 
     void SaveThroughput(uint32_t txop1, uint32_t txop2, double throughput);
 
@@ -409,6 +413,8 @@ private:
     std::vector<std::tuple<uint32_t, uint32_t, double>> m_throughputList; // 统计每次txop间隔的吞吐量
     bool m_trigger_update;
     std::pair<uint32_t, uint32_t> m_best_txopLimits;
+    uint32_t m_maxtxoplimit;
+    std::vector<int> m_ampduLimits; // 每条链路的最大AMPDU聚合长度
 };
 
 } // namespace ns3
