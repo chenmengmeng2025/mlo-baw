@@ -883,6 +883,7 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
             params.CWmins[0] = m_current_params.CWmins[0];
             params.CWmaxs[0] = m_current_params.CWmaxs[0];
         }
+        if (p2 < 0.9) params.RTS_CTS[1] = 1;
         // TCP流量不能通过简单通过调整TxopLimits来实现对齐，原因是TCP流量有拥塞控制机制，队列可能没有包，这样如果TxopLimits设置过大，会导致大段空口的浪费
         // 通过控制最大聚合数，来实现对齐
         std::cout << "TCP TRAFFIC" << std::endl;
@@ -904,29 +905,8 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
             n1 = 0; // 关闭2.4G链路
             n2 = -1; // 表示5G上尽可能聚合最大数量的包
         }
-        m_ampduLimits = {n1, n2};
-        // Ptr<NormalRandomVariable> normalRandom = CreateObject<NormalRandomVariable>();
-        // int maxtp = std::ceil(txoplimit / (datarate2 / datarate1));
-        // auto mean = maxtp / 2;
-        // normalRandom->SetAttribute("Mean", DoubleValue(mean));
-        // normalRandom->SetAttribute("Variance", DoubleValue(mean / 2));
-
-
-        
-        if (p2 < 0.9) params.RTS_CTS[1] = 1;
-        // if (m_trigger_update) {
-        //     auto [txop1, txop2, thpt] = *m_throughputList.rbegin();
-        //     // std::cout << "tm, tp: " << tm << ", " << tp << std::endl;
-        //     params.TxopLimits[0] = 82;
-        //     params.TxopLimits[1] = 130;
-        // } else {
-        //     if (m_throughputList.size() < 3) {
-        //         return params;
-        //     }
-
-        //     params.TxopLimits = {m_best_txopLimits.first, m_best_txopLimits.second};
-        //     std::cout << "Use Best TxopLimits: " << m_best_txopLimits.first << ", " << m_best_txopLimits.second << std::endl;
-        // }
+        SetAmpduLimit(0, n1);
+        SetAmpduLimit(1, n2);
     }
     m_current_params = params;
     return params;

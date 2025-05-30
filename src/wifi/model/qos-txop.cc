@@ -563,7 +563,8 @@ QosTxop::PeekNextMpdu(uint8_t linkId, uint8_t tid, Mac48Address recipient, Ptr<c
                         NS_LOG_DEBUG("Link " << +linkId << " 冗余，"
                                             << item->GetHeader().GetSequenceNumber() << "再次发送");
                         bool isretry = item->GetHeader().IsRetry();
-                        if (isretry || linkId) {
+                        bool isudp = item->GetPacketSize() / GetMaxGroupSize() < 1000;
+                        if (isretry || linkId || isudp) {
                             if (m_mode & (1 << 5)) std::cout << isretry << "The MPDU is inflighted on Link " << (uint32_t) (* linkIds.begin()) << ", but can be sent on Link " << (uint32_t)linkId << ", the SN is " << item->GetHeader().GetSequenceNumber()  << " cnt: " << GetMsduGrouper()->m_RedundantPacketCnt[linkId] << std::endl;
                             break;
                         }

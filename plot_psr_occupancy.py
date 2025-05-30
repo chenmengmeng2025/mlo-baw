@@ -41,4 +41,5 @@ if __name__ == "__main__":
 
     plt.title('PSR and Occupancy Rate Metrics')
     plt.tight_layout()
-    plt.show()
+    # plt.show()
+    plt.savefig('psr_occupancy.png', dpi=400)

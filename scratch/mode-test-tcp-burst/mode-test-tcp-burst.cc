@@ -979,7 +979,7 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode_recv)); // 只负责接收，无msdu_grouper, mode只要非0, 接收端就是新架构，BA只包含各自链路所收到的包的接收信息，各自维护自己的bitmap
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchEnable", BooleanValue(grid_search_enable));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/ParamUpdate", BooleanValue(param_update));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchParameter", StringValue("./scratch/params.json"));
+    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchParameter", StringValue("./scratch/params.json"));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/RedundancyEnable", BooleanValue(redundancy_enable));
 
     /* BSS EDCA */
@@ -1075,6 +1075,7 @@ main(int argc, char* argv[])
         fout.close();
     }
     std::vector<double> res_throughputs;
+    std::vector<double> res_thpt_tv = {0, 0, 0}
     std::cout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
             "MaxSsrc1, MaxSlrc2, MaxSsrc2, RedundancyThreshold1, RedundancyThreshold2, RedundancyFixedNumber1, "
             "RedundancyFixedNumber2, BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, PSR1, PSR2, Occupancy Rate 1, Occupancy Rate 2, blocktimerate1, blocktimerate2, severeblocktimerate1, severeblocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, pct1, Throughput(Mbps)" << std::endl;
@@ -1104,6 +1105,9 @@ main(int argc, char* argv[])
                   << res.thpt[0] << ", " << res.thpt[1] << ", " << res.pct1 << ", "
                   << res.throughput << std::endl;
         res_throughputs.push_back(res.throughput);
+        if (res.time > 2 && res.time < 4.1) res_thpt_tv[0] += res.throughput;
+        if (res.time > 5 && res.time < 7.1) res_thpt_tv[1] += res.throughput;
+        if (res.time > 8 && res.time < 10.1) res_thpt_tv[2] += res.throughput;
     }
 
     std::ofstream file("throughput.csv", std::ios::out);
@@ -1145,6 +1149,9 @@ main(int argc, char* argv[])
     }
     std::cout << "Throughput = " << ans.second  << " Mbps."<< std::endl;
 
+    std::cout << "Time Variant Avarage Throughput: " << res_thpt_tv[0] / 10 << " Mbps (2-4s), "
+              << res_thpt_tv[1] / 10 << " Mbps (5-7s), "
+              << res_thpt_tv[2] / 10 << " Mbps (8-10s)" << std::endl;
     std::cout << "result saved: " << csv_file << std::endl;
     return 0;
 }

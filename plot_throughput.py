@@ -47,4 +47,5 @@ if __name__ == "__main__":
 
     plt.title('Throughput and Rate Metrics')
     plt.tight_layout()
-    plt.show()
+    # plt.show()
+    plt.savefig('throughput.png', dpi=400)
