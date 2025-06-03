@@ -377,7 +377,7 @@ RecipientBlockAckAgreement::FillBlockAckBitmap(CtrlBAckResponseHeader* blockAckH
             }
         } else {
             for (std::size_t i = 0; i < m_scoreboard_asyn[linkId].GetWinSize(); i++)
-            {   
+            {
                 if (m_scoreboard_asyn[linkId].At(i))
                 {
                     blockAckHeader->SetReceivedPacket((ssn + i) % SEQNO_SPACE_SIZE, index);

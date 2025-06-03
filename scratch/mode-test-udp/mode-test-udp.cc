@@ -327,7 +327,7 @@ main(int argc, char* argv[])
     // std::string rateCtrl{"minstrel"};
 
     uint16_t mpduBufferSize{256};
-    uint32_t maxAmpduSize{1024 * 4 * (700 + 150)}; // 1048575
+    uint32_t maxAmpduSize{1024 * 8 * (700 + 150)}; // 1048575
     uint32_t maxAmpduSize1{32 * (700 + 150)};
     uint32_t maxAmpduSize2{32 * (700 + 150)}; // payload = 700
 
@@ -938,7 +938,8 @@ main(int argc, char* argv[])
     std::cout << "Total DL Throughput [ " << statsBeginTime.As(Time::S) <<" - " << statsEndTime.As(Time::S) << "]: \t\t\t" << (rx_totalbytes - rx_totalbytesStart) * 8.0 / (statsEndTime - statsBeginTime).GetMicroSeconds() << " Mbit/s" << std::endl;
     
     Simulator::Destroy();
-
+    
+    if (mode == 0) return 0;
     std::ofstream fout(csv_file, std::ios::out);
     fout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
             "MaxSsrc1, MaxSlrc2, MaxSsrc2, RedundancyThreshold1, RedundancyThreshold2, RedundancyFixedNumber1, "

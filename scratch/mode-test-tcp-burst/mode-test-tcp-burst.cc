@@ -915,7 +915,7 @@ main(int argc, char* argv[])
         BurstyHelper burstyHelper("ns3::UdpSocketFactory", InetSocketAddress(sldNodeInterface2.GetAddress(0), burstyPort)); 
         burstyHelper.SetAttribute("FragmentSize", UintegerValue(700)); 
         burstyHelper.SetBurstGenerator("ns3::SimpleBurstGenerator",
-                                        "PeriodRv", StringValue("ns3::ConstantRandomVariable[Constant=0.2]"), // 每2秒1个burst
+                                        "PeriodRv", StringValue("ns3::ConstantRandomVariable[Constant=1]"), // 每1秒1个burst
                                         "BurstSizeRv", StringValue("ns3::ConstantRandomVariable[Constant=700000]")); // 1000个Fragment
         ApplicationContainer burstyApps = burstyHelper.Install(apNodes.Get(1));
         burstyApp2 = burstyApps.Get(0)->GetObject<BurstyApplication>();
@@ -930,7 +930,7 @@ main(int argc, char* argv[])
         BurstyHelper burstyHelper("ns3::UdpSocketFactory", InetSocketAddress(sldNodeInterface5.GetAddress(0), burstyPort)); 
         burstyHelper.SetAttribute("FragmentSize", UintegerValue(700)); 
         burstyHelper.SetBurstGenerator("ns3::SimpleBurstGenerator",
-                                        "PeriodRv", StringValue("ns3::ConstantRandomVariable[Constant=0.2]"), // 每2秒1个burst
+                                        "PeriodRv", StringValue("ns3::ConstantRandomVariable[Constant=1]"), // 每1秒1个burst
                                         "BurstSizeRv", StringValue("ns3::ConstantRandomVariable[Constant=700000]")); // 1000个Fragment
         ApplicationContainer burstyApps = burstyHelper.Install(apNodes.Get(2));
         burstyApp5 = burstyApps.Get(0)->GetObject<BurstyApplication>();
@@ -1075,7 +1075,7 @@ main(int argc, char* argv[])
         fout.close();
     }
     std::vector<double> res_throughputs;
-    std::vector<double> res_thpt_tv = {0, 0, 0}
+    std::vector<double> res_thpt_tv = {0, 0, 0};
     std::cout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
             "MaxSsrc1, MaxSlrc2, MaxSsrc2, RedundancyThreshold1, RedundancyThreshold2, RedundancyFixedNumber1, "
             "RedundancyFixedNumber2, BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, PSR1, PSR2, Occupancy Rate 1, Occupancy Rate 2, blocktimerate1, blocktimerate2, severeblocktimerate1, severeblocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, pct1, Throughput(Mbps)" << std::endl;
@@ -1149,9 +1149,16 @@ main(int argc, char* argv[])
     }
     std::cout << "Throughput = " << ans.second  << " Mbps."<< std::endl;
 
-    std::cout << "Time Variant Avarage Throughput: " << res_thpt_tv[0] / 10 << " Mbps (2-4s), "
-              << res_thpt_tv[1] / 10 << " Mbps (5-7s), "
-              << res_thpt_tv[2] / 10 << " Mbps (8-10s)" << std::endl;
+    std::cout << "Total RX bursts: " << burstyApp2->GetTotalTxBursts () << "/"
+            << burstSink2->GetTotalRxBursts () << std::endl;
+    std::cout << "Total RX fragments: " << burstyApp2->GetTotalTxFragments () << "/"
+                << burstSink2->GetTotalRxFragments () << std::endl;
+    std::cout << "Total RX bytes: " << burstyApp2->GetTotalTxBytes () << "/"
+                << burstSink2->GetTotalRxBytes () << std::endl;
+
+    std::cout << "Time Variant Avarage Throughput: " << res_thpt_tv[0] / 20 << " Mbps (2-4s), "
+              << res_thpt_tv[1] / 20 << " Mbps (5-7s), "
+              << res_thpt_tv[2] / 20 << " Mbps (8-10s)" << std::endl;
     std::cout << "result saved: " << csv_file << std::endl;
     return 0;
 }

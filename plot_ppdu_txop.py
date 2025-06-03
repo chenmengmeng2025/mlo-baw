@@ -17,7 +17,6 @@ if __name__ == "__main__":
     begin = int(args.begin * 1e6)
     end = int(args.end * 1e6)
     tcp = bool(args.tcp)
-    tcp = True
     # 读取数据
     # df = pd.read_csv('PPDU_no_interference_no_newarch_txoplimits_0.000000_0.000000_link1Pct_0.004000.csv')
     df = pd.read_csv("PPDU.csv")
@@ -58,20 +57,22 @@ if __name__ == "__main__":
                     ha='center', va='center', fontsize=8, color='black')
 
     # 读取txopPPDU.csv并画点
-    txop_df = pd.read_csv('./Txop.csv')
-    link_color = {0: 'purple', 1: 'red'}
+    import os
+    if os.path.exists('./Txop.csv'):
+        txop_df = pd.read_csv('./Txop.csv')
+        link_color = {0: 'purple', 1: 'red'}
 
-    for idx, row in txop_df.iterrows():
-        link = row.iloc[0]
-        txopstart = row.iloc[1]
-        txopend = row.iloc[2]
-        if txopstart > begin and txopstart < end and txopend < end:
-            color = link_color.get(link, 'black')
-            y_pos = 0.6 if link == 1 else -0.4
-            # 三角形标txopstart
-            ax.scatter(txopstart, y_pos, marker='^' , alpha=0.7, color=color, s=10, label=f'link{link} start' if idx == 0 else "")
-            # 方形标txopend
-            ax.scatter(txopend, y_pos, marker='.', color=color,alpha=0.7, s=10, label=f'link{link} end' if idx == 0 else "")
+        for idx, row in txop_df.iterrows():
+            link = row.iloc[0]
+            txopstart = row.iloc[1]
+            txopend = row.iloc[2]
+            if txopstart > begin and txopstart < end and txopend < end:
+                color = link_color.get(link, 'black')
+                y_pos = 0.6 if link == 1 else -0.4
+                # 三角形标txopstart
+                ax.scatter(txopstart, y_pos, marker='^' , alpha=0.7, color=color, s=10, label=f'link{link} start' if idx == 0 else "")
+                # 方形标txopend
+                ax.scatter(txopend, y_pos, marker='.', color=color,alpha=0.7, s=10, label=f'link{link} end' if idx == 0 else "")
 
     # 设置y轴
     ax.set_yticks([0, 1])

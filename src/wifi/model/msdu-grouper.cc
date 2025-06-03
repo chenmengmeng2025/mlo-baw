@@ -647,6 +647,11 @@ MsduGrouper::NotifyPhyTxEvent(Ptr<const Packet> packet,
                                                            txVector.GetGuardInterval(),
                                                            1) *
                        txVector.GetNss(staId);
+        if(it->DataRate < 3000000000 && it->DataRate > 0) m_datarateList[linkId].push_back(it->DataRate / 1e6);
+        if (m_datarateList[linkId].size() > 100)
+        {
+            m_datarateList[linkId].erase(m_datarateList[linkId].begin());
+        }
     }
     else
     {
@@ -667,6 +672,11 @@ MsduGrouper::NotifyPhyTxEvent(Ptr<const Packet> packet,
                                                                 txVector.GetGuardInterval(),
                                                                 1) * txVector.GetNss(staId);
         m_queueStats.m_mpduinfos.push_back(mpduinfo);
+        if (mpduinfo.DataRate < 3000000000 && mpduinfo.DataRate > 0) m_datarateList[linkId].push_back(mpduinfo.DataRate / 1e6);
+        if (m_datarateList[linkId].size() > 100)
+        {
+            m_datarateList[linkId].erase(m_datarateList[linkId].begin());
+        }
     }
     Mac48Address recipient = hdr.GetAddr1();
     uint8_t tid = hdr.GetQosTid();
@@ -838,7 +848,7 @@ MsduGrouper::GetCurrentEdcaParameters()
 }
 
 mldParams
-MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, double p2, double datarate1, double datarate2, double occ1, double occ2, double thp1, double thp2)
+MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, double p2, double datarate1, double datarate2, double occ1, double occ2)
 {
     auto mpdusize = GetMeanMpduSize();
     bool istcp = mpdusize / m_maxGroupSize > 1000;
@@ -862,6 +872,12 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
         m_current_params = params;
         return params;
     }
+    if (occ1 == 0)
+    datarate1 = std::accumulate(m_datarateList[1].begin(), m_datarateList[1].end(), 0.0) /
+                (m_datarateList[1].size() > 0 ? m_datarateList[1].size() : 1);
+    if (occ2 == 0)
+    datarate2 = std::accumulate(m_datarateList[2].begin(), m_datarateList[2].end(), 0.0) /
+                (m_datarateList[2].size() > 0 ? m_datarateList[2].size() : 1);
     int maxtxoplimit1 = std::ceil(std::min(winSize * mpdusize * 8 / datarate1 / 32, 170.));
     int maxtxoplimit2 = std::ceil(std::min(winSize * mpdusize * 8 / datarate2 / 32, 170.));
     m_maxtxoplimit = std::min(maxtxoplimit1, maxtxoplimit2);
@@ -876,8 +892,12 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
         // 减少对TCP ACK的干扰，避免TCP窗过小
         if (p1 < 0.9) {
             params.RTS_CTS[0] = 1;
-            params.CWmins[0] = 15;
-            params.CWmaxs[0] = 1023;
+            params.CWmins[0] = 3;
+            params.CWmaxs[0] = 15;
+            if (occ1 < 0.2) {
+                params.CWmins[0] = 7;
+                params.CWmaxs[0] = 31;
+            }
         } else {
             params.RTS_CTS[0] = m_current_params.RTS_CTS[0];
             params.CWmins[0] = m_current_params.CWmins[0];
@@ -892,9 +912,11 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
         int QOSDATA = mpdusize * 8;
         int TCPACK = 60 * 8 * m_maxGroupSize; // 一个MPDU对应的TCPACK大小 
         // n2 * QOSDATA / datarate2 >= n1 * QOSDATA / datarate1 + (n1 + n2) * TCPACK / datarate1
+
+        std::cout << "datarate1: " << datarate1 << " datarate2: " << datarate2 << std::endl;
         for (n1 = 0; n1 < 256; n1++) {
             n2 = winSize - n1;
-            if (n2 * QOSDATA / datarate2 <= n1 * QOSDATA / datarate1 + (n1 + n2) * TCPACK / datarate1) {
+            if ((double)n2 * QOSDATA /datarate2 <= n1 * QOSDATA / datarate1 + (n1 + n2) * TCPACK / datarate1) {
                 n1 --;
                 n2 ++;
                 break;

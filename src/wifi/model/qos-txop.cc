@@ -1110,7 +1110,7 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
     {
         auto winSize = GetBaBufferSize(GetMsduGrouper()->GetRecipient(), 0);
         auto params = GetMsduGrouper()->GetCurrentEdcaParameters();
-        const auto& new_params = GetMsduGrouper()->GetNewEdcaParameters(false, winSize, p1, p2, avgdatarate1, avgdatarate2, chanrate1, chanrate2, Thp1, Thp2);
+        const auto& new_params = GetMsduGrouper()->GetNewEdcaParameters(false, winSize, p1, p2, avgdatarate1, avgdatarate2, chanrate1, chanrate2);
         const auto meanTxopTime = GetMsduGrouper()->GetMeanTxopTime(period);
         const auto meanTxopMpduNum = GetMsduGrouper()->GetMeanTxMpduNum(period);
         if (!TracedParamsAndStats.IsEmpty())

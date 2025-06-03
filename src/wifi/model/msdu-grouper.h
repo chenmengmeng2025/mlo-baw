@@ -317,7 +317,7 @@ public:
      
     void EnableParamUpdate();
 
-    mldParams GetNewEdcaParameters(bool initial, uint16_t winSize = 256, double p1 = 1, double p2 = 1, double datarate1 = 0, double datarate2 = 0, double occ1 = 0, double occ2 = 0, double thp1 = 0, double thp2 = 0);
+    mldParams GetNewEdcaParameters(bool initial, uint16_t winSize = 256, double p1 = 1, double p2 = 1, double datarate1 = 0, double datarate2 = 0, double occ1 = 0, double occ2 = 0);
     
     std::pair<uint8_t, Time> GetNewLinkStates();
 
@@ -411,8 +411,10 @@ private:
     uint32_t m_redundancy_enable;
 
     std::vector<std::tuple<uint32_t, uint32_t, double>> m_throughputList; // 统计每次txop间隔的吞吐量
+    std::unordered_map<uint8_t, std::vector<double>> m_datarateList; // 统计各链路上的数据传输率
     bool m_trigger_update;
     std::pair<uint32_t, uint32_t> m_best_txopLimits;
+
     uint32_t m_maxtxoplimit;
     std::vector<int> m_ampduLimits; // 每条链路的最大AMPDU聚合长度
 };
