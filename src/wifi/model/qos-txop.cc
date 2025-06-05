@@ -491,18 +491,17 @@ QosTxop::PeekNextMpdu(uint8_t linkId, uint8_t tid, Mac48Address recipient, Ptr<c
             // 没有分配给当前链路
             //      开了冗余->如果已经在另一条链路上发送->选中
             //      没开冗余->跳过
-            // std::cout << "mode 2" << IsLinkAllocated(linkId, item->GetAllocatedLink()) << std::endl;
             if(!IsLinkAllocated(linkId, item->GetAllocatedLink()) && item->GetPacket()->GetAdjustment() != item->GetPacketSize())
             {
                 //没有分配给本链路，已经在其他链路发送过的mpdu
                 if (auto linkIds = item->GetInFlightLinkIds(); !linkIds.empty()) // MPDU is in-flight
                 {
                     GetMsduGrouper()->m_inflighted[*linkIds.begin()] ++; 
-                    if(GetMsduGrouper()->GetRedundancyMode(linkId) && GetMsduGrouper()->AvailableRedundancy(linkId))
+                    if(GetMsduGrouper() && GetMsduGrouper()->GetRedundancyMode(linkId) && GetMsduGrouper()->AvailableRedundancy(linkId))
                     {
                         NS_LOG_DEBUG("link" << +linkId << " 冗余，"
                                             << item->GetHeader().GetSequenceNumber() << "再次发送");
-                        // GetMsduGrouper()->NotifyPacketRedundancy(item);
+                        GetMsduGrouper()->NotifyPacketRedundancy(item, linkId);
                         break;
                     }
                 }
@@ -551,7 +550,7 @@ QosTxop::PeekNextMpdu(uint8_t linkId, uint8_t tid, Mac48Address recipient, Ptr<c
         }
         else if (m_mode & 0x01)
         {
-            // if (m_link_up & (1 << linkId) != 1) return nullptr;
+            // if (m_link_up & (1 << linkId)) return nullptr;
             if (auto linkIds = item->GetInFlightLinkIds(); !linkIds.empty()) // MPDU is in-flight
             {
                 // 此MPDU已经在其他链路上发送,如果此链路开启冗余模式，可以在此链路上发送
@@ -565,7 +564,8 @@ QosTxop::PeekNextMpdu(uint8_t linkId, uint8_t tid, Mac48Address recipient, Ptr<c
                         bool isretry = item->GetHeader().IsRetry();
                         bool isudp = item->GetPacketSize() / GetMaxGroupSize() < 1000;
                         if (isretry || linkId || isudp) {
-                            if (m_mode & (1 << 5)) std::cout << isretry << "The MPDU is inflighted on Link " << (uint32_t) (* linkIds.begin()) << ", but can be sent on Link " << (uint32_t)linkId << ", the SN is " << item->GetHeader().GetSequenceNumber()  << " cnt: " << GetMsduGrouper()->m_RedundantPacketCnt[linkId] << std::endl;
+                            if (m_mode & (1 << 5)) std::cout << Simulator::Now() << ", retry = " << isretry << ", the MPDU is inflighted on Link " << (uint32_t) (* linkIds.begin()) << ", but can be sent on Link " << (uint32_t)linkId << ", the SN is " << item->GetHeader().GetSequenceNumber()  << " cnt: " << GetMsduGrouper()->m_RedundantPacketCnt[linkId] << std::endl;
+                            GetMsduGrouper()->NotifyPacketRedundancy(item, linkId);
                             break;
                         }
                     }
@@ -643,7 +643,6 @@ QosTxop::PeekNextMpdu(uint8_t linkId, uint8_t tid, Mac48Address recipient, Ptr<c
                         GetBaBufferSize(recipient, tid)))
         {
             NS_LOG_DEBUG("Packet beyond the end of the current transmit window");
-            // std::cout << "Packet beyond the end of the current transmit window" << " seq = " << sequence << std::endl;
             return nullptr;
         }
     }
@@ -735,8 +734,7 @@ QosTxop::GetNextMpdu(uint8_t linkId,
     if(mpdu->GetHeader().IsQosData() && m_mode & 0x03)
     {
         // 打断当前分组，增加组号
-        Ptr<QosTxop> edca = m_mac->GetQosTxop(mpdu->GetHeader().GetQosTid());
-        edca->GetMsduGrouper()->AddCurrentGroup(mpdu->GetOriginal()->GetGroupNumber());
+        GetMsduGrouper()->AddCurrentGroup(mpdu->GetOriginal()->GetGroupNumber());
     }
 
     // Assign a sequence number if this is not a fragment nor a retransmission
@@ -1066,7 +1064,6 @@ QosTxop::ScheduleUpdateEdcaParameters(Time period)
     std::cout << "maxAmpduLength: " << maxlen1 << ", " << maxlen2 << std::endl;
     std::cout << "meanAmpduLength: " << meanlen1 << ", " << meanlen2 << std::endl;
 
-    GetMsduGrouper()->SaveThroughput(GetTxopLimits()[0].GetMicroSeconds() / 32, GetTxopLimits()[1].GetMicroSeconds() / 32, Thp1 + Thp2);
 
     if (GetMsduGrouper()->IsGridSearchEnabled()) 
     {   // param_update = true -> 网格搜索最优参数: 搜索空间 -> params.json
@@ -1146,13 +1143,6 @@ QosTxop::IsLinkUp(uint8_t linkId)
 {
     if(!(m_mode & 0x03)) return true;
     return m_link_up & (1 << linkId);
-}
-
-void 
-QosTxop::UpdateLinkStates() {
-    std::pair<uint8_t, Time> linkstates = GetMsduGrouper()->GetNewLinkStates();
-    if (m_link_up != linkstates.first)
-        Simulator::Schedule(linkstates.second, &QosTxop::SetLinkUp, this, linkstates.first);
 }
 
 void 
@@ -1258,6 +1248,8 @@ QosTxop::SetParams(const mldParams & next_params) {
         GetMsduGrouper()->UpdateRedundancyThreshold(next_params.RedundancyThresholds);
 
         GetMsduGrouper()->UpdateRedundancyFixedNumber(next_params.RedundancyFixedNumbers);
+
+        GetMsduGrouper()->SetLink1Pct(next_params.link1Pct);
     }
 }
 } // namespace ns3

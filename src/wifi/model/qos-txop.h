@@ -398,10 +398,7 @@ class QosTxop : public Txop
      */
     uint8_t GetAifsn(uint8_t linkId) const override;
 
-    
     bool IsLinkUp(uint8_t linkId);
-
-    void UpdateLinkStates();
 
     void SetLinkUp(uint8_t newLinkUp);
     

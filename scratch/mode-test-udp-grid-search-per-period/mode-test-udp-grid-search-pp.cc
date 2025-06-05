@@ -349,6 +349,7 @@ main(int argc, char* argv[])
     bool logmode = false;
     Time simT_delayEnd = NanoSeconds(2);
     uint32_t maxGroupSize = 4;
+    std::string paramsfilepath = "./scratch/params.json";
     CommandLine cmd(__FILE__);
     std::filesystem::path filepath = __FILE__;
     cmd.AddValue("seed", "seed number", seedNumber);
@@ -381,8 +382,10 @@ main(int argc, char* argv[])
     cmd.AddValue("logsender", "new transmitter architecture log setting", logsender);
     cmd.AddValue("logreceiver", "new receiver architecture log setting", logreceiver);
     cmd.AddValue("logmode", "mode log setting", logmode);
+    cmd.AddValue("paramsfile", "params.json path", paramsfilepath);
     cmd.Parse(argc, argv);
 
+    std::cout << "Use params file: " << paramsfilepath << std::endl;
     if (simT == 0) simT = period_update * 10 + 1;
     Time period{Seconds(period_update)};
     if (!(interference & 0b01)) r1 = 1e-9;  
@@ -878,7 +881,7 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode_recv)); // 只负责接收，无msdu_grouper, mode只要非0, 接收端就是新架构，BA只包含各自链路所收到的包的接收信息，各自维护自己的bitmap
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchEnable", BooleanValue(grid_search_enable)); // 是否开启网格搜索，用于静态场景下的最优参数搜索，只有在param_update = true时才会更新参数
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/ParamUpdate", BooleanValue(param_update));
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchParameter", StringValue("./scratch/params.json")); // 网格搜索使用的参数集合
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchParameter", StringValue(paramsfilepath)); // 网格搜索使用的参数集合
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/RedundancyEnable", BooleanValue(redundancy_enable)); // 是否启用冗余模式
 
     /* BSS EDCA */
@@ -975,11 +978,14 @@ main(int argc, char* argv[])
     }
     
     std::vector<double> res_throughputs;
+    double max_throughput = 0;
+    double max_no = 0;
+    Stats *best_result;
     std::cout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
             "MaxSsrc1, MaxSlrc2, MaxSsrc2, RedundancyThreshold1, RedundancyThreshold2, RedundancyFixedNumber1, "
             "RedundancyFixedNumber2, BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, PSR1, PSR2, Occupancy Rate 1, Occupancy Rate 2, blocktimerate1, blocktimerate2, severeblocktimerate1, severeblocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, pct1, Throughput(Mbps)" << std::endl;
     if (!results.empty())
-    for (const auto & res : results)
+    for (auto & res : results)
     {
         const mldParams & params = res.params;
         std::cout << params.No << ", " << res.time << ", " << (uint32_t)mode << ", "
@@ -1004,6 +1010,11 @@ main(int argc, char* argv[])
                   << res.thpt[0] << ", " << res.thpt[1] << ", " << res.pct1 << ", "
                   << res.throughput << std::endl;
              res_throughputs.push_back(res.throughput);
+            if (max_throughput < res.throughput) {
+                max_no = params.No;
+                max_throughput = res.throughput;
+                best_result = &res;
+            }
     }
 
     std::ofstream file("throughput.csv", std::ios::out);
@@ -1016,37 +1027,19 @@ main(int argc, char* argv[])
         }
     }
     file.close();
-
-    auto calc_std_dev = [](std::vector<double>& v, int n) -> std::pair<double, double> {
-        auto start = v.end() - n;
-        double sum = std::accumulate(start, v.end(), 0.0);
-        double mean = sum / n;
-        double var = 0.0;
-        double mn = 1e5;
-        int idx = 0;
-        for (auto it = start; it != v.end(); ++it) {
-            double d = std::abs(*it - mean);
-            var += std::pow(d, 2);
-            if (d < mn) {
-                mn = d;
-                idx = v.end() - it;
-            }
-        }
-        std::cout << "use the " << idx << "th to the last of the result." << std::endl;
-        var /= n;
-    return std::make_pair(sqrt(var), mean);
-    };
-    auto ans = calc_std_dev(res_throughputs, 3);
-    double cv =  ans.first / ans.second;
-    
-    std::cout << "standard deviation: " << ans.first << std::endl;
-    std::cout << "coeff of variation: " << cv * 100 << "% " << std::endl;
-    if (cv > 0.1) {
-        std::cout << "Please set longer simulation time use: --simT" << std::endl;
-    }
-    std::cout << "Throughput = " << ans.second << " Mbps" << std::endl;
-
     std::cout << "result saved: " << csv_file << std::endl;
+
+    std::cout << "Best Throughput: " << max_throughput << " Mbps." << std::endl;
+
+    std::cout << "Best Params: " << std::endl;
+    std::cout << "No: " << max_no << std::endl;
+    std::cout << "mode: " << +mode << std::endl;
+    std::cout << "CWmins: " << best_result->params.CWmins[0] << ", " << best_result->params.CWmins[1] << std::endl;
+    std::cout << "CWmaxs: " << best_result->params.CWmaxs[0] << ", " << best_result->params.CWmaxs[1] << std::endl;
+    std::cout << "Aifsns: " << best_result->params.Aifsns[0] << ", " << best_result->params.Aifsns[1] << std::endl;
+    std::cout << "TxopLimits: " <<  best_result->params.TxopLimits[0] << ", " << best_result->params.TxopLimits[1] << std::endl;
+    std::cout << "RTS_CTS: " << best_result->params.RTS_CTS[0] << ", " << best_result->params.RTS_CTS[1] << std::endl;
+    std::cout << "pct1: " << best_result->pct1 << std::endl;
 
     return 0;
 }

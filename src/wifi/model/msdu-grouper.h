@@ -12,7 +12,7 @@
 #include "ns3/udp-client-server-helper.h"
 #include <fstream>
 #include <deque>
-#include <range/v3/view/cartesian_product.hpp>
+// #include <range/v3/view/cartesian_product.hpp>
 #include <nlohmann/json.hpp>
 
 namespace ns3 {
@@ -42,11 +42,11 @@ struct MPDUInfo
     double DataRate;
     double noisePower; /*不怎么能拿到，这是接收端的数据*/
     double signalPower;/*不怎么能拿到，这是接收端的数据*/
+    uint8_t m_redundancy; /* 0表示没有冗余发送，1表示链路1发送，2表示链路2发送*/
 };
 
 struct PPDUInfo
 {
-    // std::shared_ptr<WifiMpdu> m_mpdu;
     Time txTime;
     Time txDuration;
     std::vector<MPDUInfo> m_mpduinfos;
@@ -63,6 +63,10 @@ public:
     bool Initialize();
     
     double GetThroughput(uint8_t linkId, Time period);
+    /**
+     * 统计冗余发送的包的吞吐量，由于不能够统计冗余包在哪条链路发送成功，冗余包在哪条链路冗余，就计入哪条链路的吞吐
+    */
+    std::vector<double> GetRedundancyThroughput(Time period);
     /**
      * \brief 这个函数是信道利用率的函数，返回的是信道利用率
      */
@@ -138,6 +142,7 @@ struct mldParams {
     std::vector<uint32_t> MaxSsrcs;
     std::vector<double> RedundancyThresholds;
     std::vector<uint32_t> RedundancyFixedNumbers;
+    double link1Pct;
     void print() const {
         if (this->No == 0) {
             std::cout << "No is 0 \n";
@@ -154,6 +159,7 @@ struct mldParams {
         printVector("MaxSsrcs", MaxSsrcs);  
         printVector("RedundancyThresholds", RedundancyThresholds);
         printVector("RedundancyFixedNumbers", RedundancyFixedNumbers);
+        std::cout << "link1Pct: " << link1Pct << std::endl; 
     }
 
     template <typename T>
@@ -173,7 +179,7 @@ struct mldParams {
 class GridSearch : public Object
 {
     public:
-        GridSearch (std::string ParamsJsonFilePath = "./scratch/params.json") {
+        GridSearch (std::string ParamsJsonFilePath = "./scratch/params.json", uint32_t mode = 1) {
             std::ifstream infile(ParamsJsonFilePath);
             nlohmann::json J;
             infile >> J;
@@ -190,19 +196,36 @@ class GridSearch : public Object
                 std::vector<uint32_t> RedundancyFixedNumbers = param["RedundancyFixedNumber"];
                 std::vector<uint32_t> MaxSlrc = param["MaxSlrc"];
                 std::vector<uint32_t> MaxSsrc = param["MaxSsrc"];
-                mldParams params;
-                params.No = (++i);
-                params.CWmins = CWmins;
-                params.CWmaxs = CWmaxs;
-                params.Aifsns = Aifsns;
-                params.RTS_CTS = RTS_CTS;
-                params.TxopLimits = TxopLimits;
-                params.MaxSlrcs = MaxSlrc;
-                params.MaxSsrcs = MaxSsrc;
-                params.AmpduSizes = AmpduSize;
-                params.RedundancyFixedNumbers = RedundancyFixedNumbers;
-                params.RedundancyThresholds = RedundancyThresholds;
-                m_combinations.push_back(params);
+                std::vector<double> link1Pcts = param["link1Pcts"];
+                // 为当前参数组合生成所有link1Pct值 (0.0 到 1.0, 步长 STEP)
+                if (mode & 0x02) {
+                    if (link1Pcts.size() == 0) {
+                        for (double pct = 0.0; pct <= 1.0 + 1e-9; pct += STEP) {
+                            if (pct > 1.0) pct = 1.0; 
+                            link1Pcts.push_back(pct);
+                            if (pct >= 1.0) break;  
+                        }
+                    }
+                } else if (mode & 0x01) {
+                    link1Pcts = {0.0};
+                }
+
+                for (double pct : link1Pcts) {
+                    mldParams params;
+                    params.No = (++i);
+                    params.CWmins = CWmins;
+                    params.CWmaxs = CWmaxs;
+                    params.Aifsns = Aifsns;
+                    params.RTS_CTS = RTS_CTS;
+                    params.TxopLimits = TxopLimits;
+                    params.MaxSlrcs = MaxSlrc;
+                    params.MaxSsrcs = MaxSsrc;
+                    params.AmpduSizes = AmpduSize;
+                    params.RedundancyFixedNumbers = RedundancyFixedNumbers;
+                    params.RedundancyThresholds = RedundancyThresholds;
+                    params.link1Pct = pct;
+                    m_combinations.push_back(params);
+                }
             }
             m_size = m_combinations.size();
             std::cout << "Size of Params: " << m_size << std::endl;
@@ -226,6 +249,7 @@ class GridSearch : public Object
         std::vector<mldParams> m_combinations;
         uint32_t m_index;
         uint32_t m_size;
+        double STEP = 0.01;    // 分配比例搜索步长，默认0.01
 };
 
 class MsduGrouper : public Object
@@ -254,11 +278,13 @@ public:
     /**
      * 模式二分配AMSDU的发送链路
      */
-    void AssignAmsduByPr();
+    void AssignAmsduByCnt();
 
-    void SetLink1PctByQueuePowAvg(double thp1, double thp2);
+    double SetLink1PctUdp(double thp1, double thp2,double rethp);
+    double SetLink1PctTcp(double thp1, double thp2, double rethp);
 
     void NotifyPacketEnqueue(Ptr<const WifiMpdu> mpdu, bool firstAssignSeqNo);
+    void NotifyPacketRedundancy(Ptr<const WifiMpdu> mpdu, uint8_t linkId);
     void NotifyPhyTxEvent(Ptr<const Packet> packet,
                           uint16_t channelFreqMhz,
                           WifiTxVector txVector,
@@ -288,8 +314,6 @@ public:
 
     void SetTxopTimeEnd(uint64_t time /* ns */, uint8_t linkId);
 
-    void ResetEnqueueNum();
-
     void SetLink1Pct(double link1Pct);
 
     double GetLink1Pct();
@@ -318,8 +342,6 @@ public:
     void EnableParamUpdate();
 
     mldParams GetNewEdcaParameters(bool initial, uint16_t winSize = 256, double p1 = 1, double p2 = 1, double datarate1 = 0, double datarate2 = 0, double occ1 = 0, double occ2 = 0);
-    
-    std::pair<uint8_t, Time> GetNewLinkStates();
 
     uint32_t AvailableRedundancy(uint8_t linkId);
 
@@ -351,8 +373,6 @@ public:
 
     void SetAmpduLimit(uint8_t linkId, int limit);
 
-    void SaveThroughput(uint32_t txop1, uint32_t txop2, double throughput);
-
     void ClearStats();
 
     uint8_t GetMode();
@@ -374,6 +394,9 @@ public:
     std::unordered_map<uint8_t, std::vector<std::tuple<uint64_t, uint64_t, uint32_t>>> m_txtime_nmpdu_List; // 统计每次传输时的mpdu个数
 
     std::vector<uint32_t> m_inflighted; // 统计每条链路上正在传输个数
+    bool m_step_adjust = false;
+    bool istcp = false;
+    std::vector<double> m_txop_num = {0, 0}; // 获得TXOP数量
 
 private:
     uint32_t m_maxGroupSize;  // 每组的最大MSDU数量
@@ -383,21 +406,61 @@ private:
     Time m_period;// 统计周期，每次更新只统计当前时间之前period时间内的数据，0代表着统计周期为无穷大
 
     /* Mode 2 */
+    uint32_t m_cnt; 
     uint32_t m_maxGroupNumber;  // 最大组号 (SN)
     uint32_t m_currentGroup;  // 当前组号
     uint32_t m_currentCount;  // 当前组中的MSDU数量
     Ptr<WifiMpdu> m_firstMsdu;
+
     double m_link1Pct; // 分配给链路1的概率
-    std::set<WifiContainerQueueId> m_queueIds;
-    uint64_t m_enqueueNum;
-    std::deque<double> m_historyPct;
+    int m_state;            // link1Pct调整过程的状态控制
+    double m_initial_link1Pct;  //UDP流量下通过链路datarate之比确定的初始link1Pct
+    std::vector<double> m_datarate; // links' datarate
+    bool m_increase_adj; // 分配比例调整方向
+    double m_prev_thp; // 前一次总吞吐量
+    const double STEP = 0.01; // 根据WinSize = 256确定的步长0.01
+    bool m_has_reversed; // 是否已经反向调整过
+    std::map<double, double> m_thp_map; //记录link1Pct与总吞吐量
+
+    double m_locked_avg_thp;  //锁定后平均吞吐量
+    double m_locked_sum_thp;    //锁定后累计吞吐量
+    std::vector<double> m_locked_avg_txop;  //锁定后平均获得TXOP数量
+    std::vector<double> m_locked_sum_txop;  //锁定后累计获得TXOP数量
+    uint32_t m_locked_count;    //锁定轮次数
+
+    // 调整link1Pct并检测边界，返回新的比例值
+    double adjustLinkPct(double currentPct) {
+        double new_pct = currentPct + (m_increase_adj ? STEP : -STEP);
+        new_pct = std::clamp(std::round(new_pct * 100) / 100, 0.0, 1.0);
+        
+        if (new_pct == currentPct) {
+            return lockOptimalValue(); // 边界锁定
+        }
+        return new_pct;
+    }
+
+    // 锁定历史最佳值，返回最佳比例
+    double lockOptimalValue() {
+        // 查找吞吐量最大值，若相同则选择较大的link1Pct
+        auto max_it = std::max_element(m_thp_map.begin(), m_thp_map.end(),
+            [](auto& a, auto& b) {
+                if (a.second == b.second) {
+                    return a.first < b.first;
+                }
+                return a.second < b.second;
+            });
+        
+        double bestPct = m_link1Pct; 
+        if (max_it != m_thp_map.end()) {
+            bestPct = max_it->first;
+        }
+        m_state = 3;
+        return bestPct;
+    }
 
     /* Mode 1 */
     uint32_t m_redundancyMode;
     std::vector<uint32_t> m_maxAmpduSize;
-
-    Ptr<UniformRandomVariable> m_allocatedLink1Pr; //分配到link1的概率
-    Ptr<UniformRandomVariable> m_allocatedLink2Pr; //分配到link2的概率
 
     QueueStats m_queueStats; 
     Time m_startTime; // 统计起始时间
@@ -412,8 +475,6 @@ private:
 
     std::vector<std::tuple<uint32_t, uint32_t, double>> m_throughputList; // 统计每次txop间隔的吞吐量
     std::unordered_map<uint8_t, std::vector<double>> m_datarateList; // 统计各链路上的数据传输率
-    bool m_trigger_update;
-    std::pair<uint32_t, uint32_t> m_best_txopLimits;
 
     uint32_t m_maxtxoplimit;
     std::vector<int> m_ampduLimits; // 每条链路的最大AMPDU聚合长度
