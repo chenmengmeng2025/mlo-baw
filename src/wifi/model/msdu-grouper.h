@@ -137,6 +137,7 @@ struct mldParams {
     std::vector<uint32_t> Aifsns;
     std::vector<uint32_t> RTS_CTS;
     std::vector<uint32_t> TxopLimits;
+    std::vector<int> AmpduLimits;
     std::vector<uint32_t> AmpduSizes;
     std::vector<uint32_t> MaxSlrcs;
     std::vector<uint32_t> MaxSsrcs;
@@ -144,16 +145,13 @@ struct mldParams {
     std::vector<uint32_t> RedundancyFixedNumbers;
     double link1Pct;
     void print() const {
-        if (this->No == 0) {
-            std::cout << "No is 0 \n";
-            return;
-        }
         std::cout << "No: " << No << "\n";
         printVector("CWmins", CWmins);
         printVector("CWmaxs", CWmaxs);
         printVector("Aifsns", Aifsns);
         printVector("RTS_CTS", RTS_CTS);
         printVector("TxopLimits", TxopLimits);
+        printVector("AmpduLimits", AmpduLimits);
         printVector("AmpduSizes", AmpduSizes);
         printVector("MaxSlrcs", MaxSlrcs); 
         printVector("MaxSsrcs", MaxSsrcs);  
@@ -191,6 +189,7 @@ class GridSearch : public Object
                 std::vector<uint32_t> Aifsns = param["Aifsns"];
                 std::vector<uint32_t> RTS_CTS = param["RTS/CTS"];
                 std::vector<uint32_t> TxopLimits = param["TxopLimits"];
+                std::vector<int> AmpduLimits = param["AmpduLimits"];
                 std::vector<uint32_t> AmpduSize = param["AmpduSize"];
                 std::vector<double> RedundancyThresholds = param["RedundancyThreshold"];
                 std::vector<uint32_t> RedundancyFixedNumbers = param["RedundancyFixedNumber"];
@@ -212,12 +211,13 @@ class GridSearch : public Object
 
                 for (double pct : link1Pcts) {
                     mldParams params;
-                    params.No = (++i);
+                    params.No = (i++);
                     params.CWmins = CWmins;
                     params.CWmaxs = CWmaxs;
                     params.Aifsns = Aifsns;
                     params.RTS_CTS = RTS_CTS;
                     params.TxopLimits = TxopLimits;
+                    params.AmpduLimits = AmpduLimits;
                     params.MaxSlrcs = MaxSlrc;
                     params.MaxSsrcs = MaxSsrc;
                     params.AmpduSizes = AmpduSize;

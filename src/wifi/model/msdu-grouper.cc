@@ -635,12 +635,12 @@ MsduGrouper::SetLink1PctTcp(double thp1, double thp2, double rethp)
             change_re[0] = std::abs(m_txop_num[0] - m_locked_avg_txop[0]) / m_locked_avg_txop[0];
         if (m_locked_avg_txop[1])
             change_re[1] = std::abs(m_txop_num[1] - m_locked_avg_txop[1]) / m_locked_avg_txop[1];
-        std::cout << "link1Pct " << m_link1Pct << std::endl;
-        std::cout << " current_total " << current_thp << " m_locked_total " << m_locked_avg_thp
-                  << " change " << change << std::endl;
-        std::cout << " m_locked_total_re0 " << m_locked_avg_txop[0] << " m_locked_total_re1 "
-                  << m_locked_avg_txop[1] << " change_re0 " << change_re[0] << " change_re1 "
-                  << change_re[1] << std::endl;
+        // std::cout << "link1Pct " << m_link1Pct << std::endl;
+        // std::cout << " current_total " << current_thp << " m_locked_total " << m_locked_avg_thp
+        //           << " change " << change << std::endl;
+        // std::cout << " m_locked_total_re0 " << m_locked_avg_txop[0] << " m_locked_total_re1 "
+        //           << m_locked_avg_txop[1] << " change_re0 " << change_re[0] << " change_re1 "
+        //           << change_re[1] << std::endl;
         if (m_locked_count > 1 && (change >= 0.1 || change_re[0] > 3 || change_re[1] > 3))
         {
             m_state = 1;
@@ -656,7 +656,7 @@ MsduGrouper::SetLink1PctTcp(double thp1, double thp2, double rethp)
         }
         else if (m_locked_count > 1)
         {
-            std::cout << "计算" << std::endl;
+            // std::cout << "计算" << std::endl;
             // 未触发更新，累加当前吞吐量并计算平均值
             m_locked_sum_thp += current_thp;
             m_locked_sum_txop[0] += m_txop_num[0];
@@ -1118,6 +1118,7 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
     params.MaxSlrcs = {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
     params.MaxSsrcs = {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
     params.TxopLimits = {0, 0}; // < 171
+    params.AmpduLimits = {-1, -1}; 
     params.AmpduSizes = {0, 0};
     params.RedundancyThresholds = {0.5, 0.5};
     params.RedundancyFixedNumbers = {0, 0};
@@ -1144,8 +1145,7 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
         if(!istcp) {
             std::cout << "MLO Algorithm to Set Txoplimit: " << txoplimit << std::endl;
             params.TxopLimits = {txoplimit, txoplimit};
-        }
-        if (istcp) { 
+        } else { 
             // 减少对TCP ACK的干扰，避免TCP窗过小
             if (p1 < 0.9) {
                 params.RTS_CTS[0] = 1;
@@ -1182,8 +1182,9 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
                 n1 = 0; // 关闭2.4G链路
                 n2 = -1; // 表示5G上尽可能聚合最大数量的包
             }
-            SetAmpduLimit(0, n1);
-            SetAmpduLimit(1, n2);
+            // SetAmpduLimit(0, n1);
+            // SetAmpduLimit(1, n2);
+            params.AmpduLimits = {n1, n2};
         }
         m_current_params = params;
         return params;

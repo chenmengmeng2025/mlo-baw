@@ -91,7 +91,7 @@ struct Stats {
 
 std::vector<Stats> results;
 std::deque<uint32_t> throughputQueue;
-std::unordered_map<double, double> throughputMap;
+std::map<double, double> throughputMap;
 // std::unordered_map<double, std::pair<int, double>> blockinfoMap;
 
 int cnt = 0;
@@ -176,7 +176,7 @@ PrintIntermediateTput(bool udp,
 }
 
 std::string txopOutputFile("./Txop.csv");
-std::string txopMpduNumberOutputFile("./TxopMpduNum.csv");
+std::string txopMpduNumberOutputFile("./TxInfo.csv");
 void
 SaveTxopStats(std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint64_t>>> txopList,
               std::unordered_map<uint8_t, std::vector<std::tuple<uint64_t, uint64_t, uint32_t>>> numList)
@@ -189,14 +189,14 @@ SaveTxopStats(std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint64
             fout << (uint32_t)i << "," << txopList[i][j].first << "," << txopList[i][j].second << std::endl;
     }
     fout.close();
-    // std::ofstream fout2(txopMpduNumberOutputFile, std::ios::out);
-    // fout2 << "LinkId, TxopStartTime, TxopMpduNum" << std::endl;
-    // for (uint8_t i = 0; i < 2; i++)
-    // {
-    //     for (size_t j = 0; j < numList[i].size(); ++j)
-    //         fout2 << (uint32_t)i << "," << numList[i][j].first << "," << numList[i][j].second << std::endl;
-    // }
-    // fout2.close();
+    std::ofstream fout2(txopMpduNumberOutputFile, std::ios::out);
+    fout2 << "LinkId,TxTime,TxDuration,Nmpdus" << std::endl;
+    for (uint8_t i = 0; i < 2; i++) {
+        for (const auto it : numList[i]) {
+            fout2 << +i << "," << std::get<0>(it) << "," << std::get<1>(it) << "," << std::get<2>(it) << std::endl;
+        }
+    }
+    fout2.close();
 }
 
 std::string ppduTxOutputFile("./PPDU.csv");
@@ -317,6 +317,7 @@ main(int argc, char* argv[])
         std::filesystem::remove(txopMpduNumberOutputFile);
     }
     uint32_t seedNumber = 1;
+    uint32_t paramsetid = 0;
 
     uint32_t mcs1 = 6;
     uint32_t mcs2 = 11;
@@ -338,7 +339,7 @@ main(int argc, char* argv[])
     uint32_t singleLink = 0;
     uint32_t interference = 0b01;
     double period_update = 0.1;
-    bool grid_search_enable = false;
+    bool grid_search_enable = true;
     uint32_t nss = 2;
     uint8_t mode = 1;
 
@@ -387,6 +388,7 @@ main(int argc, char* argv[])
     cmd.AddValue("logreceiver", "new receiver architecture log setting", logreceiver);
     cmd.AddValue("logmode", "mode log setting", logmode);
     cmd.AddValue("paramsfile", "params.json path", paramsfilepath);
+    cmd.AddValue("paramsetid", "paramset id", paramsetid);
     cmd.Parse(argc, argv);
 
     std::cout << "Use params file: " << paramsfilepath << std::endl;
@@ -401,11 +403,11 @@ main(int argc, char* argv[])
                             std::to_string(mcs1) + "_" + std::to_string(mcs2) + "_interference_" +
                             std::to_string(r1) + "_" + std::to_string(r2) + "_txoplimits_" + 
                             std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update)
-                            + "_tcpack_" + std::to_string(tcp_ack) + "_seed_" + std::to_string(seedNumber);
+                            + "_tcpack_" + std::to_string(tcp_ack) + "_seed_" + std::to_string(seedNumber) + "_paramsetid_" + std::to_string(paramsetid);
     else title = "bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + "_ratectrl_" +
                             rateCtrl + "_interference_" +
                             std::to_string(r1) + "_" + std::to_string(r2) + "_txoplimits_" + 
-                            std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update) + "_tcpack_" + std::to_string(tcp_ack) + "_seed_" + std::to_string(seedNumber);
+                            std::to_string(txoplimit1) + "_" + std::to_string(txoplimit2) + "_nss_" + std::to_string(nss) + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update) + "_tcpack_" + std::to_string(tcp_ack) + "_seed_" + std::to_string(seedNumber) + "_paramsetid_" + std::to_string(paramsetid);
 
     if (mode && logmode) mode = mode | (1 << 4);
     if (mode && logsender) mode = mode | (1 << 5);
@@ -942,10 +944,10 @@ main(int argc, char* argv[])
     std::cout << txopLimitList[0] << " " << txopLimitList[1] << std::endl;
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/TxopLimits", AttributeContainerValue<TimeValue>(txopLimitList));
 
-    phy.EnablePcap("ap0-trace-tcp", apDev.Get(0));
+    // phy.EnablePcap("ap0-trace-tcp", apDev.Get(0));
     // phySld2.EnablePcap("ap1-trace-tcp", apDev.Get(1));
     // phySld5.EnablePcap("ap2-trace-tcp", apDev.Get(1));
-    phy.EnablePcap("mld-trace-tcp", mldDev.Get(0));
+    // phy.EnablePcap("mld-trace-tcp", mldDev.Get(0));
     // phySld2.EnablePcap("sld2-trace-tcp", sldDev2.Get(0));
     // phySld5.EnablePcap("sld5-trace-tcp", sldDev5.Get(0));
     Config::ConnectWithoutContext("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GetNextParams", MakeCallback(&SaveParams));
@@ -970,7 +972,7 @@ main(int argc, char* argv[])
     Simulator::Destroy();
 
     std::ofstream fout(csv_file, std::ios::out);
-    fout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
+    fout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, AmpduLimit1, AmpduLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
             "MaxSsrc1, MaxSlrc2, MaxSsrc2, RedundancyThreshold1, RedundancyThreshold2, RedundancyFixedNumber1, "
             "RedundancyFixedNumber2, BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, PSR1, PSR2, Occupancy Rate 1, Occupancy Rate 2, blocktimerate1, blocktimerate2, severeblocktimerate1, severeblocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, pct1, Throughput(Mbps)" << std::endl;
     if (!results.empty()) {
@@ -978,25 +980,27 @@ main(int argc, char* argv[])
         {
             const mldParams& params = res.params;
             fout << params.No << ", " << res.time << ", " << (uint32_t)mode << ", "
-                 << params.CWmins[0] << ", " << params.CWmaxs[0] << ", " << params.CWmins[1] << ", "
-                 << params.CWmaxs[1] << ", " << params.Aifsns[0] << ", " << params.Aifsns[1] << ", "
-                 << params.TxopLimits[0] << ", " << params.TxopLimits[1] << ", "
-                 << params.RTS_CTS[0] << ", " << params.RTS_CTS[1] << ", " << params.MaxSsrcs[0]
-                 << ", " << params.MaxSsrcs[0] << ", " << params.MaxSlrcs[1] << ", "
-                 << params.MaxSlrcs[1] << ", " << params.RedundancyThresholds[0] << ", "
-                 << params.RedundancyThresholds[1] << ", " << params.RedundancyFixedNumbers[0]
-                 << ", " << params.RedundancyFixedNumbers[1] << ", " << res.blockCnt[0] << ", "
-                 << res.blockCnt[1] << ", " << res.blockCnt_tr[0] << ", " << res.blockCnt_tr[1]
-                 << ", " << res.txopTime[0] << ", " << res.txopTime[1] << ", " << res.txopNum[0]
-                 << ", " << res.txopNum[1] << ", " << res.maxAmpduLength[0] << ", "
-                 << res.maxAmpduLength[1] << ", " << res.meanAmpduLength[0] << ", "
-                 << res.meanAmpduLength[1] << ", " << res.p[0] << ", " << res.p[1] << ", "
-                 << res.occ[0] << ", " << res.occ[1] << ", " << res.blocktimerate[0] << ", "
-                 << res.blocktimerate[1] << ", " << res.severeblocktimerate[0] << ", "
-                 << res.severeblocktimerate[1] << ", " << res.blockrate[0] << ", "
-                 << res.blockrate[1] << ", " << res.datarate[0] << ", " << res.datarate[1] << ", "
-                 << res.thpt[0] << ", " << res.thpt[1] << ", " << res.pct1 << ", " << res.throughput
-                 << std::endl;
+                  << params.CWmins[0] << ", " << params.CWmaxs[0] << ", " << params.CWmins[1]
+                  << ", " << params.CWmaxs[1] << ", " << params.Aifsns[0] << ", "
+                  << params.Aifsns[1] << ", " << params.TxopLimits[0] << ", "
+                  << params.TxopLimits[1] << ", " << params.AmpduLimits[0] << ", "
+                  << params.AmpduLimits[1] << ", " << params.RTS_CTS[0] << ", " << params.RTS_CTS[1]
+                  << ", " << params.MaxSsrcs[0] << ", " << params.MaxSsrcs[0] << ", "
+                  << params.MaxSlrcs[1] << ", " << params.MaxSlrcs[1] << ", "
+                  << params.RedundancyThresholds[0] << ", " << params.RedundancyThresholds[1]
+                  << ", " << params.RedundancyFixedNumbers[0] << ", "
+                  << params.RedundancyFixedNumbers[1] << ", " << res.blockCnt[0] << ", "
+                  << res.blockCnt[1] << ", " << res.blockCnt_tr[0] << ", " << res.blockCnt_tr[1]
+                  << ", " << res.txopTime[0] << ", " << res.txopTime[1] << ", " << res.txopNum[0]
+                  << ", " << res.txopNum[1] << ", " << res.maxAmpduLength[0] << ", "
+                  << res.maxAmpduLength[1] << ", " << res.meanAmpduLength[0] << ", "
+                  << res.meanAmpduLength[1] << ", " << res.p[0] << ", " << res.p[1] << ", "
+                  << res.occ[0] << ", " << res.occ[1] << ", " << res.blocktimerate[0] << ", "
+                  << res.blocktimerate[1] << ", " << res.severeblocktimerate[0] << ", "
+                  << res.severeblocktimerate[1] << ", " << res.blockrate[0] << ", "
+                  << res.blockrate[1] << ", " << res.datarate[0] << ", " << res.datarate[1] << ", "
+                  << res.thpt[0] << ", " << res.thpt[1] << ", " << res.pct1 << ", "
+                  << res.throughput << std::endl;
         }
         fout.close();
     }
@@ -1004,7 +1008,7 @@ main(int argc, char* argv[])
     double max_throughput = 0;
     double max_no = 0;
     Stats* best_result;
-    std::cout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
+    std::cout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, AmpduLimit1, AmpduLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
             "MaxSsrc1, MaxSlrc2, MaxSsrc2, RedundancyThreshold1, RedundancyThreshold2, RedundancyFixedNumber1, "
             "RedundancyFixedNumber2, BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, PSR1, PSR2, Occupancy Rate 1, Occupancy Rate 2, blocktimerate1, blocktimerate2, severeblocktimerate1, severeblocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, pct1, Throughput(Mbps)" << std::endl;
     if (!results.empty())
@@ -1015,7 +1019,8 @@ main(int argc, char* argv[])
                   << params.CWmins[0] << ", " << params.CWmaxs[0] << ", " << params.CWmins[1]
                   << ", " << params.CWmaxs[1] << ", " << params.Aifsns[0] << ", "
                   << params.Aifsns[1] << ", " << params.TxopLimits[0] << ", "
-                  << params.TxopLimits[1] << ", " << params.RTS_CTS[0] << ", " << params.RTS_CTS[1]
+                  << params.TxopLimits[1] << ", " << params.AmpduLimits[0] << ", "
+                  << params.AmpduLimits[1] << ", " << params.RTS_CTS[0] << ", " << params.RTS_CTS[1]
                   << ", " << params.MaxSsrcs[0] << ", " << params.MaxSsrcs[0] << ", "
                   << params.MaxSlrcs[1] << ", " << params.MaxSlrcs[1] << ", "
                   << params.RedundancyThresholds[0] << ", " << params.RedundancyThresholds[1]
@@ -1040,7 +1045,7 @@ main(int argc, char* argv[])
         }
     }
 
-    std::ofstream file("throughput.csv", std::ios::out);
+    std::ofstream file("./scratch/tcp-throughputs/throughput-"+ std::to_string(paramsetid) + ".csv", std::ios::out);
     file << "Time, Throughput(Mbps)" << std::endl;
     if (throughputMap.size() > 0)
     {
