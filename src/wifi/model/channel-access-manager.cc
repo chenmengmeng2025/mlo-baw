@@ -173,7 +173,7 @@ ChannelAccessManager::GetTypeId()
                           "right to start a TXOP but it does not transmit any frame "
                           "(e.g., due to constraints associated with EMLSR operations), "
                           "provided that the queue is not actually empty.",
-                          BooleanValue(true),
+                          BooleanValue(false),
                           MakeBooleanAccessor(&ChannelAccessManager::SetGenerateBackoffOnNoTx,
                                               &ChannelAccessManager::GetGenerateBackoffOnNoTx),
                           MakeBooleanChecker())

@@ -1108,11 +1108,11 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
 {
     auto mpdusize = GetMeanMpduSize();
     uint32_t txoplimit = 0;
-    uint32_t aifsn1 = 2, aifsn2 = 2;
+    uint32_t aifsn1 = 3, aifsn2 = 3;
     mldParams params;
     params.No = 1;
-    params.CWmins = {1, 1};
-    params.CWmaxs = {3, 3};
+    params.CWmins = {7, 7};
+    params.CWmaxs = {63, 63};
     params.Aifsns = {aifsn1, aifsn2};
     params.RTS_CTS = {0, 0};
     params.MaxSlrcs = {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};

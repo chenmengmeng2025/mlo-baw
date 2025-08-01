@@ -25,6 +25,7 @@
 
 #include <array>
 #include <optional>
+#include <ostream>
 
 #undef NS_LOG_APPEND_CONTEXT
 #define NS_LOG_APPEND_CONTEXT WIFI_FEM_NS_LOG_APPEND_CONTEXT
@@ -682,6 +683,7 @@ HtFrameExchangeManager::CalculateAcknowledgmentTime(WifiAcknowledgment* acknowle
         Time baTxDuration = m_phy->CalculateTxDuration(GetBlockAckSize(blockAcknowledgment->baType),
                                                        blockAcknowledgment->blockAckTxVector,
                                                        m_phy->GetPhyBand());
+
         blockAcknowledgment->acknowledgmentTime = m_phy->GetSifs() + baTxDuration;
     }
     else if (acknowledgment->method == WifiAcknowledgment::BAR_BLOCK_ACK)
