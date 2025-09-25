@@ -7,3 +7,4 @@ __pycache__
 *.csv
 run_cmds_tcp_gs
 /cmake-cache/
+.cache/clangd/index/
