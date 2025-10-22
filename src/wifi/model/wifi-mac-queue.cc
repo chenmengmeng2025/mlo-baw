@@ -16,7 +16,9 @@
 #include "ns3/simulator.h"
 
 #include <functional>
+#include <iostream>
 #include <optional>
+#include <ostream>
 
 namespace ns3
 {
@@ -36,7 +38,7 @@ WifiMacQueue::GetTypeId()
             .AddConstructor<WifiMacQueue>()
             .AddAttribute("MaxSize",
                           "The max queue size",
-                          QueueSizeValue(QueueSize("500p")),
+                          QueueSizeValue(QueueSize("1024p")),
                           MakeQueueSizeAccessor(&QueueBase::SetMaxSize, &QueueBase::GetMaxSize),
                           MakeQueueSizeChecker())
             .AddAttribute("MaxDelay",

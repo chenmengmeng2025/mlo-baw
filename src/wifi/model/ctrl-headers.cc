@@ -329,7 +329,7 @@ CtrlBAckResponseHeader::GetSerializedSize() const
     case BlockAckType::BASIC:
     case BlockAckType::COMPRESSED:
     case BlockAckType::EXTENDED_COMPRESSED:
-        size += (2 + m_baType.m_bitmapLen[0]);
+        size += (2 + m_baType.m_bitmapLen[0]);  //here
         break;
     case BlockAckType::MULTI_TID:
         size += (2 + 2 + 8) * (m_tidInfo + 1); // Multi-TID block ack

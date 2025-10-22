@@ -366,7 +366,7 @@ WifiPsdu::Print(std::ostream& os) const
         os << ", A-MPDU of " << GetNMpdus() << " MPDUs";
         for (const auto& mpdu : m_mpduList)
         {
-            os << " (" << *mpdu << ")";
+            os << " (" << std::to_string(mpdu->GetHeader().GetSequenceNumber()) << ")";
         }
     }
     else

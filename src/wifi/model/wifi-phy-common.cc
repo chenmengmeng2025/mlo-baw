@@ -164,7 +164,7 @@ GetPpduMaxTime(WifiPreamble preamble)
     case WIFI_PREAMBLE_HE_TB:
     case WIFI_PREAMBLE_EHT_MU:
     case WIFI_PREAMBLE_EHT_TB:
-        duration = MicroSeconds(5484);
+        duration = MicroSeconds(5484); // change
         break;
     default:
         duration = MicroSeconds(0);

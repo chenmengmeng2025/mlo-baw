@@ -369,9 +369,13 @@ public:
 
     Mac48Address GetRecipient();
 
-    uint32_t GetAmpduLimit(uint8_t linkId);
+    uint32_t GetAmpduLimit0(uint8_t linkId);
+    uint32_t GetAmpduLimit1(uint8_t linkId, uint32_t preTitle);
+    uint32_t GetAmpduLimit2(uint8_t linkId, uint16_t mpduBufferSize);
 
     void SetAmpduLimit(uint8_t linkId, int limit);
+
+    void SetAmpduLimitBoth(int limit0, int limit1); 
 
     void ClearStats();
 
@@ -398,6 +402,9 @@ public:
     bool istcp = false;
     std::vector<double> m_txop_num = {0, 0}; // 获得TXOP数量
 
+    std::vector<double> m_end_time = {0, 0};
+    std::vector<std::vector<double>> m_t = {{}, {}};
+    std::vector<uint32_t> m_bandwidth={20, 160};
 private:
     uint32_t m_maxGroupSize;  // 每组的最大MSDU数量
     Ptr<WifiMacQueue> m_queue;//!< the wifi MAC queue

@@ -15,6 +15,8 @@
 #include "ns3/packet.h"
 
 #include <cmath>
+#include <iostream>
+#include <ostream>
 
 namespace ns3
 {
@@ -61,6 +63,7 @@ GetBlockAckSize(BlockAckType type)
     hdr.SetType(WIFI_MAC_CTL_BACKRESP);
     CtrlBAckResponseHeader blockAck;
     blockAck.SetType(type);
+    // std::cout<<"hdr.GetSize() = "<< hdr.GetSize() <<" blockAck.GetSerializedSize() "<< blockAck.GetSerializedSize()<<std::endl;
     return hdr.GetSize() + blockAck.GetSerializedSize() + 4;
 }
 

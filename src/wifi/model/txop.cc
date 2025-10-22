@@ -24,7 +24,9 @@
 #include "ns3/simulator.h"
 #include "ns3/socket.h"
 
+#include <iostream>
 #include <iterator>
+#include <ostream>
 #include <sstream>
 
 #undef NS_LOG_APPEND_CONTEXT
@@ -171,6 +173,48 @@ Txop::GetTypeId()
                 "Mode Setting",
                 UintegerValue(0),
                 MakeUintegerAccessor(&Txop::m_mode),
+                MakeUintegerChecker<uint32_t>()
+                )
+            .AddAttribute("PreTitle",
+                "pre title",
+                UintegerValue(0),
+                MakeUintegerAccessor(&Txop::m_pertitle),
+                MakeUintegerChecker<uint32_t>()
+                )
+            .AddAttribute("BandWidth24",
+                        "bandwidth 2.4G",
+                        UintegerValue(20),
+                        MakeUintegerAccessor(&Txop::m_bandwith0),
+                MakeUintegerChecker<uint32_t>()
+                )
+            .AddAttribute("BandWidth5",
+                        "bandwidth 5G",
+                        UintegerValue(160),
+                        MakeUintegerAccessor(&Txop::m_bandwith1),
+                MakeUintegerChecker<uint32_t>()
+                )
+            .AddAttribute("Nsld24",
+                        "number of sld 2.4G",
+                        UintegerValue(0),
+                        MakeUintegerAccessor(&Txop::m_nsld0),
+                MakeUintegerChecker<uint32_t>()
+                )
+            .AddAttribute("Nsld5",
+                        "number of sld 5G",
+                        UintegerValue(0),
+                        MakeUintegerAccessor(&Txop::m_nsld1),
+                MakeUintegerChecker<uint32_t>()
+                )
+            .AddAttribute("MaxAmpduNum0",
+                "Max Ampdu Num 2.4G",
+                UintegerValue(64),
+                MakeUintegerAccessor(&Txop::m_maxAmpduNum0),
+                MakeUintegerChecker<uint32_t>()
+                )
+            .AddAttribute("MaxAmpduNum1",
+                "Max Ampdu Num 5G",
+                UintegerValue(64),
+                MakeUintegerAccessor(&Txop::m_maxAmpduNum1),
                 MakeUintegerChecker<uint32_t>()
                 )
             .AddAttribute("GridSearchEnable",
@@ -451,6 +495,10 @@ Txop::UpdateBackoffSlotsNow(uint32_t nSlots, Time backoffUpdateBound, uint8_t li
 
     link.backoffSlots -= nSlots;
     link.backoffStart = backoffUpdateBound;
+    if(m_mode & 0x03){
+        std::cout<<m_mac->GetWifiPhy(linkId)->GetFrequency()<<" MHz "<<Simulator::Now().GetMicroSeconds()<<" us; ";
+        std::cout<<"update slots=" << nSlots << " slots, backoff=" << link.backoffSlots<< " slots"<<std::endl;
+    }
     NS_LOG_DEBUG("update slots=" << nSlots << " slots, backoff=" << link.backoffSlots);
 }
 
@@ -459,6 +507,17 @@ Txop::StartBackoffNow(uint32_t nSlots, uint8_t linkId)
 {
     NS_LOG_FUNCTION(this << nSlots << linkId);
     auto& link = GetLink(linkId);
+    if(m_mode & 0x03){
+        std::cout<<m_mac->GetWifiPhy(linkId)->GetFrequency()<<" MHz "<<Simulator::Now().GetMicroSeconds()<<" us; ";
+        if (link.backoffSlots != 0)
+        {
+            std::cout<<"reset backoff from " << link.backoffSlots << " to " << nSlots << " slots"<<std::endl;
+        }
+        else
+        {
+            std::cout<<"start backoff=" << nSlots << " slots"<<std::endl;
+        }
+    }
 
     if (link.backoffSlots != 0)
     {
@@ -786,6 +845,85 @@ Txop::DoInitialize()
     // The initialization of m_queue and m_mac has been completed.
     if (m_mode & 0x03) {
         m_grouper = Create<MsduGrouper>(m_maxGroupSize, 4096, m_queue, m_mac, m_mode, m_period);
+        m_grouper->m_bandwidth[0] = m_bandwith0;
+        m_grouper->m_bandwidth[1] = m_bandwith1;
+        if(m_pertitle == 0){
+            if(!m_nsld0 && !m_nsld1){
+                if (m_bandwith0 == 20 && m_bandwith1 == 160) {
+                    switch (m_mac->GetMpduBufferSize()) {
+                        case 1024: m_grouper->SetAmpduLimitBoth(110, 914); break;
+                        case 768:  m_grouper->SetAmpduLimitBoth(82, 686);  break;
+                        case 512:  m_grouper->SetAmpduLimitBoth(55, 457);  break;
+                        case 256:  m_grouper->SetAmpduLimitBoth(28, 228);  break;
+                    }
+                } else if (m_bandwith0 == 40 && m_bandwith1 == 160) {
+                    switch (m_mac->GetMpduBufferSize()) {
+                        case 1024: m_grouper->SetAmpduLimitBoth(198, 826); break;
+                        case 768:  m_grouper->SetAmpduLimitBoth(149, 619); break;
+                        case 512:  m_grouper->SetAmpduLimitBoth(99, 413);  break;
+                        case 256:  m_grouper->SetAmpduLimitBoth(50, 206);  break;
+                    } 
+                } else if (m_bandwith0 == 20 && m_bandwith1 == 80) {
+                    switch (m_mac->GetMpduBufferSize()) {
+                        case 1024: m_grouper->SetAmpduLimitBoth(148, 620); break;
+                        case 768:  m_grouper->SetAmpduLimitBoth(148, 620); break;
+                        case 512:  m_grouper->SetAmpduLimitBoth(99, 413);  break;
+                        case 256:  m_grouper->SetAmpduLimitBoth(50, 206);  break;
+                    } 
+                } else if (m_bandwith0 == 40 && m_bandwith1 == 80) {
+                    switch (m_mac->GetMpduBufferSize()) {
+                        case 1024: m_grouper->SetAmpduLimitBoth(148, 620); break;
+                        case 768:  m_grouper->SetAmpduLimitBoth(148, 620); break;
+                        case 512:  m_grouper->SetAmpduLimitBoth(99, 413);  break;
+                        case 256:  m_grouper->SetAmpduLimitBoth(50, 206);  break;
+                    } 
+                }
+            }
+            if(m_nsld0 == 10 && m_nsld1 == 0){
+                if (m_bandwith0 == 20 && m_bandwith1 == 160) {
+                    switch (m_mac->GetMpduBufferSize()) {
+                        case 1024: m_grouper->SetAmpduLimitBoth(41, 983); break;
+                        case 960: m_grouper->SetAmpduLimitBoth(34, 926); break;
+                        case 896:  m_grouper->SetAmpduLimitBoth(27, 869);  break;
+                        case 832:  m_grouper->SetAmpduLimitBoth(20, 812);  break;
+                        case 768:  m_grouper->SetAmpduLimitBoth(13, 755);  break;
+                        case 704:  m_grouper->SetAmpduLimitBoth(6, 698);  break;
+                        default:  m_grouper->SetAmpduLimitBoth(1, m_mac->GetMpduBufferSize()-1);  break;
+
+                    }
+                } 
+            }
+            if(m_nsld1 == 8 && m_mac->GetMpduBufferSize() == 1024 && m_bandwith0 == 20 && m_bandwith1 == 160){
+                if(m_nsld0 == 8) m_grouper->SetAmpduLimitBoth(106, 918);
+                if(m_nsld0 == 10) m_grouper->SetAmpduLimitBoth(91, 933);
+                // if(m_nsld0 == 10) m_grouper->SetAmpduLimitBoth(88, 936);    // caculate-2
+                if(m_nsld0 == 12) m_grouper->SetAmpduLimitBoth(76, 948);
+                if(m_nsld0 == 14) m_grouper->SetAmpduLimitBoth(60, 964);
+                if(m_nsld0 == 16) m_grouper->SetAmpduLimitBoth(44, 980);
+                if(m_nsld0 == 18) m_grouper->SetAmpduLimitBoth(27, 997);
+                if(m_nsld0 == 20) m_grouper->SetAmpduLimitBoth(10, 1014);
+                if(m_nsld0 == 22) m_grouper->SetAmpduLimitBoth(1, 1023);
+                if(m_nsld0 == 24) m_grouper->SetAmpduLimitBoth(1, 1023);
+            }
+            if(m_nsld1 == 10 && m_mac->GetMpduBufferSize() == 1024 && m_bandwith0 == 20 && m_bandwith1 == 160){
+                // if(m_nsld0 == 8) m_grouper->SetAmpduLimitBoth(106, 918);
+                // if(m_nsld0 == 10) m_grouper->SetAmpduLimitBoth(105, 919);
+                if(m_nsld0 == 10) m_grouper->SetAmpduLimitBoth(200, 824); // 精确的sld tau_T
+                // if(m_nsld0 == 12) m_grouper->SetAmpduLimitBoth(76, 948);
+                // if(m_nsld0 == 14) m_grouper->SetAmpduLimitBoth(60, 964);
+                // if(m_nsld0 == 16) m_grouper->SetAmpduLimitBoth(44, 980);
+                // if(m_nsld0 == 18) m_grouper->SetAmpduLimitBoth(27, 997);
+                // if(m_nsld0 == 20) m_grouper->SetAmpduLimitBoth(10, 1014);
+                // if(m_nsld0 == 22) m_grouper->SetAmpduLimitBoth(1, 1023);
+                // if(m_nsld0 == 24) m_grouper->SetAmpduLimitBoth(1, 1023);
+            }
+        }
+        if(m_pertitle == 5){
+            m_grouper->SetAmpduLimitBoth(m_maxAmpduNum0, m_mac->GetMpduBufferSize() - m_maxAmpduNum0);
+        }
+        if(m_pertitle == 6){
+            m_grouper->SetAmpduLimitBoth(m_maxAmpduNum0, m_maxAmpduNum1);
+        }
         if(m_reduandancyEnable) {
             std::cout << "允许冗余模式开启" << std::endl;
             m_grouper->EnableRedundancyMode();
@@ -901,4 +1039,8 @@ uint32_t Txop::GetMode() const
     return m_mode;
 }
 
+uint32_t Txop::GetPreTitle() const
+{
+    return m_pertitle;
+}
 } // namespace ns3

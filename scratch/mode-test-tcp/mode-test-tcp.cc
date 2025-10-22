@@ -188,14 +188,14 @@ SaveTxopStats(std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint64
     std::ofstream fout2(txopMpduNumberOutputFile, std::ios::out);
     fout2 << "LinkId,TxTime,TxDuration,Nmpdus" << std::endl;
     for (uint8_t i = 0; i < 2; i++) {
-        for (const auto it : numList[i]) {
+        for (const auto& it : numList[i]) {
             fout2 << +i << "," << std::get<0>(it) << "," << std::get<1>(it) << "," << std::get<2>(it) << std::endl;
         }
     }
     fout2.close();
 }
 
-std::string ppduTxOutputFile("./PPDU.csv");
+std::string ppduTxOutputFile("./PPDU_best.csv");
 
 void
 NotifyPpduTxDurationMLDSTA(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
@@ -332,7 +332,7 @@ main(int argc, char* argv[])
 
     uint32_t txoplimit1 = 0, txoplimit2 = 0;
     uint32_t singleLink = 0;
-    uint32_t interference = 0b01;
+    uint32_t interference = 0b00;
     double period_update = 0.1;
     bool grid_search_enable = false;
     uint32_t nss = 2;
@@ -405,6 +405,7 @@ main(int argc, char* argv[])
     uint8_t mode_recv = 1 << 2;
     if (mode_recv && logreceiver) mode_recv = mode_recv | (1 << 6);
 
+    title += "_bawsize_" + std::to_string(mpduBufferSize);
     std::string csv_file = (filepath.parent_path() / (title + ".csv")).string();
     std::cout << csv_file << std::endl;
     bool udp = false;
@@ -412,7 +413,7 @@ main(int argc, char* argv[])
     RngSeedManager::SetSeed(seedNumber);
     RngSeedManager::SetRun(seedNumber);
     double txPower = 30; 
-    bool useRts{false};
+    bool useRts{true}; //change to use
 
     int gi = 800;
     Time simulationTime{Seconds(simT)};
@@ -422,8 +423,8 @@ main(int argc, char* argv[])
     uint32_t payloadSize = 1448; // must fit in the max TX duration when transmitting at MCS 0 over an RU of 26 tones
     if (useRts)
     {
-        // Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("0"));
-        Config::SetDefault("ns3::WifiDefaultProtectionManager::EnableMuRts", BooleanValue(true));
+        Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("0"));
+        // Config::SetDefault("ns3::WifiDefaultProtectionManager::EnableMuRts", BooleanValue(true));
     }
 
     // Config::SetDefault("ns3::WifiDefaultProtectionManager::EnableMuRts", BooleanValue(true));
@@ -902,9 +903,9 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/RedundancyEnable", BooleanValue(redundancy_enable));
 
     /* BSS EDCA */
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{1,1}));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3,3}));
+    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
+    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{1,1}));
+    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3,3}));
 
     Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
     Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
@@ -918,10 +919,10 @@ main(int argc, char* argv[])
     //  Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3}));
 
     
-    // /* BSS EDCA */
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
+    /* BSS EDCA */
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
     /* OBSS EDCA */
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2}));
     Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2}));
@@ -947,7 +948,8 @@ main(int argc, char* argv[])
     Simulator::Schedule(Seconds(1.0), &PrintIntermediateTput, udp, dlserverApp, payloadSize, tputInterval, simulationTime + simT_delayEnd);
     
     uint64_t rx_totalbytesStart = 0;
-    Time statsBeginTime = Seconds(1.0) + period;
+    // Time statsBeginTime = Seconds(1.0) + period;
+    Time statsBeginTime = Seconds(1.5);
     Simulator::Schedule(statsBeginTime, &GetRxBytes2, udp, dlserverApp, payloadSize, std::ref(rx_totalbytesStart));
     std::cout << "statsBeginTime: " << statsBeginTime.As(Time::S) << std::endl;
     Time statsEndTime = period * ((simulationTime + simT_delayEnd) / period).GetInt();

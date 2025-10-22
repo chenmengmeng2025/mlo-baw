@@ -229,7 +229,6 @@ void
 NotifyPpduTxDurationOBSS2G(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
 {
     if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
-    // if (!ppdu->GetPsdu()->GetHeader(0).IsQosData() && ppdu->GetPsdu()->GetHeader(0).GetType() != WIFI_MAC_CTL_RTS)
         return;
     Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
     uint32_t nmpdus = 0;
@@ -395,14 +394,13 @@ main(int argc, char* argv[])
     std::string title;
     if(pretitleint == 1) pretitle = "greedy";
     if(pretitleint == 2) pretitle = "damla";
-    if(pretitleint == 3) pretitle = "only5G";
     if (rateCtrl == "constant")
         title = pretitle + "_baw_" + std::to_string(mpduBufferSize) + "_bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + "_mcs_" +
                             std::to_string(mcs1) + "_" + std::to_string(mcs2) + "_interference_" +
                             std::to_string(r1) + "_" + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update);
     else title = pretitle + "_baw_" + std::to_string(mpduBufferSize) + "_bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + 
                             "_ratectrl_" + rateCtrl + "_interference_" +
-                            std::to_string(interference) + "_" + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update) + "_seed_" + std::to_string(seedNumber);
+                            std::to_string(r1) + "_" + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update) + "_seed_" + std::to_string(seedNumber);
     if (mode && logmode) mode = mode | (1 << 4);
     if (mode && logsender) mode = mode | (1 << 5);
     uint8_t mode_recv = 1 << 2;
@@ -879,10 +877,6 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxGroupSize", UintegerValue(maxGroupSize));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Period", TimeValue(period));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode)); // mode = 1 表示 模式一(硬件仲裁)， mode = 2 表示 模式二(软件仲裁)
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/PreTitle", UintegerValue(pretitleint)); 
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/BandWidth24", UintegerValue(bw1));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/BandWidth5", UintegerValue(bw2));
-
     Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode_recv)); // 只负责接收，无msdu_grouper, mode只要非0, 接收端就是新架构，BA只包含各自链路所收到的包的接收信息，各自维护自己的bitmap
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchEnable", BooleanValue(grid_search_enable)); // 是否开启网格搜索，用于静态场景下的最优参数搜索，只有在param_update = true时才会更新参数
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/ParamUpdate", BooleanValue(param_update));

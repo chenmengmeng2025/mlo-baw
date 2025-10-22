@@ -24,6 +24,7 @@
 #include "ns3/wifi-utils.h"
 
 #include <array>
+#include <iostream>
 #include <optional>
 #include <ostream>
 
@@ -355,19 +356,25 @@ HtFrameExchangeManager::StartFrameExchange(Ptr<QosTxop> edca, Time availableTime
     // Even though channel access is requested when the queue is not empty, at
     // the time channel access is granted the lifetime of the packet might be
     // expired and the queue might be empty.
-    if (!peekedItem)
+    // if (!peekedItem)
+    // {
+    //     NS_LOG_DEBUG("No frames available for transmission");
+    //     if (edca->GetMsduGrouper())
+    //     {
+    //         std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
+    //         edca->GetMsduGrouper()->UpdateAmpduSize(m_linkId, 0); // 通过UpdateAmpduSize，让算法决定是否开启冗余，然后重新Peek
+    //         peekedItem = edca->PeekNextMpdu(m_linkId);
+    //     }
+    //     if (!peekedItem) {
+    //         // 卡TCP窗，此时需要尽可能减少对TCP ACK的干扰
+    //         return false;
+    //     }
+    // }
+
+    if (!peekedItem) // 不考虑开启rongyu模式
     {
-        NS_LOG_DEBUG("No frames available for transmission");
-        if (edca->GetMsduGrouper())
-        {
-            // std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
-            edca->GetMsduGrouper()->UpdateAmpduSize(m_linkId, 0); // 通过UpdateAmpduSize，让算法决定是否开启冗余，然后重新Peek
-            peekedItem = edca->PeekNextMpdu(m_linkId);
-        }
-        if (!peekedItem) {
-            // 卡TCP窗，此时需要尽可能减少对TCP ACK的干扰
-            return false;
-        }
+        if(edca->GetMsduGrouper()) std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
+        return false;
     }
 
     const WifiMacHeader& hdr = peekedItem->GetHeader();
@@ -680,10 +687,18 @@ HtFrameExchangeManager::CalculateAcknowledgmentTime(WifiAcknowledgment* acknowle
     if (acknowledgment->method == WifiAcknowledgment::BLOCK_ACK)
     {
         auto blockAcknowledgment = static_cast<WifiBlockAck*>(acknowledgment);
+        // std::cout<<std::endl;
+        // std::cout<<"BLOCK ACK "<<m_phy->GetFrequency()<<"MHZ; ";
         Time baTxDuration = m_phy->CalculateTxDuration(GetBlockAckSize(blockAcknowledgment->baType),
                                                        blockAcknowledgment->blockAckTxVector,
                                                        m_phy->GetPhyBand());
-
+        
+        // std::cout<<"sifs "<<m_phy->GetSifs().GetMicroSeconds()<<"us; ";
+        // std::cout<<"MpduBufferSize "<<m_mac->GetMpduBufferSize()<<"; ";
+        // std::cout<<"blockacksize "<<GetBlockAckSize(blockAcknowledgment->baType)<<"; ";
+        // std::cout<<"baTxDuration "<<baTxDuration.GetMicroSeconds()<<"us; ";
+        // std::cout<<"PhyPreambleAndHeaderDuration "<<m_phy->CalculatePhyPreambleAndHeaderDuration(blockAcknowledgment->blockAckTxVector).GetMicroSeconds()<<"us;";
+        // std::cout<<std::endl;
         blockAcknowledgment->acknowledgmentTime = m_phy->GetSifs() + baTxDuration;
     }
     else if (acknowledgment->method == WifiAcknowledgment::BAR_BLOCK_ACK)
@@ -1063,6 +1078,11 @@ HtFrameExchangeManager::SendPsdu()
             txDuration + m_phy->GetSifs() + m_phy->GetSlot() +
             m_phy->CalculatePhyPreambleAndHeaderDuration(blockAcknowledgment->blockAckTxVector) + transmissionDelay;
         NS_ASSERT(!m_txTimer.IsRunning());
+        // std::cout<<""<<m_phy->GetFrequency()<<"MHZ;";
+        // std::cout<<"sifs "<<m_phy->GetSifs().GetMicroSeconds()<<"us;";
+        // std::cout<<"slot "<<m_phy->GetSlot().GetMicroSeconds()<<"us;";
+        // std::cout<<"BA PhyPreambleAndHeaderDuration"<<m_phy->CalculatePhyPreambleAndHeaderDuration(blockAcknowledgment->blockAckTxVector).GetMicroSeconds()<<"us;";
+        // std::cout<<std::endl;
         m_txTimer.Set(WifiTxTimer::WAIT_BLOCK_ACK,
                       timeout,
                       {m_psdu->GetAddr1()},

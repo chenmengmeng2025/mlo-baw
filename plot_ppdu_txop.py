@@ -4,9 +4,9 @@ import argparse
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Plot PPDU Timeline')
-    parser.add_argument('--begin', type=float, default=1.5,
+    parser.add_argument('--begin', type=float, default=1.50,
                       help='Begin time for the plot (default: 1.5)')
-    parser.add_argument('--end', type=float, default=1.52,
+    parser.add_argument('--end', type=float, default=1.55,
                       help='End time for the plot (default: 1.52)')
     parser.add_argument("--tcp", action="store_true", help="Enable TCP mode")
     return parser.parse_args()
@@ -19,7 +19,7 @@ if __name__ == "__main__":
     tcp = bool(args.tcp)
     # 读取数据
     # df = pd.read_csv('PPDU_no_interference_no_newarch_txoplimits_0.000000_0.000000_link1Pct_0.004000.csv')
-    df = pd.read_csv("PPDU.csv")
+    df = pd.read_csv("scratch/mode-test-udp-1vN-dl/my_baw_1024_bw_20_160_interference_8_8_seed_1_PPDU.csv")
     # df['type'] = df['type'].astype(str)
 
     color_map = {
@@ -31,10 +31,10 @@ if __name__ == "__main__":
         'MLD1' : '#8c564b',   # 棕色
     }
 
-    def get_y(type_):
-        if type_ == '1' or type_ == 'OBSS2' or  type_ == 'MLD1':
+    def get_y(type_): 
+        if type_ == '1' or type_.startswith('OBSS2') or type_ == 'MLD1':
             return 1
-        elif type_ == '0' or type_ == 'OBSS1' or  type_ == 'MLD0':
+        elif type_ == '0' or type_.startswith('OBSS1') or type_ == 'MLD0':
             return 0
         else:
             return 0

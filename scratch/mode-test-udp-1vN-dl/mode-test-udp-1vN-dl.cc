@@ -94,7 +94,6 @@ std::unordered_map<double, double> throughputMap;
 // std::unordered_map<double, std::pair<int, double>> blockinfoMap;
 
 int cnt = 0;
-
 void
 GetRxBytes(bool udp, const ApplicationContainer& serverApp, uint32_t payloadSize)
 {
@@ -138,7 +137,7 @@ SaveParams(mldParams pm, double pct1, double time, std::vector<double> thpt, std
             if(result.throughput == 0.0 && throughputMap[result.time] != 0.0)
             {
                 result.throughput = throughputMap[result.time];
-                std::cout << "Set Throughput : " << throughputMap[result.time] <<" " <<  result.time << " s" << std::endl;
+                // std::cout << "Set Throughput : " << throughputMap[result.time] <<" " <<  result.time << " s" << std::endl;
             }
         }
     });
@@ -156,10 +155,10 @@ PrintIntermediateTput(bool udp,
     GetRxBytes(udp, serverApp, payloadSize);
     if (throughputQueue.size() == 2) {
         double tp = (throughputQueue.back() - throughputQueue.front()) * 8. / tputInterval.GetMicroSeconds();
-        std::cout << "[" << (now - tputInterval).As(Time::S) << " - " << now.As(Time::S)
-        << "] Throughput (Mbit/s):";
-        std::cout << "\t\t" << tp << "; "; // Mbit/s
-        std::cout << std::endl;
+        // std::cout << "[" << (now - tputInterval).As(Time::S) << " - " << now.As(Time::S)
+        // << "] Throughput (Mbit/s):";
+        // std::cout << "\t\t" << tp << "; "; // Mbit/s
+        // std::cout << std::endl;
         throughputMap[now.GetSeconds()] = tp;
     }
     if (now + tputInterval < simulationTime)
@@ -198,11 +197,243 @@ SaveTxopStats(std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint64
     fout2.close();
 }
 
+void updateThroughputCSV(const std::string& pretitle, int bw1, int bw2,
+                         int mcs1, int mcs2, int nss,
+                         int nsld1, int nsld2, int baw,
+                         int maxAmpduNum0, int maxAmpduNum1,
+                         int seedNumber, double totalthroughput,
+                         double totalthroughput1, double totalthroughput2)
+{
+    std::string filename = "throughput_10s.csv";
+    bool file_exists = std::filesystem::exists(filename);
+    std::vector<std::vector<std::string>> rows;
+    bool found = false;
+    bool has_mcs = false;
+    bool has_nss = false;
+
+    // ========== 1. 读取文件 ==========
+    if (file_exists)
+    {
+        std::ifstream infile(filename);
+        std::string line;
+        bool is_header = true;
+
+        while (std::getline(infile, line))
+        {
+            if (line.empty()) continue;
+            std::stringstream ss(line);
+            std::vector<std::string> tokens;
+            std::string token;
+            while (std::getline(ss, token, ','))
+            {
+                token.erase(0, token.find_first_not_of(" \t"));
+                token.erase(token.find_last_not_of(" \t") + 1);
+                tokens.push_back(token);
+            }
+
+            if (is_header)
+            {
+                // ---- 检查表头列结构 ----
+                has_mcs = (std::find(tokens.begin(), tokens.end(), "mcs1") != tokens.end());
+                has_nss = (std::find(tokens.begin(), tokens.end(), "nss") != tokens.end());
+
+                // 若旧文件缺少 throughput1/2 列
+                if (tokens.size() == 10 && tokens.back() == "Throughput(Mbps)")
+                {
+                    tokens.push_back("Throughput1(Mbps)");
+                    tokens.push_back("Throughput2(Mbps)");
+                }
+
+                // 若旧文件缺少 mcs1/mcs2 → 自动补列
+                if (!has_mcs)
+                {
+                    auto it = tokens.begin() + 3; // 在 bw2 后插入
+                    tokens.insert(it, {"mcs1", "mcs2"});
+                    has_mcs = true;
+                }
+
+                // 若旧文件缺少 nss → 在 mcs2 后插入
+                if (!has_nss)
+                {
+                    auto it = std::find(tokens.begin(), tokens.end(), "mcs2");
+                    if (it != tokens.end()) ++it;
+                    tokens.insert(it, "nss");
+                    has_nss = true;
+                }
+
+                rows.push_back(tokens);
+                is_header = false;
+                continue;
+            }
+
+            // ---- 普通数据行 ----
+            if (tokens.size() >= 9)
+            {
+                if (!has_mcs)
+                {
+                    tokens.insert(tokens.begin() + 3, "13"); // mcs1
+                    tokens.insert(tokens.begin() + 4, "13"); // mcs2
+                }
+
+                if (!has_nss)
+                {
+                    tokens.insert(tokens.begin() + 5, "2"); // nss 默认值2
+                }
+
+                size_t idx_bw1 = 1;
+                size_t idx_bw2 = 2;
+                size_t idx_mcs1 = 3;
+                size_t idx_mcs2 = 4;
+                size_t idx_nss = 5;
+                size_t base = 6;
+
+                std::string f_pretitle = tokens[0];
+                int f_bw1 = std::stoi(tokens[idx_bw1]);
+                int f_bw2 = std::stoi(tokens[idx_bw2]);
+                int f_mcs1 = std::stoi(tokens[idx_mcs1]);
+                int f_mcs2 = std::stoi(tokens[idx_mcs2]);
+                int f_nss = std::stoi(tokens[idx_nss]);
+                int f_nsld1 = std::stoi(tokens[base]);
+                int f_nsld2 = std::stoi(tokens[base + 1]);
+                int f_baw = std::stoi(tokens[base + 2]);
+                int f_maxAmpduNum0 = std::stoi(tokens[base + 3]);
+                int f_maxAmpduNum1 = std::stoi(tokens[base + 4]);
+                int f_seed = std::stoi(tokens[base + 5]);
+
+                // ---- 判断是否匹配 ----
+                if (f_pretitle == pretitle && f_bw1 == bw1 && f_bw2 == bw2 &&
+                    f_mcs1 == mcs1 && f_mcs2 == mcs2 && f_nss == nss &&
+                    f_nsld1 == nsld1 && f_nsld2 == nsld2 && f_baw == baw &&
+                    f_maxAmpduNum0 == maxAmpduNum0 && f_maxAmpduNum1 == maxAmpduNum1 &&
+                    f_seed == seedNumber)
+                {
+                    if (tokens.size() >= base + 9)
+                    {
+                        tokens[base + 6] = std::to_string(totalthroughput);
+                        tokens[base + 7] = std::to_string(totalthroughput1);
+                        tokens[base + 8] = std::to_string(totalthroughput2);
+                    }
+                    else
+                    {
+                        while (tokens.size() < base + 6) tokens.push_back("");
+                        tokens.push_back(std::to_string(totalthroughput));
+                        tokens.push_back(std::to_string(totalthroughput1));
+                        tokens.push_back(std::to_string(totalthroughput2));
+                    }
+                    found = true;
+                }
+            }
+            rows.push_back(tokens);
+        }
+        infile.close();
+    }
+    else
+    {
+        // ========== 2. 文件不存在 → 创建新表 ==========
+        rows.push_back({
+            "pertitle", "bw1", "bw2", "mcs1", "mcs2", "nss",
+            "nsld1", "nsld2", "baw",
+            "maxAmpduNum0", "maxAmpduNum1", "seed",
+            "Throughput(Mbps)", "Throughput1(Mbps)", "Throughput2(Mbps)"
+        });
+        has_mcs = has_nss = true;
+    }
+
+    // ========== 3. 插入新行 ==========
+    if (!found)
+    {
+        std::vector<std::string> new_row = {
+            pretitle,
+            std::to_string(bw1),
+            std::to_string(bw2),
+            std::to_string(mcs1),
+            std::to_string(mcs2),
+            std::to_string(nss),
+            std::to_string(nsld1),
+            std::to_string(nsld2),
+            std::to_string(baw),
+            std::to_string(maxAmpduNum0),
+            std::to_string(maxAmpduNum1),
+            std::to_string(seedNumber),
+            std::to_string(totalthroughput),
+            std::to_string(totalthroughput1),
+            std::to_string(totalthroughput2)
+        };
+
+        bool inserted = false;
+        for (auto it = rows.begin() + 1; it != rows.end(); ++it)
+        {
+            auto& r = *it;
+            if (r.size() < 9) continue;
+
+            std::string f_pretitle = r[0];
+            int f_bw1 = std::stoi(r[1]);
+            int f_bw2 = std::stoi(r[2]);
+            int f_mcs1 = std::stoi(r[3]);
+            int f_mcs2 = std::stoi(r[4]);
+            int f_nss = std::stoi(r[5]);
+            int offset = 6;
+            int f_nsld1 = std::stoi(r[offset]);
+            int f_nsld2 = std::stoi(r[offset + 1]);
+            int f_baw = std::stoi(r[offset + 2]);
+            int f_maxAmpduNum0 = std::stoi(r[offset + 3]);
+            int f_maxAmpduNum1 = std::stoi(r[offset + 4]);
+            int f_seed = std::stoi(r[offset + 5]);
+
+            if (std::tie(pretitle, bw1, bw2, mcs1, mcs2, nss,
+                         nsld1, nsld2, baw, maxAmpduNum0, maxAmpduNum1, seedNumber) <
+                std::tie(f_pretitle, f_bw1, f_bw2, f_mcs1, f_mcs2, f_nss,
+                         f_nsld1, f_nsld2, f_baw, f_maxAmpduNum0, f_maxAmpduNum1, f_seed))
+            {
+                rows.insert(it, new_row);
+                inserted = true;
+                break;
+            }
+        }
+        if (!inserted)
+            rows.push_back(new_row);
+    }
+
+    // ========== 4. 写回文件 ==========
+    std::ofstream outfile(filename, std::ios::out | std::ios::trunc);
+    for (auto& row : rows)
+    {
+        for (size_t i = 0; i < row.size(); ++i)
+        {
+            outfile << row[i];
+            if (i != row.size() - 1)
+                outfile << ", ";
+        }
+        outfile << "\n";
+    }
+    outfile.close();
+}
+
+
+
+
 std::string ppduTxOutputFile("./PPDU.csv");
+std::string rtsctsTxOutputFile("./RTSCTS.csv");
 
 void
 NotifyPpduTxDurationMLDSTA(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
 {
+    if(ppdu->GetPsdu()->GetHeader(0).IsRts() && Simulator::Now().GetSeconds() < 6){
+            std::fstream file;
+            file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
+            file << "MLD_RTS_" << uint32_t(linkid) << "," << Simulator::Now().GetMicroSeconds() << ","
+                    << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds()<<std::endl;
+            file.close();
+        return;
+    }
+    if(ppdu->GetPsdu()->GetHeader(0).IsCts() && Simulator::Now().GetSeconds() < 6){
+        std::fstream file;
+        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
+        file << "MLD_CTS_" << uint32_t(linkid) << "," << Simulator::Now().GetMicroSeconds() << ","
+                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds()<<std::endl;
+        file.close();
+        return;
+    }
     if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
         return;
     Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
@@ -226,52 +457,79 @@ NotifyPpduTxDurationMLDSTA(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t link
 }
 
 void
-NotifyPpduTxDurationOBSS2G(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
+NotifyPpduTxDurationSLD2G(uint32_t staIndex, Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
 {
-    if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
-    // if (!ppdu->GetPsdu()->GetHeader(0).IsQosData() && ppdu->GetPsdu()->GetHeader(0).GetType() != WIFI_MAC_CTL_RTS)
+    if(ppdu->GetPsdu()->GetHeader(0).IsRts() && Simulator::Now().GetSeconds() < 6){
+        std::fstream file;
+        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
+        file << "SLD2G_RTS_" << staIndex << "_" << uint32_t(linkid) << ","
+                << Simulator::Now().GetMicroSeconds() << ","
+                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() <<std::endl;
+        file.close();
         return;
-    Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
-    uint32_t nmpdus = 0;
-    if (psdu->IsAggregate())
-    {
-        nmpdus = psdu->GetNMpdus();
-    } else {
-        nmpdus = 1;
     }
-    if (Simulator::Now().GetSeconds() < 6)
+    if(ppdu->GetPsdu()->GetHeader(0).IsCts() && Simulator::Now().GetSeconds() < 6){
+        std::fstream file;
+        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
+        file << "SLD2G_CTS_" << staIndex << "_" << uint32_t(linkid) << ","
+                << Simulator::Now().GetMicroSeconds() << ","
+                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() <<std::endl;
+        file.close();
+        return;
+    }
+    if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
+        return;
+
+    Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
+    uint32_t nmpdus = psdu->IsAggregate() ? psdu->GetNMpdus() : 1;
+
+    if (Simulator::Now().GetSeconds() < 6 && nmpdus != 0)
     {
         std::fstream file;
         file.open(ppduTxOutputFile, std::ios::out | std::ios::app);
-        if (nmpdus != 0)
-            file << "OBSS1" << "," << Simulator::Now().GetMicroSeconds() << ","
-                    << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() << ","
-                    << nmpdus << std::endl;
+        file << "SLD2G_" << staIndex << "_" << uint32_t(linkid) << ","
+             << Simulator::Now().GetMicroSeconds() << ","
+             << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() << ","
+             << nmpdus << std::endl;
         file.close();
     }
 }
 
 void
-NotifyPpduTxDurationOBSS5G(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
+NotifyPpduTxDurationSLD5G(uint32_t staIndex, Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
 {
+    if(ppdu->GetPsdu()->GetHeader(0).IsRts() && Simulator::Now().GetSeconds() < 6){
+        std::fstream file;
+        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
+        file << "SLD5G_RTS_" << staIndex << "_" << uint32_t(linkid) << ","
+                << Simulator::Now().GetMicroSeconds() << ","
+                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() <<std::endl;
+        file.close();
+        return;
+    }
+    if(ppdu->GetPsdu()->GetHeader(0).IsCts() && Simulator::Now().GetSeconds() < 6){
+        std::fstream file;
+        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
+        file << "SLD5G_CTS_" << staIndex << "_" << uint32_t(linkid) << ","
+                << Simulator::Now().GetMicroSeconds() << ","
+                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() <<std::endl;
+        file.close();
+        return;
+    }
     if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
         return;
+
     Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
-    uint32_t nmpdus = 0;
-    if (psdu->IsAggregate())
-    {
-        nmpdus = psdu->GetNMpdus();
-    } else {
-        nmpdus = 1;
-    }
-    if (Simulator::Now().GetSeconds() < 6)
+    uint32_t nmpdus = psdu->IsAggregate() ? psdu->GetNMpdus() : 1;
+
+    if (Simulator::Now().GetSeconds() < 6 && nmpdus != 0)
     {
         std::fstream file;
         file.open(ppduTxOutputFile, std::ios::out | std::ios::app);
-        if (nmpdus != 0)
-            file << "OBSS2" << "," << Simulator::Now().GetMicroSeconds() << ","
-                    << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() << ","
-                    << nmpdus << std::endl;
+        file << "SLD5G_" << staIndex << "_" << uint32_t(linkid) << ","
+             << Simulator::Now().GetMicroSeconds() << ","
+             << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() << ","
+             << nmpdus << std::endl;
         file.close();
     }
 }
@@ -279,6 +537,22 @@ NotifyPpduTxDurationOBSS5G(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t link
 void
 NotifyPpduTxDurationMLDAP(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
 {
+    if(ppdu->GetPsdu()->GetHeader(0).IsRts() && Simulator::Now().GetSeconds() < 6){
+        std::fstream file;
+        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
+        file << "AP_RTS_" << uint32_t(linkid) << "," << Simulator::Now().GetMicroSeconds() << ","
+                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() <<std::endl;
+        file.close();
+        return;
+    }
+    if(ppdu->GetPsdu()->GetHeader(0).IsCts() && Simulator::Now().GetSeconds() < 6){
+        std::fstream file;
+        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
+        file << "AP_CTS_" << uint32_t(linkid) << "," << Simulator::Now().GetMicroSeconds() << ","
+                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() <<std::endl;
+        file.close();
+        return;
+    }
     if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
         return;
     Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
@@ -295,12 +569,49 @@ NotifyPpduTxDurationMLDAP(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linki
         std::fstream file;
         file.open(ppduTxOutputFile, std::ios::out | std::ios::app);
         if (nmpdus != 0)
-            file << uint32_t(linkid) << "," << Simulator::Now().GetMicroSeconds() << ","
+            file <<"AP_" << uint32_t(linkid) << "," << Simulator::Now().GetMicroSeconds() << ","
                 << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() << ","
                 << nmpdus << std::endl;
         file.close();
     }
 }
+
+double totalThroughput = 0.0;
+double totalThroughput1 = 0.0;
+double totalThroughput2 = 0.0;
+void 
+NotifyMLDThroughput(Time statsBeginTime,
+                    Time statsEndTime,
+                    uint32_t payloadSize,
+                    Ptr<const WifiPpdu> ppdu,
+                    Time duration,
+                    uint8_t linkid)
+{
+    // 仅统计 QoS Data 帧
+    if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
+        return;
+
+    Time now = Simulator::Now();
+
+    // 仅在统计区间内统计
+    if (now < statsBeginTime || now > statsEndTime)
+        return;
+
+    Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
+    uint32_t nmpdus = psdu->IsAggregate() ? psdu->GetNMpdus() : 1;
+    if (nmpdus == 0)
+        return;
+
+    double interval = (statsEndTime - statsBeginTime).GetSeconds();
+    double bits = static_cast<double>(nmpdus) * payloadSize * 8.0;
+    totalThroughput += bits / interval / 1e6;
+    if (linkid == 0)
+        totalThroughput1 += bits / interval / 1e6;
+    else if (linkid == 1)
+        totalThroughput2 += bits / interval / 1e6;
+
+}
+
 
 int
 main(int argc, char* argv[])
@@ -308,34 +619,34 @@ main(int argc, char* argv[])
     if (std::filesystem::exists(txopOutputFile)) { 
         std::filesystem::remove(txopOutputFile);
     }
-    if (std::filesystem::exists(ppduTxOutputFile)) { 
-        std::filesystem::remove(ppduTxOutputFile);
-    }
+
     if (std::filesystem::exists(txopMpduNumberOutputFile)) { 
         std::filesystem::remove(txopMpduNumberOutputFile);
     }
     uint32_t seedNumber = 1;
-
-    uint32_t mcs1 = 6;
-    uint32_t mcs2 = 6;
+    uint32_t mcs1 = 13;
+    uint32_t mcs2 = 13;
     uint32_t bw1 = 20;
-    uint32_t bw2 = 80;
+    uint32_t bw2 = 20;
     double r1 = 1;
     double r2 = 1;
     uint32_t ch1 = 0;
     uint32_t ch2 = 0; 
-    std::string rateCtrl{"ideal"};
-    // std::string rateCtrl{"constant"};
+    // std::string rateCtrl{"ideal"};
+    std::string rateCtrl{"constant"};
     // std::string rateCtrl{"minstrel"};
 
     uint16_t mpduBufferSize{1024};
     uint32_t maxAmpduSize{1024 * 8 * (1500 + 150)}; // 1048575
-    uint32_t maxAmpduSize1{8 * (1500 + 150)};
-    uint32_t maxAmpduSize2{8 * (1500 + 150)}; // payload = 700
+    uint32_t maxAmpduSize1{1 * (1500 + 150)};
+    uint32_t maxAmpduSize2{1 * (1500 + 150)};
+    uint32_t maxAmpduNum0 = 0;
+    uint32_t maxAmpduNum1 = 0;
 
     uint32_t txoplimit1 = 0, txoplimit2 = 0;
     uint32_t singleLink = 0;
-    uint32_t interference = 0b00;
+    uint8_t nStaSlds1 = 0;
+    uint8_t nStaSlds2 = 0;
     double period_update = 0.1;
     bool grid_search_enable = false;
     uint32_t nss = 2;
@@ -351,7 +662,8 @@ main(int argc, char* argv[])
     Time simT_delayEnd = NanoSeconds(2);
     uint32_t maxGroupSize = 1;
     uint32_t pretitleint = 0;
-    std::string pretitle = "my";
+    std::string pretitle = "my"; //my2 means caculate-2
+    std::string scenario = "default";  // 默认场景
     CommandLine cmd(__FILE__);
     std::filesystem::path filepath = __FILE__;
     cmd.AddValue("seed", "seed number", seedNumber);
@@ -378,50 +690,74 @@ main(int argc, char* argv[])
     cmd.AddValue("nss", "mimo", nss);
     cmd.AddValue("maxgroupsize", "maxgroupsize", maxGroupSize);
     cmd.AddValue("delay", "delay setting", transmission_delay); // 传输延时，单位为微秒
-    cmd.AddValue("interference", "interference setting", interference);
+    cmd.AddValue("nsld1", "interference setting", nStaSlds1);
+    cmd.AddValue("nsld2", "interference setting", nStaSlds2);
     cmd.AddValue("redundancy", "redundancy setting", redundancy_enable);
     cmd.AddValue("param_update", "param update setting", param_update); 
     cmd.AddValue("logsender", "new transmitter architecture log setting", logsender);
     cmd.AddValue("logreceiver", "new receiver architecture log setting", logreceiver);
     cmd.AddValue("logmode", "mode log setting", logmode);
     cmd.AddValue("pretitle", "pre title", pretitleint);
+    cmd.AddValue("maxampdunum0", "max mpdu number of 2.4G", maxAmpduNum0);
+    cmd.AddValue("maxampdunum1", "max mpdu number of 5G", maxAmpduNum1);
+    cmd.AddValue("scenario", "Simulation scenario", scenario);
+
     cmd.Parse(argc, argv);
 
+    uint32_t originalSeed = seedNumber;
     if (simT == 0) simT = period_update * 10 + 1;
     Time period{Seconds(period_update)};
-    if (!(interference & 0b01)) r1 = 1e-9;  
-    if (!(interference & 0b10)) r2 = 1e-9;
+    if (!(nStaSlds1)) r1 = 1e-9;  
+    if (!(nStaSlds2)) r2 = 1e-9;
     Time tputInterval = period; // interval for detailed throughput measurement
     std::string title;
     if(pretitleint == 1) pretitle = "greedy";
-    if(pretitleint == 2) pretitle = "damla";
+    if(pretitleint == 2) {pretitle = "damla";}
     if(pretitleint == 3) pretitle = "only5G";
-    if (rateCtrl == "constant")
-        title = pretitle + "_baw_" + std::to_string(mpduBufferSize) + "_bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + "_mcs_" +
-                            std::to_string(mcs1) + "_" + std::to_string(mcs2) + "_interference_" +
-                            std::to_string(r1) + "_" + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update);
-    else title = pretitle + "_baw_" + std::to_string(mpduBufferSize) + "_bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + 
-                            "_ratectrl_" + rateCtrl + "_interference_" +
-                            std::to_string(interference) + "_" + "_redundancy_" + std::to_string(redundancy_enable) + "_txopauto_" + std::to_string(!grid_search_enable && param_update) + "_mode_"  + std::to_string(mode) + "_sl_" + std::to_string(singleLink) + "_period_" + std::to_string(period_update) + "_seed_" + std::to_string(seedNumber);
+    if(pretitleint == 4) pretitle = "only2G";
+    if(pretitleint == 5) pretitle = "sumbawby2g"; // used to fixset
+    if(pretitleint == 6) pretitle = "bothset"; // used to fix2g
+    title = pretitle + "_baw_" + std::to_string(mpduBufferSize) + "_bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + "_mcs_" + std::to_string(mcs1) + "_" + std::to_string(mcs2) 
+                        + "_interference_" + std::to_string(nStaSlds1) + "_" + std::to_string(nStaSlds2) + "_seed_" + std::to_string(seedNumber);
+    if(pretitleint == 5) {
+        title = title + "_maxAmpduNum0_" + std::to_string(maxAmpduNum0);
+    }
+    if(pretitleint == 6) {
+        title = title + "_maxAmpduNum0_" + std::to_string(maxAmpduNum0) + "_maxAmpduNum1_" + std::to_string(maxAmpduNum1);
+    }
+
+    std::filesystem::path scenarioDir = filepath.parent_path() / scenario;
+    // 若文件夹不存在则创建
+    if (!std::filesystem::exists(scenarioDir))
+    {
+        std::filesystem::create_directories(scenarioDir);
+    }
+    ppduTxOutputFile = (scenarioDir / (title + "_PPDU.csv")).string();
+    if (std::filesystem::exists(ppduTxOutputFile)) { 
+        std::filesystem::remove(ppduTxOutputFile);
+    }
+    rtsctsTxOutputFile = (scenarioDir / (title + "_RTSCTS.csv")).string();
+    if (std::filesystem::exists(rtsctsTxOutputFile)) { 
+        std::filesystem::remove(rtsctsTxOutputFile);
+    }
     if (mode && logmode) mode = mode | (1 << 4);
     if (mode && logsender) mode = mode | (1 << 5);
     uint8_t mode_recv = 1 << 2;
     if (mode_recv && logreceiver) mode_recv = mode_recv | (1 << 6);
-    std::string csv_file = (filepath.parent_path() / (title + ".csv")).string();
+    std::string csv_file = (scenarioDir / (title + ".csv")).string();
     std::cout << csv_file << std::endl;
     // LogComponentEnable("PhyEntity", LOG_LEVEL_DEBUG);
     bool udp = true;
     uint8_t nLinks = 2;
     RngSeedManager::SetSeed(seedNumber);
     RngSeedManager::SetRun(seedNumber);
-    double txPower = 30; 
+    double txPower = 20; 
     bool useRts{true};
 
     int gi = 800;
     Time simulationTime{Seconds(simT)};
     std::string dlAckSeqType{"NO-OFDMA"};
     size_t nStaMlds{1};
-    std::vector<size_t> nStaSlds{1, 1};
     uint32_t payloadSize = 1500; // must fit in the max TX duration when transmitting at MCS 0 over an RU of 26 tones
 
     if (useRts) // 默认不使用RTS CTS
@@ -448,26 +784,14 @@ main(int argc, char* argv[])
 
     NodeContainer apNodes;
     NodeContainer mldNodes;
-    NodeContainer sldNodes2;
-    NodeContainer sldNodes5;
-    apNodes.Create(3);
-    mldNodes.Create(nStaMlds);
-    sldNodes2.Create(nStaSlds[0]);
-    sldNodes5.Create(nStaSlds[1]);
+    apNodes.Create(1);
+    mldNodes.Create(nStaMlds + nStaSlds1 + nStaSlds2);
     NetDeviceContainer apDev;
-    NetDeviceContainer apDev2;
-    NetDeviceContainer apDev5;
     NetDeviceContainer mldDev;
-    NetDeviceContainer sldDev2;
-    NetDeviceContainer sldDev5;
 
     /* WIFI Configuration */
     WifiHelper wifi;
-    WifiHelper wifi2;
-    WifiHelper wifi5;
     wifi.SetStandard(WIFI_STANDARD_80211be);
-    wifi2.SetStandard(WIFI_STANDARD_80211ax);
-    wifi5.SetStandard(WIFI_STANDARD_80211ax);
     std::vector<uint32_t> mcs{mcs1, mcs2};
     std::vector<uint32_t> bandwidth{bw1, bw2};
     std::vector<uint32_t> channelnum{ch1, ch2};
@@ -480,19 +804,12 @@ main(int argc, char* argv[])
             if (i == 0) {
             dataModeStr = "EhtMcs" + std::to_string(mcs[i]);
             nonHtRefRateMbps = EhtPhy::GetNonHtReferenceRate(mcs[i]) / 1e6;
-            ctrlRateStr = "OfdmRate" + std::to_string(nonHtRefRateMbps) + "Mbps";
+            ctrlRateStr = "ErpOfdmRate" + std::to_string(nonHtRefRateMbps) + "Mbps";
             std::cout << "Link " << std::to_string(i) <<" ControlRate: " << ctrlRateStr << " DataMode: " << dataModeStr << std::endl;
             wifi.SetRemoteStationManager(i, 
                                             "ns3::ConstantRateWifiManager",
                                             "DataMode", StringValue(dataModeStr),
                                             "ControlMode", StringValue(ctrlRateStr));
-            dataModeStr = "HeMcs" + std::to_string(mcs[i]);
-            nonHtRefRateMbps = HePhy::GetNonHtReferenceRate(mcs[i]) / 1e6;
-            ctrlRateStr = "OfdmRate" + std::to_string(nonHtRefRateMbps) + "Mbps";
-            std::cout << "2.4G OBSS: ControlRate: " << ctrlRateStr << " DataMode: " << dataModeStr << std::endl;
-            wifi2.SetRemoteStationManager("ns3::ConstantRateWifiManager",
-                                                "DataMode", StringValue(dataModeStr),
-                                                "ControlMode", StringValue(ctrlRateStr));
             }
             else {
             dataModeStr = "EhtMcs" + std::to_string(mcs[i]);
@@ -503,16 +820,6 @@ main(int argc, char* argv[])
                                             "ns3::ConstantRateWifiManager",
                                             "DataMode", StringValue(dataModeStr),
                                             "ControlMode", StringValue(ctrlRateStr));
-            
-            mcs[i] = mcs[i] > 11 ? 11 : mcs[i];
-            dataModeStr = "HeMcs" + std::to_string(mcs[i]);
-            nonHtRefRateMbps = HePhy::GetNonHtReferenceRate(mcs[i]) / 1e6;
-            ctrlRateStr = "OfdmRate" + std::to_string(nonHtRefRateMbps) + "Mbps";
-            std::cout << "5G OBSS: ControlRate: " << ctrlRateStr << " DataMode: " << dataModeStr << std::endl;
-            wifi5.SetRemoteStationManager("ns3::ConstantRateWifiManager",
-                                                "DataMode", StringValue(dataModeStr),
-                                                "ControlMode", StringValue("OfdmRate24Mbps"));
-
             }
         }
     } else if (rateCtrl == "ideal") {
@@ -520,12 +827,6 @@ main(int argc, char* argv[])
         for (uint8_t i = 0; i < nLinks; ++i) {
             wifi.SetRemoteStationManager(i, 
                                             "ns3::IdealWifiManager");
-            if (i == 0) {
-            wifi2.SetRemoteStationManager("ns3::IdealWifiManager");
-            }
-            else {
-            wifi5.SetRemoteStationManager("ns3::IdealWifiManager");
-            }
         }
     }
 
@@ -571,35 +872,10 @@ main(int argc, char* argv[])
         if (i == 0) phy.Set(i, "ChannelSettings", StringValue(channelSetting + ", BAND_2_4GHZ, 0}"));
         else phy.Set(i, "ChannelSettings", StringValue(channelSetting + ", BAND_5GHZ, 0}"));
     }
-    
-    // SLD PHY
-    SpectrumWifiPhyHelper phySld2(1);
-    // phySld2.Set("Antennas", UintegerValue(2));          // 设置天线数量为2
-    // phySld2.Set("MaxSupportedTxSpatialStreams", UintegerValue(2));  // 发送空间流数
-    // phySld2.Set("MaxSupportedRxSpatialStreams", UintegerValue(2));  // 接收空间流数
-    phySld2.SetPcapDataLinkType(WifiPhyHelper::DLT_IEEE802_11_RADIO);
-    phySld2.SetErrorRateModel("ns3::TableBasedErrorRateModel");
-    phySld2.Set("TxPowerStart", DoubleValue(txPower));
-    phySld2.Set("TxPowerEnd", DoubleValue(txPower));
-    phySld2.AddChannel(spectrumChannel_2, WIFI_SPECTRUM_2_4_GHZ);
-    phySld2.Set("ChannelSettings", StringValue("{0, " + std::to_string(bandwidth[0]) + ", BAND_2_4GHZ, 0}"));
-
-    SpectrumWifiPhyHelper phySld5(1);
-    // phySld5.Set("Antennas", UintegerValue(2));          // 设置天线数量为2
-    // phySld5.Set("MaxSupportedTxSpatialStreams", UintegerValue(2));  // 发送空间流数
-    // phySld5.Set("MaxSupportedRxSpatialStreams", UintegerValue(2));  // 接收空间流数
-    phySld5.SetPcapDataLinkType(WifiPhyHelper::DLT_IEEE802_11_RADIO);
-    phySld5.SetErrorRateModel("ns3::TableBasedErrorRateModel");
-    phySld5.Set("TxPowerStart", DoubleValue(txPower));
-    phySld5.Set("TxPowerEnd", DoubleValue(txPower));
-    phySld5.AddChannel(spectrumChannel_5, WIFI_SPECTRUM_5_GHZ);
-    phySld5.Set("ChannelSettings", StringValue("{0, " + std::to_string(bandwidth[1]) + ", BAND_5GHZ, 0}"));
 
     /* MAC Configuration */
     WifiMacHelper mac;
     Ssid bssSsid = Ssid("AP-MLD");
-    Ssid obssSsid2 = Ssid("AP-2G");
-    Ssid obssSsid5 = Ssid("AP-5G");
     // 1. MLO BSS 设置
     // MLD AP0
     // uint64_t beaconInterval = 100 * 1024;
@@ -636,63 +912,38 @@ main(int argc, char* argv[])
         auto fem = mac_ap->GetFrameExchangeManager(i);
         std::cout << "\t apDevice " << "linkId " << std::to_string(i) << " mac address: " << fem->GetAddress() << std::endl;
     }
-    // print mac address of mld 
+    // print mac address of mld
     for (size_t id = 0; id < nStaMlds; ++id) {
-        Ptr<WifiMac> mac_mld = DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetMac();
+        Ptr<WifiMac> mac_mld = DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetMac(); 
         std::cout << "MLD" << (id) << " MAC: " << mldDev.Get(id)->GetAddress() << std::endl;
         for (uint8_t i = 0; i < nLinks; ++i) {
             auto fem = mac_mld->GetFrameExchangeManager(i);
             std::cout << "\t mldDevice " << "linkId " << std::to_string(i) << " mac address: " << fem->GetAddress() << std::endl;
         }
     }
-
-    // 2. 2.4G BSS 设置
-    if (interference & 0b01)
-    {
-        mac.SetType("ns3::ApWifiMac",
-            "BeaconInterval", TimeValue(MicroSeconds(beaconInterval)),
-            "EnableBeaconJitter", BooleanValue(false),
-            "Ssid", SsidValue(obssSsid2));
-        apDev2 = wifi2.Install(phySld2, mac, apNodes.Get(1));
-        apDev.Add(apDev2);
-        mac.SetType("ns3::StaWifiMac",
-                    "Ssid",
-                    SsidValue(obssSsid2),
-                    "ActiveProbing",
-                    BooleanValue(false));
-        sldDev2 = wifi2.Install(phySld2, mac, sldNodes2);
-        std::cout << "AP1 MAC: " << apDev2.Get(0)->GetAddress() << std::endl;
-        for (uint32_t i = 0; i < nStaSlds[0]; ++i) {
-            auto mac_sld = DynamicCast<WifiNetDevice>(sldDev2.Get(i))->GetMac();
-            auto fem = mac_sld->GetFrameExchangeManager();
-            std::cout << "    SLD-" << i + 1 << ": " << fem->GetAddress() << std::endl;
-        }
-        // 2.4 G OBSS PPDU TX Duration Output
-        DynamicCast<WifiNetDevice>(apDev.Get(1))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationOBSS2G));
+    for (size_t id = nStaMlds; id < nStaMlds + nStaSlds1; ++id) {
+        Ptr<WifiMac> mac_mld = DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetMac(); 
+        std::cout << "SLD_2.4G" << (id) << " MAC: " << mldDev.Get(id)->GetAddress() << std::endl;
+        auto fem = mac_mld->GetFrameExchangeManager(0);
+        std::cout << "\t sldDevice " << "linkId " << std::to_string(0) << " mac address: " << fem->GetAddress() << std::endl;
+        DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetPhy(0)->TraceConnectWithoutContext(
+            "PpduTxDuration",
+            MakeBoundCallback(&NotifyPpduTxDurationSLD2G, id - nStaMlds));
+        DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetPhy(1)->TraceConnectWithoutContext(
+            "PpduTxDuration",
+            MakeBoundCallback(&NotifyPpduTxDurationSLD2G, id - nStaMlds));
     }
-    // 3. 5G BSS 设置
-    if (interference & 0b10)
-    {
-        mac.SetType("ns3::ApWifiMac",
-            "BeaconInterval", TimeValue(MicroSeconds(beaconInterval)),
-            "EnableBeaconJitter", BooleanValue(false),
-            "Ssid", SsidValue(obssSsid5));        
-        apDev5 = wifi5.Install(phySld5, mac, apNodes.Get(2));
-        apDev.Add(apDev5);
-        mac.SetType("ns3::StaWifiMac",
-                    "Ssid",
-                    SsidValue(obssSsid5),
-                    "ActiveProbing",
-                    BooleanValue(false));
-        sldDev5 = wifi5.Install(phySld5, mac, sldNodes5);
-        std::cout << "AP2 MAC: " << apDev5.Get(0)->GetAddress() << std::endl;
-        for (uint32_t i = 0; i < nStaSlds[1]; ++i) {
-            auto mac_sld = DynamicCast<WifiNetDevice>(sldDev5.Get(i))->GetMac();
-            auto fem = mac_sld->GetFrameExchangeManager();
-            std::cout << "    SLD-" << i + 1 << ": " << fem->GetAddress() << std::endl;
-        }
-         // 5 G OBSS PPDU TX Duration Output
-         DynamicCast<WifiNetDevice>(apDev.Get(1))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationOBSS5G));
+    for (size_t id = nStaMlds + nStaSlds1; id < nStaMlds + nStaSlds1 + nStaSlds2; ++id) {
+        Ptr<WifiMac> mac_mld = DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetMac(); 
+        std::cout << "SLD_5G" << (id) << " MAC: " << mldDev.Get(id)->GetAddress() << std::endl;
+        auto fem = mac_mld->GetFrameExchangeManager(1);
+        std::cout << "\t sldDevice " << "linkId " << std::to_string(1) << " mac address: " << fem->GetAddress() << std::endl;
+        DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetPhy(0)->TraceConnectWithoutContext(
+            "PpduTxDuration",
+            MakeBoundCallback(&NotifyPpduTxDurationSLD5G, id - nStaMlds - nStaSlds1));
+        DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetPhy(1)->TraceConnectWithoutContext(
+            "PpduTxDuration",
+            MakeBoundCallback(&NotifyPpduTxDurationSLD5G, id - nStaMlds - nStaSlds1));
     }
 
     // MLD AP PPDU TX Duration Output
@@ -704,48 +955,55 @@ main(int argc, char* argv[])
     NetDeviceContainer devices;
     devices.Add(apDev);
     devices.Add(mldDev);
-    devices.Add(sldDev2);
-    devices.Add(sldDev5);
     wifi.AssignStreams(devices, seedNumber);
 
     // Set guard interval, MPDU buffer size, MaxAmsduSize, MaxAmpduSize
     Config::Set("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/HeConfiguration/GuardInterval",
                 TimeValue(NanoSeconds(gi)));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_MaxAmsduSize",
-                UintegerValue(0));
 
-    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_MaxAmpduSize",
-                UintegerValue(maxAmpduSize1));
-    Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_MaxAmpduSize",
-                UintegerValue(maxAmpduSize2));
+    NodeContainer allNodes(apNodes, mldNodes);
+    for (uint32_t i = 0; i < allNodes.GetN(); ++i)
+    {
+        if(i >= apNodes.GetN() + nStaMlds + nStaSlds1) // 5G SLD
+            Config::Set("/NodeList/" + std::to_string(i) +
+                        "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_MaxAmpduSize",
+                        UintegerValue(maxAmpduSize2));
+        else if(i >= apNodes.GetN() + nStaMlds) // 2.4G SLD
+            Config::Set("/NodeList/" + std::to_string(i) +
+                        "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_MaxAmpduSize",
+                        UintegerValue(maxAmpduSize1));
+    }
 
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_MaxAmpduSize",
                 UintegerValue(maxAmpduSize));
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_MaxAmpduSize",
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_MaxAmpduSize",
                 UintegerValue(maxAmpduSize));
 
     Config::Set("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/MpduBufferSize",
                 UintegerValue(mpduBufferSize));
 
-    /* Mobility Configuration */
-    MobilityHelper mobility;
+    // ---------------- Mobility: 圆形分布 ----------------
     Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
-    Ptr<UniformRandomVariable> Rng = CreateObject<UniformRandomVariable> ();
-    Rng->SetAttribute ("Min", DoubleValue (0));
-    Rng->SetAttribute ("Max", DoubleValue (10));
-    mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
-    
-    std::vector<double> distance = {0, 1e3, 1e3};
-    if (interference & 0b01) distance[1] = 10;
-    if (interference & 0b10) distance[2] = 10;
-    positionAlloc->Add(Vector(distance[0], 0.0, 0.0)); // AP 0
-    positionAlloc->Add(Vector(distance[1], 0.0, 0.0)); // AP 1
-    positionAlloc->Add(Vector(0.0, distance[2], 0.0)); // AP 2
-    positionAlloc->Add(Vector(distance[0], 0.0, 1)); // MLD 0
-    positionAlloc->Add(Vector(distance[1], 0.0, 1)); // SLD 1
-    positionAlloc->Add(Vector(0.0, distance[2], 1)); // SLD 2
+
+    // 主 AP0 
+    positionAlloc->Add(Vector(0.0, 2.0, 0.0));
+    std::cout << "AP 坐标: (0.0, 2.0, 0.0)" << std::endl;
+
+    double bssRadius = 1; // 圆形分布半径
+
+    // STA-SLD 2.4G
+        double step = 360.0 / (nStaMlds + nStaSlds1 + nStaSlds2);
+        for (uint32_t i = 0; i < nStaMlds + nStaSlds1 + nStaSlds2; i++) {
+            double ang = step * i * M_PI / 180.0;
+            double x = 0.0 + bssRadius * cos(ang);
+            double y = 2.0 + bssRadius * sin(ang);
+            positionAlloc->Add(Vector(x, y, 0.0));
+            std::cout << " STA" << i << ": (" << x << ", " << y << ", 0.0)" << std::endl;
+        }
+
+    MobilityHelper mobility;
     mobility.SetPositionAllocator(positionAlloc);
-    NodeContainer allNodes(apNodes, mldNodes, sldNodes2, sldNodes5);
+    mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
     mobility.Install(allNodes);
     
     /* Internet stack*/
@@ -757,99 +1015,39 @@ main(int argc, char* argv[])
     address.SetBase("10.0.0.0", "255.255.255.0");
     Ipv4InterfaceContainer apNodeInterface = address.Assign(apDev.Get(0));
     Ipv4InterfaceContainer mldNodeInterface = address.Assign(mldDev);
-    Ipv4InterfaceContainer apNodeInterface2;
-    Ipv4InterfaceContainer sldNodeInterface2;
-    Ipv4InterfaceContainer apNodeInterface5;
-    Ipv4InterfaceContainer sldNodeInterface5;
+
     std::cout << "AP0 IP: " << apNodeInterface.GetAddress(0) << std::endl;
-    for (size_t i = 0; i < nStaMlds; ++i) {
-        std::cout << "  MLD-" << std::to_string(i) + ": " << mldNodeInterface.GetAddress(i) << std::endl;
-    }
-    if (interference & 0b01) {
-        address.SetBase("10.0.1.0", "255.255.255.0");
-        apNodeInterface2 = address.Assign(apDev2.Get(0));
-        sldNodeInterface2 = address.Assign(sldDev2);
-        std::cout << "AP1 IP: " << apNodeInterface2.GetAddress(0) << std::endl;
-        for (size_t i = 0; i < nStaSlds[0];  ++i) {
-            std::cout << "  2.4 G SLD-" << std::to_string(i) + ": " << sldNodeInterface2.GetAddress(i) << std::endl;
-        }
-    }
-    if (interference & 0b10) {
-        address.SetBase("10.0.2.0", "255.255.255.0");
-        apNodeInterface5 = address.Assign(apDev5.Get(0));
-        sldNodeInterface5 = address.Assign(sldDev5);
-        std::cout << "AP2 IP: " << apNodeInterface5.GetAddress(0) << std::endl;
-        for (size_t i = 0; i < nStaSlds[1];  ++i) {
-            std::cout << " 5 G SLD-" << std::to_string(i) + ": " << sldNodeInterface5.GetAddress(i) << std::endl;
-        }
+    for (size_t i = 0; i < nStaMlds + nStaSlds1 + nStaSlds2; ++i) {
+        std::cout << "  STA-" << std::to_string(i) + ": " << mldNodeInterface.GetAddress(i) << std::endl;
     }
 
     /* Setting applications */
-    ApplicationContainer dlserverApp;
-    ApplicationContainer dlserverAppObss2;
-    ApplicationContainer dlserverAppObss5;
-    // 1. DL UDP configure
-    // DL udp flow
+    ApplicationContainer ulserverApp;
     uint16_t port = 9;
     UdpServerHelper server(port);
-    dlserverApp = server.Install(mldNodes);
-    seedNumber += server.AssignStreams(mldNodes, seedNumber);
-    dlserverApp.Start(Seconds(0.0));
-    dlserverApp.Stop(simulationTime + simT_delayEnd);
+    ulserverApp = server.Install(apNodes.Get(0));
+    seedNumber += server.AssignStreams(apNodes.Get(0), seedNumber);
+    ulserverApp.Start(Seconds(0.0));
+    ulserverApp.Stop(simulationTime + simT_delayEnd);
 
-    if (interference & 0b01) {
-        dlserverAppObss2 = server.Install(sldNodes2);
-        seedNumber += server.AssignStreams(sldNodes2, seedNumber);
-        dlserverAppObss2.Start(Seconds(0.2));
-        dlserverAppObss2.Stop(simulationTime + simT_delayEnd);
-    }
-    if (interference & 0b10) {
-        dlserverAppObss5 = server.Install(sldNodes5);
-        seedNumber += server.AssignStreams(sldNodes5, seedNumber);
-        dlserverAppObss5.Start(Seconds(0.4));
-        dlserverAppObss5.Stop(simulationTime + simT_delayEnd);
-    }
-
-    // AP 0
-    if (rateCtrl == "ideal") mcs[0] = mcs[1] = 13;
+    // if (rateCtrl == "ideal" || rateCtrl == "constant") mcs[0] = mcs[1] = 13;
     const auto maxLoad2 = EhtPhy::GetDataRate(mcs[0], bandwidth[0] , NanoSeconds(gi), 1) * nss;
     const auto maxLoad5 = EhtPhy::GetDataRate(mcs[1], bandwidth[1] , NanoSeconds(gi), 1) * nss;
     const auto maxLoad =  (maxLoad2 + maxLoad5) * 2; 
-    std::cout << "maxload = " << std::to_string((maxLoad2 + maxLoad5)/1e6) << "Mbps; 2.4 GHz: " <<  std::to_string(maxLoad2/1e6) << "Mbps, 5 GHz: " << std::to_string(maxLoad5/1e6) << "Mbps" << std::endl;
+    std::cout << "maxload = " << std::to_string((maxLoad2 + maxLoad5)/1e6) << " Mbps; 2.4 GHz: " <<  std::to_string(maxLoad2/1e6) << " Mbps, 5 GHz: " << std::to_string(maxLoad5/1e6) << " Mbps" << std::endl;
     const auto packetInterval = payloadSize * 8.0 / maxLoad;
-    UdpClientHelper client(mldNodeInterface.GetAddress(0), port);
+    UdpClientHelper client(apNodeInterface.GetAddress(0), port);
     client.SetAttribute("MaxPackets", UintegerValue(0));
     client.SetAttribute("Interval", TimeValue(Seconds(packetInterval)));
     client.SetAttribute("PacketSize", UintegerValue(payloadSize));
-    ApplicationContainer clientApp = client.Install(apNodes.Get(0));
-    seedNumber += client.AssignStreams(apNodes.Get(0), seedNumber);
-    clientApp.Start(Seconds(1.0));
-    clientApp.Stop(simulationTime + simT_delayEnd);
+    for (uint32_t i = 0; i < mldNodes.GetN(); ++i){
+        ApplicationContainer clientApp = client.Install(mldNodes.Get(i));
+        seedNumber += client.AssignStreams(mldNodes.Get(i), seedNumber);
+        if(i) clientApp.Start(Seconds(1));
+        else clientApp.Start(Seconds(0.999));
+        clientApp.Stop(simulationTime + simT_delayEnd);
+    }
 
-    // AP 1
-    if (interference & 0b01) {
-        auto packetInterval2 = payloadSize * 8.0 / (maxLoad2 * r1);
-        UdpClientHelper client1(sldNodeInterface2.GetAddress(0), port);
-        client1.SetAttribute("MaxPackets", UintegerValue(0));
-        client1.SetAttribute("Interval", TimeValue(Seconds(packetInterval2)));
-        client1.SetAttribute("PacketSize", UintegerValue(payloadSize));
-        ApplicationContainer clientApp1 = client1.Install(apNodes.Get(1));
-        seedNumber += client1.AssignStreams(apNodes.Get(1), seedNumber);
-        clientApp1.Start(Seconds(1.0));
-        clientApp1.Stop(simulationTime + simT_delayEnd);
-    }
-    // AP 2
-    if (interference & 0b10) {
-        auto packetInterval5 = payloadSize * 8.0 / (maxLoad5 * r2);
-        UdpClientHelper client2(sldNodeInterface5.GetAddress(0), port);
-        client2.SetAttribute("MaxPackets", UintegerValue(0));
-        client2.SetAttribute("Interval", TimeValue(Seconds(packetInterval5)));
-        client2.SetAttribute("PacketSize", UintegerValue(payloadSize));
-        ApplicationContainer clientApp2 = client2.Install(apNodes.Get(2));
-        seedNumber += client2.AssignStreams(apNodes.Get(2), seedNumber);
-        clientApp2.Start(Seconds(1.0));
-        clientApp2.Stop(simulationTime + simT_delayEnd);
-    }
     // Enable TID-to-Link Mapping for AP and MLD STAs
     for (auto i = mldDev.Begin(); i != mldDev.End(); ++i)
     {
@@ -860,13 +1058,23 @@ main(int argc, char* argv[])
 
 
     std::string mldMappingStr = "0,1,2,3,4,5,6,7 0,1";
+    if(pretitleint == 3) mldMappingStr = "0,1,2,3,4,5,6,7 1"; // only 5G
+    if(pretitleint == 4) mldMappingStr = "0,1,2,3,4,5,6,7 0"; // only 2G
     if (singleLink & 0x03) mldMappingStr = "0,1,2,3,4,5,6,7 "  + std::to_string((singleLink & 0x02) > 0);
-    for (auto i = mldDev.Begin(); i != mldDev.End(); ++i)
+    std::string mldMappingStr1 = "0,1,2,3,4,5,6,7 0";
+    std::string mldMappingStr2 = "0,1,2,3,4,5,6,7 1";
+
+    int index = 0;
+    for (auto i = mldDev.Begin(); i != mldDev.End(); ++i, ++index)
     {
         auto wifiDev = DynamicCast<WifiNetDevice>(*i);
         wifiDev->GetMac()->SetAttribute("ActiveProbing", BooleanValue(true));
-        wifiDev->GetMac()->GetEhtConfiguration()->SetAttribute("TidToLinkMappingDl", StringValue(mldMappingStr));
-        wifiDev->GetMac()->GetEhtConfiguration()->SetAttribute("TidToLinkMappingUl",StringValue(mldMappingStr));
+        std::string mappingToUse;
+        if (index < nStaMlds) mappingToUse = mldMappingStr;
+        else if (index < nStaMlds + nStaSlds1) mappingToUse = mldMappingStr1;
+        else mappingToUse = mldMappingStr2;
+        wifiDev->GetMac()->GetEhtConfiguration()->SetAttribute("TidToLinkMappingDl", StringValue(mappingToUse));
+        wifiDev->GetMac()->GetEhtConfiguration()->SetAttribute("TidToLinkMappingUl", StringValue(mappingToUse));
     }
 
     auto apWifiDev = DynamicCast<WifiNetDevice>(apDev.Get(0));
@@ -874,54 +1082,55 @@ main(int argc, char* argv[])
     apWifiDev->GetMac()->GetEhtConfiguration()->SetAttribute("TidToLinkMappingUl",StringValue(mldMappingStr));
 
 
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/UseExplicitBarAfterMissedBlockAck", BooleanValue(false)); // 开启隐式BAR
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/UseExplicitBarAfterMissedBlockAck", BooleanValue(false)); // 开启隐式BAR
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/UseExplicitBarAfterMissedBlockAck", BooleanValue(false)); // 开启隐式BAR
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxGroupSize", UintegerValue(maxGroupSize));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Period", TimeValue(period));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode)); // mode = 1 表示 模式一(硬件仲裁)， mode = 2 表示 模式二(软件仲裁)
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/PreTitle", UintegerValue(pretitleint)); 
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/BandWidth24", UintegerValue(bw1));
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/BandWidth5", UintegerValue(bw2));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxGroupSize", UintegerValue(maxGroupSize));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Period", TimeValue(period));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode)); // mode = 1 表示 模式一(硬件仲裁)， mode = 2 表示 模式二(软件仲裁)
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/PreTitle", UintegerValue(pretitleint));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxAmpduNum0", UintegerValue(maxAmpduNum0));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxAmpduNum1", UintegerValue(maxAmpduNum1));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Nsld24", UintegerValue(nStaSlds1)); 
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Nsld5", UintegerValue(nStaSlds2)); 
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/BandWidth24", UintegerValue(bw1));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/BandWidth5", UintegerValue(bw2));
 
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode_recv)); // 只负责接收，无msdu_grouper, mode只要非0, 接收端就是新架构，BA只包含各自链路所收到的包的接收信息，各自维护自己的bitmap
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchEnable", BooleanValue(grid_search_enable)); // 是否开启网格搜索，用于静态场景下的最优参数搜索，只有在param_update = true时才会更新参数
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/ParamUpdate", BooleanValue(param_update));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode_recv)); // 只负责接收，无msdu_grouper, mode只要非0, 接收端就是新架构，BA只包含各自链路所收到的包的接收信息，各自维护自己的bitmap
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchEnable", BooleanValue(grid_search_enable)); // 是否开启网格搜索，用于静态场景下的最优参数搜索，只有在param_update = true时才会更新参数
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/ParamUpdate", BooleanValue(param_update));
     // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchParameter", StringValue("./scratch/params.json")); // 网格搜索使用的参数集合
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/RedundancyEnable", BooleanValue(redundancy_enable)); // 是否启用冗余模式
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/RedundancyEnable", BooleanValue(redundancy_enable)); // 是否启用冗余模式
 
+
+    /* OBSS EDCA */
+    for (uint32_t i = 0; i < allNodes.GetN(); ++i)
+    {
+        Config::Set("/NodeList/" + std::to_string(i) +
+                "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{3,3}));
+        Config::Set("/NodeList/" + std::to_string(i) +
+                "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{3,3}));
+        Config::Set("/NodeList/" + std::to_string(i) +
+                "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
+        Config::Set("/NodeList/" + std::to_string(i) +
+                "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
+        Config::Set("/NodeList/" + std::to_string(i) +
+                "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
+        Config::Set("/NodeList/" + std::to_string(i) +
+                "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));   
+    }
     /* BSS EDCA */
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{3,3}));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{3,3}));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
 
-    /* OBSS EDCA */
-    //  Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2}));
-    //  Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2}));
-    //  Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{1}));
-    //  Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{1}));
-    //  Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3}));
-    //  Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{3}));
-
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{3,3}));
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
-    Config::Set("/NodeList/3/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
-    
-    // /* BSS EDCA */
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
-    // Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
-    /* OBSS EDCA */
-    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{3}));
-    Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{3}));
-    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15}));
-    Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15}));
-    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023}));
-    Config::Set("/NodeList/2/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023}));
 
     std::cout << "TxopLimits : (" << txoplimit1 << "," << txoplimit2  << ")" << std::endl;
     std::vector<Time> txopLimitList = {MicroSeconds(32) * txoplimit1, MicroSeconds(32) * txoplimit2};
     std::cout << txopLimitList[0] << " " << txopLimitList[1] << std::endl;
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/TxopLimits", AttributeContainerValue<TimeValue>(txopLimitList));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/TxopLimits", AttributeContainerValue<TimeValue>(txopLimitList));
 
     // phy.EnablePcap("ap0-trace-udp", apDev.Get(0));
     // phySld2.EnablePcap("ap1-trace-udp", apDev.Get(1));
@@ -929,27 +1138,22 @@ main(int argc, char* argv[])
     // phy.EnablePcap("mld-trace-udp", mldDev.Get(0));
     // phySld2.EnablePcap("sld2-trace-udp", sldDev2.Get(0));
     // phySld5.EnablePcap("sld5-trace-udp", sldDev5.Get(0));
-    Config::ConnectWithoutContext("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GetNextParams", MakeCallback(&SaveParams));
-    Config::ConnectWithoutContext("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GetTxopTimeStats",MakeCallback(&SaveTxopStats));
+    Config::ConnectWithoutContext("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GetNextParams", MakeCallback(&SaveParams));
+    Config::ConnectWithoutContext("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GetTxopTimeStats",MakeCallback(&SaveTxopStats));
     
-    Simulator::Schedule(Seconds(1.0), &PrintIntermediateTput, udp, dlserverApp, payloadSize, tputInterval, simulationTime + simT_delayEnd);
+    Simulator::Schedule(Seconds(1.0), &PrintIntermediateTput, udp, ulserverApp, payloadSize, tputInterval, simulationTime + simT_delayEnd);
     
-    uint64_t rx_totalbytesStart = 0;
-    Time statsBeginTime = Seconds(1.0) + period;
-    Simulator::Schedule(statsBeginTime, &GetRxBytes2, udp, dlserverApp, payloadSize, std::ref(rx_totalbytesStart));
+    // uint64_t rx_totalbytesStart = 0;
+    Time statsBeginTime = Seconds(1.0) + period*5;
     std::cout << "statsBeginTime: " << statsBeginTime.As(Time::S) << std::endl;
     Time statsEndTime = period * ((simulationTime + simT_delayEnd) / period).GetInt();
     std::cout << "statsEndTime: " << statsEndTime.As(Time::S) << std::endl;
-    uint64_t rx_totalbytes = 0;
-    Simulator::Schedule(statsEndTime, &GetRxBytes2, udp, dlserverApp, payloadSize, std::ref(rx_totalbytes));
-
+    DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration", MakeBoundCallback(&NotifyMLDThroughput, statsBeginTime, statsEndTime, payloadSize));
+    DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(1)->TraceConnectWithoutContext("PpduTxDuration", MakeBoundCallback(&NotifyMLDThroughput, statsBeginTime, statsEndTime, payloadSize));
     Simulator::Stop(simulationTime + simT_delayEnd);
     Simulator::Run();
-    
-    std::cout << "Total DL Throughput [ " << statsBeginTime.As(Time::S) <<" - " << statsEndTime.As(Time::S) << "]: \t\t\t" << (rx_totalbytes - rx_totalbytesStart) * 8.0 / (statsEndTime - statsBeginTime).GetMicroSeconds() << " Mbit/s" << std::endl;
-    
     Simulator::Destroy();
-    
+    std::cout << "Total DL Throughput [ " << statsBeginTime.As(Time::S) <<" - " << statsEndTime.As(Time::S) << "]: \t\t\t" << totalThroughput << " Mbit/s" << std::endl;
     if (mode == 0) return 0;
     std::ofstream fout(csv_file, std::ios::out);
     fout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, AmpduLimit1, AmpduLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
@@ -1018,16 +1222,8 @@ main(int argc, char* argv[])
              res_throughputs.push_back(res.throughput);
     }
 
-    std::ofstream file("throughput.csv", std::ios::out);
-    file << "Time, Throughput(Mbps)" << std::endl;
-    if (throughputMap.size() > 0)
-    {
-        for (const auto & res : throughputMap)
-        {
-            file << res.first << ", " << res.second << std::endl;
-        }
-    }
-    file.close();
+    updateThroughputCSV(pretitle, bw1, bw2, mcs1, mcs2, nss, nStaSlds1, nStaSlds2, mpduBufferSize, maxAmpduNum0, maxAmpduNum1, originalSeed, totalThroughput, totalThroughput1, totalThroughput2);
+
 
     auto calc_std_dev = [](std::vector<double>& v, int n) -> std::pair<double, double> {
         auto start = v.end() - n;

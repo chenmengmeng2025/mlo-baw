@@ -73,7 +73,7 @@ WimaxMacQueue::GetTypeId()
                             .SetGroupName("Wimax")
                             .AddAttribute("MaxSize",
                                           "Maximum size",
-                                          UintegerValue(1024),
+                                          UintegerValue(2000),
                                           MakeUintegerAccessor(&WimaxMacQueue::GetMaxSize,
                                                                &WimaxMacQueue::SetMaxSize),
                                           MakeUintegerChecker<uint32_t>())

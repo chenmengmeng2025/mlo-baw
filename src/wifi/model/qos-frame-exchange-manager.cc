@@ -14,6 +14,8 @@
 
 #include "ns3/abort.h"
 #include "ns3/log.h"
+#include <iostream>
+#include <ostream>
 
 #undef NS_LOG_APPEND_CONTEXT
 #define NS_LOG_APPEND_CONTEXT WIFI_FEM_NS_LOG_APPEND_CONTEXT
@@ -389,14 +391,22 @@ QosFrameExchangeManager::TryAddMpdu(Ptr<const WifiMpdu> mpdu,
         ppduDurationLimit = availableTime - *protectionTime - *acknowledgmentTime;
     }
     uint32_t maxNMpdus = std::numeric_limits<uint32_t>::max();
+    // 注释后可以表示greedy?
     if (m_edca->GetMode() & 0x03) {
         uint8_t linkId = m_phy->GetPhyBand() == WIFI_PHY_BAND_2_4GHZ ? 0 : 1;
-        maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit(linkId);
+        if(m_edca->GetPreTitle() == 0 || m_edca->GetPreTitle() == 5 || m_edca->GetPreTitle() == 6)  maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit0(linkId);
+        if(m_edca->GetPreTitle() == 1 || m_edca->GetPreTitle() == 3 || m_edca->GetPreTitle() == 4) maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit1(linkId, m_edca->GetPreTitle());
+        if(m_edca->GetPreTitle() == 2){
+            maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit2(linkId, m_mac->GetMpduBufferSize());
+        }
     }
     if (!IsWithinLimitsIfAddMpdu(mpdu, txParams, ppduDurationLimit) || txParams.GetCurrentMpduNumber(mpdu->GetHeader().GetAddr1()) > maxNMpdus)
     {
         // adding MPDU failed, undo the addition of the MPDU and restore protection and
         // acknowledgment methods if they were swapped
+        // if(m_phy->GetPhyBand() == WIFI_PHY_BAND_2_4GHZ){
+        //     maxNMpdus = maxNMpdus + 1;
+        // }
         txParams.UndoAddMpdu();
         txParams.m_txDuration = prevTxDuration;
         if (protectionSwapped)
