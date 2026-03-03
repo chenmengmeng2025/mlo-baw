@@ -770,14 +770,24 @@ MsduGrouper::NotifyPpduTxDuration(Ptr<const WifiPpdu> ppdu, Time duration, uint8
 {
     if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
         return;
-    double new_t = Simulator::Now().GetMicroSeconds() - m_end_time[linkId];
-    if (new_t) {
-        if (m_t[linkId].size() >= 10) {
-            m_t[linkId].erase(m_t[linkId].begin());
+    // 第一次调用，只记录结束时间
+    if(!ppdu->GetPsdu()->GetHeader(0).IsRts() && !ppdu->GetPsdu()->GetHeader(0).IsCts() && !ppdu->GetPsdu()->GetHeader(0).IsAck() && !ppdu->GetPsdu()->GetHeader(0).IsBlockAck()){
+        double current_time = Simulator::Now().GetMicroSeconds();
+        if (m_end_time[linkId] == 0) {
+            m_end_time[linkId] = current_time + duration.GetMicroSeconds();
         }
-        m_t[linkId].push_back(new_t);
-    }    
-    m_end_time[linkId] = Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds();
+        else{
+            double new_t = current_time - m_end_time[linkId];
+            if (new_t) {
+                if (m_t[linkId].size() >= 10) {
+                    m_t[linkId].erase(m_t[linkId].begin());
+                }
+                m_t[linkId].push_back(new_t);
+            }    
+            m_end_time[linkId] = Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds();
+        }
+    }
+
     PPDUInfo ppduinfo;
     ppduinfo.linkId = 1 << linkId;
     ppduinfo.txDuration = duration;
@@ -1157,21 +1167,21 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
             // params.TxopLimits = {txoplimit, txoplimit}; //caculate
         } else { 
             // 减少对TCP ACK的干扰，避免TCP窗过小
-            //////////////////// caculate, 禁止调节CW
-            // if (p1 < 0.9) {
-            //     params.RTS_CTS[0] = 1;
-            //     params.CWmins[0] = 3;
-            //     params.CWmaxs[0] = 15;
-            //     if (occ1 < 0.2) { // 信道占用率过低，可能是由于干扰导致，因此需要增大退避窗大小以避免碰撞
-            //         params.CWmins[0] = 7;
-            //         params.CWmaxs[0] = 31;
-            //     }
-            // } else {
-            //     params.RTS_CTS[0] = m_current_params.RTS_CTS[0];
-            //     params.CWmins[0] = m_current_params.CWmins[0];
-            //     params.CWmaxs[0] = m_current_params.CWmaxs[0];
-            // }
-            // if (p2 < 0.9) params.RTS_CTS[1] = 1; // 传输成功率过低，通过RTS/CTS来避免干扰
+            ////////////////// caculate, 禁止调节CW
+            if (p1 < 0.9) {
+                params.RTS_CTS[0] = 1;
+                params.CWmins[0] = 3;
+                params.CWmaxs[0] = 15;
+                if (occ1 < 0.2) { // 信道占用率过低，可能是由于干扰导致，因此需要增大退避窗大小以避免碰撞
+                    params.CWmins[0] = 7;
+                    params.CWmaxs[0] = 31;
+                }
+            } else {
+                params.RTS_CTS[0] = m_current_params.RTS_CTS[0];
+                params.CWmins[0] = m_current_params.CWmins[0];
+                params.CWmaxs[0] = m_current_params.CWmaxs[0];
+            }
+            if (p2 < 0.9) params.RTS_CTS[1] = 1; // 传输成功率过低，通过RTS/CTS来避免干扰
 
             // TCP流量不能通过简单通过调整TxopLimits来实现对齐，原因是TCP流量有拥塞控制机制，队列可能没有包，这样如果TxopLimits设置过大，会导致大段空口的浪费
             // 通过控制最大聚合数，来实现对齐
@@ -1213,14 +1223,14 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
             link1Pct = SetLink1PctTcp(thp1, thp2, rethp); // need: 步长根据winSize设置 alg3
         else
             link1Pct = SetLink1PctUdp(thp1, thp2, rethp); // need: 步长根据winSize设置 alg4
-        // if (istcp) { // TCP流量才需要开启RTS/CTS，来避免与TCP ACK的干扰
-        //     if ((occ1 * (1 - p1) > 0.05)) {
-        //         params.RTS_CTS[0] = 1;
-        //     }
-        //     if ((occ2 * (1 - p2) > 0.05)) {
-        //         params.RTS_CTS[1] = 1;
-        //     }
-        // }
+        if (istcp) { // TCP流量才需要开启RTS/CTS，来避免与TCP ACK的干扰
+            if ((occ1 * (1 - p1) > 0.05)) {
+                params.RTS_CTS[0] = 1;
+            }
+            if ((occ2 * (1 - p2) > 0.05)) {
+                params.RTS_CTS[1] = 1;
+            }
+        }
         params.link1Pct = link1Pct;
         m_current_params = params;
         return params;
@@ -1481,23 +1491,20 @@ MsduGrouper::GetAmpduLimit1(uint8_t linkId, uint32_t preTitle) {
     }
 }
 
+// DAMLA
 uint32_t 
 MsduGrouper::GetAmpduLimit2(uint8_t linkId, uint16_t mpduBufferSize) {
-    std::vector<double> R = {344.118, 2882.353};
-    for(int i = 0; i < 2; i++){
-        if(m_bandwidth[i] == 20) R[i] = 344.118;
-        if(m_bandwidth[i] == 40) R[i] = 688.235;
-        if(m_bandwidth[i] == 80) R[i] = 1441.176;
-        if(m_bandwidth[i] == 160) R[i] = 2882.353;
-    }
-    int W = mpduBufferSize;
-    ////
+    std::vector<double> R = {0.0, 0.0};
+    NS_ASSERT_MSG(m_datarate_setting.size() >= 2 && m_datarate_setting[0] != 0.0 && m_datarate_setting[1] != 0.0, "Data rate not available for both links.");
+    R[0] = m_datarate_setting[0] / 1e6;
+    R[1] = m_datarate_setting[1] / 1e6;
     std::vector<int> CW_min = {16, 16};
     double L_subf = 1572 * 8;
     double sigma = 9;
     std::vector<double> T_SIFS = {10, 16};
-    std::vector<double> T_RTS = {34, 28};
+    std::vector<double> T_RTS = {30, 24};
     std::vector<double> T_CTS = {34, 28};
+    double T_PH = 56.0;
 
     std::vector<double> R_f;
     for (double r : R) {
@@ -1508,65 +1515,51 @@ MsduGrouper::GetAmpduLimit2(uint8_t linkId, uint16_t mpduBufferSize) {
     for (int sifs : T_SIFS) {
         T_DIFS.push_back(sifs + 2 * sigma);
     }
-    // 根据W值确定T_BA
     std::vector<int> T_BA;
-    if (W <= 256) {
+    if (mpduBufferSize <= 256) {
         T_BA = {46, 40};
-    } else if (W <= 512) {
+    } else if (mpduBufferSize <= 512) {
         T_BA = {58, 52};
     } else {
         T_BA = {78, 72};
     }
-    // 计算T_OH和T_BO
+
+    // if(Simulator::Now().GetMicroSeconds() < 1.05) {
+    //     std::cout << "start period, m_ampduLimits" << (uint32_t)linkId << " = " << mpduBufferSize/2 << std::endl;
+    //     return static_cast<int>(std::ceil(mpduBufferSize/2));
+    // }
+
     std::vector<double> t;
-        for (const auto& vec : m_t) {
-            if (vec.empty()) t.push_back(0);
-            else{
-                double sum = 0.0;
-                for (double value : vec) {
-                    sum += value;
-                }
-                t.push_back(sum / vec.size());
+    for (const auto& vec : m_t) {
+        if (vec.empty()) t.push_back(0);
+        else{
+            double sum = 0.0;
+            for (double value : vec) {
+                sum += value;
             }
+            t.push_back(sum / vec.size() + T_PH);
         }
-    
-    const double maxPpduDuration = 5484; 
-    std::vector<double> T_PH = {56.0, 44.0}; // {mld, sld}
-    double L_subf_mld = 1572.0 * 8.0; 
-    std::vector<int32_t> nmpdu_mld_max;
-    for (size_t i = 0; i < R.size(); ++i) {
-        double value = (maxPpduDuration - T_PH[0]) * R[i] / L_subf_mld;
-        nmpdu_mld_max.push_back(static_cast<int32_t>(std::floor(value)));
-    }
-    
-    if(Simulator::Now().GetMicroSeconds() < 1100000 && nmpdu_mld_max[0]>=mpduBufferSize && nmpdu_mld_max[1]>=mpduBufferSize) {
-        std::cout<<"start period, m_ampduLimits"<< (uint32_t)linkId<<" = "<<mpduBufferSize/2 << std::endl;
-        for(int i = 0; i<t.size(); i++){
-                std::cout<<"t"<< i <<" = "<< t[i] <<"; ( "<< T_SIFS[i] * 3 + T_BA[i] + T_DIFS[i] + T_RTS[i] + T_CTS[i] << ", "<< T_SIFS[i] * 3 + T_BA[i] + T_DIFS[i] + T_RTS[i] + T_CTS[i] + CW_min[i] * sigma<<" )"<<std::endl;
-        }
-        return static_cast<int>(std::ceil(mpduBufferSize/2));
-
     }
 
-    double T_1_2;
-    double T_2_1;
-    T_1_2 = m_end_time[1-linkId] + t[1-linkId] - Simulator::Now().GetMicroSeconds();
-    if(T_1_2 > 0){
-        T_2_1 = (W * R_f[linkId] + t[linkId] * (R_f[1-linkId]*R_f[1-linkId] + R_f[linkId]*R_f[linkId]) - t[1-linkId] * (R_f[linkId]*R_f[linkId])) / (R_f[0]*R_f[0] + R_f[0]*R_f[1] + R_f[1]*R_f[1]);    
-        int ampduLimit = static_cast<int>(std::ceil((T_1_2 + std::max(0.0, T_2_1 - t[linkId])) * R_f[linkId]));
+    double T_i2u = 0;
+    double T_u2i = 0;
+    T_i2u = m_end_time[1-linkId] + t[1-linkId] - Simulator::Now().GetMicroSeconds();
+    if(T_i2u > 0){
+        T_u2i = (mpduBufferSize * R_f[linkId] + t[linkId] * (R_f[0]*R_f[0] + R_f[1]*R_f[1]) - t[1-linkId] * (R_f[linkId]*R_f[linkId])) / (R_f[0]*R_f[0] + R_f[0]*R_f[1] + R_f[1]*R_f[1]);    
+        int ampduLimit = static_cast<int>(std::ceil((T_i2u + std::max(0.0, T_u2i - t[linkId])) * R_f[linkId]));
         if(ampduLimit != m_ampduLimits[linkId]) {
             std::cout<<"caculate with end time, m_ampduLimits"<< (uint32_t)linkId<<" = "<<m_ampduLimits[linkId] << std::endl;
-            for(int i = 0; i<t.size(); i++){
-                std::cout<<"t"<< i <<" = "<< t[i] <<"; ( "<< T_SIFS[i] * 3 + T_BA[i] + T_DIFS[i] + T_RTS[i] + T_CTS[i] << ", "<< T_SIFS[i] * 3 + T_BA[i] + T_DIFS[i] + T_RTS[i] + T_CTS[i] + CW_min[i] * sigma<<" )"<<std::endl;
-            }
+            // for(size_t  i = 0; i<t.size(); i++){
+            //     std::cout<<"t"<< i <<" = "<< t[i] <<"; ( "<< T_SIFS[i] * 3 + T_BA[i] + T_DIFS[i] + T_RTS[i] + T_CTS[i] + T_PH << ", "<< T_SIFS[i] * 3 + T_BA[i] + T_DIFS[i] + T_RTS[i] + T_CTS[i] + T_PH + CW_min[i] * sigma<<" )"<<std::endl;
+            // }
         }
         m_ampduLimits[linkId] = ampduLimit;
     } 
     else{
         m_ampduLimits[linkId] = std::numeric_limits<uint32_t>::max();
+        // m_ampduLimits[linkId] = mpduBufferSize / 2;
     }
         
-
     if (m_ampduLimits[linkId] < 0) return std::numeric_limits<uint32_t>::max();
     return m_ampduLimits[linkId];
 } 

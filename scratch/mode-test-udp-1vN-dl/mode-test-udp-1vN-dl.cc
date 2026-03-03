@@ -60,12 +60,8 @@ using namespace ns3;
 NS_LOG_COMPONENT_DEFINE("mlo-obss-dl-ucp");
 
 struct Stats {
-    double throughput;
-    double pct1;
+    std::vector<double> throughput;
     double time;
-    std::vector<double> thpt;
-    std::vector<double> p;
-    std::vector<double> occ;
     std::vector<double> datarate;
     std::vector<double> blocktimerate;
     std::vector<double> severeblocktimerate;
@@ -77,272 +73,189 @@ struct Stats {
     mldParams params;
     std::vector<uint32_t> maxAmpduLength;
     std::vector<uint32_t> meanAmpduLength;
-    Stats(double tp, double pct, double tm, std::vector<double> t, std::vector<double> pr, 
-        std::vector<double> oc, std::vector<double> dr,  std::vector<double> btr, std::vector<double> sbtr,  std::vector<double> br,
+    Stats(std::vector<double> tp, double tm, std::vector<double> dr,  std::vector<double> btr, std::vector<double> sbtr,  std::vector<double> br,
         std::vector<uint32_t> bc,std::vector<uint32_t> bc2, std::vector<uint32_t> tn,
         std::vector<uint64_t> tt, mldParams pm, std::vector<uint32_t> maxl, std::vector<uint32_t> meanl)
-    : throughput(tp), pct1(pct), time(tm), thpt(std::move(t)), p(std::move(pr)),
-        occ(std::move(oc)), datarate(std::move(dr)), blocktimerate(std::move(btr)), severeblocktimerate(std::move(sbtr)), blockrate(std::move(br)),
-        blockCnt(std::move(bc)), blockCnt_tr(std::move(bc2)), 
-        txopNum(std::move(tn)), txopTime(std::move(tt)), params(std::move(pm)), maxAmpduLength(std::move(maxl)), meanAmpduLength(std::move(meanl))
+    : throughput(tp), time(tm), datarate(std::move(dr)), blocktimerate(std::move(btr)), severeblocktimerate(std::move(sbtr)), blockrate(std::move(br)),
+        blockCnt(std::move(bc)), blockCnt_tr(std::move(bc2)), txopNum(std::move(tn)), 
+        txopTime(std::move(tt)), params(std::move(pm)), maxAmpduLength(std::move(maxl)), meanAmpduLength(std::move(meanl))
         {}
 };
 
 std::vector<Stats> results;
-std::deque<uint32_t> throughputQueue;
-std::unordered_map<double, double> throughputMap;
-// std::unordered_map<double, std::pair<int, double>> blockinfoMap;
-
-int cnt = 0;
-void
-GetRxBytes(bool udp, const ApplicationContainer& serverApp, uint32_t payloadSize)
-{
-    uint32_t rxBytes = 0;
-    if (udp)
-    {
-        rxBytes = payloadSize * DynamicCast<UdpServer>(serverApp.Get(0))->GetReceived();
-    }
-    else
-    {
-        rxBytes = DynamicCast<PacketSink>(serverApp.Get(0))->GetTotalRx();
-    }
-    throughputQueue.push_back(rxBytes);
-    if (throughputQueue.size() > 2)
-    {
-        throughputQueue.pop_front();
-    }
-}
-
-void
-GetRxBytes2(bool udp, const ApplicationContainer& serverApp, uint32_t payloadSize, uint64_t& rxBytes)
-{
-    if (udp)
-    {
-            rxBytes = payloadSize * DynamicCast<UdpServer>(serverApp.Get(0))->GetReceived();
-    }
-    else
-    {
-            rxBytes = DynamicCast<PacketSink>(serverApp.Get(0))->GetTotalRx();
-    }
-}
+std::unordered_map<double, std::vector<double>> throughputMap;
 
 void
 SaveParams(mldParams pm, double pct1, double time, std::vector<double> thpt, std::vector<double> p, std::vector<double> occ, std::vector<double> datarate, std::vector<double> blocktimerate,std::vector<double> severeblocktimerate, std::vector<double> blockrate, std::vector<uint32_t> blockCnt, std::vector<uint32_t> blockCnt_tr, std::vector<uint64_t> txopTime, std::vector<uint32_t> txopNum, std::vector<uint32_t> maxAmpduLength, std::vector<uint32_t> meanAmpduLength)
 {
-    Stats res{0.0, pct1, time, thpt, p, occ, datarate, blocktimerate, severeblocktimerate, blockrate, blockCnt, blockCnt_tr, txopNum, txopTime, pm, maxAmpduLength, meanAmpduLength};
+    Stats res{{0}, time, datarate, blocktimerate, severeblocktimerate, blockrate, blockCnt, blockCnt_tr, txopNum, txopTime, pm, maxAmpduLength, meanAmpduLength};
     results.push_back(res);
     Simulator::Schedule(NanoSeconds(1), [&](){
         for (auto & result : results)
         {
-            if(result.throughput == 0.0 && throughputMap[result.time] != 0.0)
+            if(throughputMap.find(result.time) != throughputMap.end())
             {
                 result.throughput = throughputMap[result.time];
-                // std::cout << "Set Throughput : " << throughputMap[result.time] <<" " <<  result.time << " s" << std::endl;
             }
         }
     });
 }
 
-void
-PrintIntermediateTput(bool udp,
-                    const ApplicationContainer& serverApp,
-                    uint32_t payloadSize,
-                    Time tputInterval,
-                    Time simulationTime)
+// 安全 stoi，遇到非法字符返回默认值
+int safe_stoi(const std::string& s, int default_val = 0)
 {
-    Time now = Simulator::Now();
-    cnt ++;
-    GetRxBytes(udp, serverApp, payloadSize);
-    if (throughputQueue.size() == 2) {
-        double tp = (throughputQueue.back() - throughputQueue.front()) * 8. / tputInterval.GetMicroSeconds();
-        // std::cout << "[" << (now - tputInterval).As(Time::S) << " - " << now.As(Time::S)
-        // << "] Throughput (Mbit/s):";
-        // std::cout << "\t\t" << tp << "; "; // Mbit/s
-        // std::cout << std::endl;
-        throughputMap[now.GetSeconds()] = tp;
-    }
-    if (now + tputInterval < simulationTime)
-    {
-        Simulator::Schedule(tputInterval,
-                            &PrintIntermediateTput,
-                            udp,
-                            serverApp,
-                            payloadSize,
-                            tputInterval,
-                            simulationTime);
+    try {
+        return std::stoi(s);
+    } catch (...) {
+        return default_val;
     }
 }
 
-std::string txopOutputFile("./Txop.csv");
-std::string txopMpduNumberOutputFile("./TxInfo.csv");
-void
-SaveTxopStats(std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint64_t>>> txopList,
-              std::unordered_map<uint8_t, std::vector<std::tuple<uint64_t, uint64_t, uint32_t>>> numList)
+// 去掉字符串前后空格
+std::string trim(const std::string& s)
 {
-    std::ofstream fout(txopOutputFile, std::ios::out);
-    fout << "LinkId,TxopStartTime,TxopEndTime" << std::endl;
-    for (uint8_t i = 0; i < 2; i++)
-    {
-        for (size_t j = 0; j < txopList[i].size(); ++j)
-            fout << (uint32_t)i << "," << txopList[i][j].first << "," << txopList[i][j].second << std::endl;
-    }
-    fout.close();
-    std::ofstream fout2(txopMpduNumberOutputFile, std::ios::out);
-    fout2 << "LinkId,TxTime,TxDuration,Nmpdus" << std::endl;
-    for (uint8_t i = 0; i < 2; i++) {
-        for (const auto &it : numList[i]) {
-            fout2 << +i << "," << std::get<0>(it) << "," << std::get<1>(it) << "," << std::get<2>(it) << std::endl;
-        }
-    }
-    fout2.close();
+    size_t start = s.find_first_not_of(" \t");
+    size_t end = s.find_last_not_of(" \t");
+    if (start == std::string::npos || end == std::string::npos)
+        return "";
+    return s.substr(start, end - start + 1);
 }
 
 void updateThroughputCSV(const std::string& pretitle, int bw1, int bw2,
                          int mcs1, int mcs2, int nss,
-                         int nsld1, int nsld2, int baw,
+                         int nsld1, int nsld2,
+                         int maxAmpduNumSld0, int maxAmpduNumSld1,
+                         int baw,
                          int maxAmpduNum0, int maxAmpduNum1,
                          int seedNumber, double totalthroughput,
-                         double totalthroughput1, double totalthroughput2)
+                         double totalthroughput1, double totalthroughput2,
+                         double pM1, double pM2)
 {
-    std::string filename = "throughput_10s.csv";
-    bool file_exists = std::filesystem::exists(filename);
+    std::string filename = "throughput_0120.csv";
     std::vector<std::vector<std::string>> rows;
     bool found = false;
-    bool has_mcs = false;
-    bool has_nss = false;
 
-    // ========== 1. 读取文件 ==========
-    if (file_exists)
+    // ================= 1. 读取文件 =================
+    if (std::filesystem::exists(filename))
     {
         std::ifstream infile(filename);
         std::string line;
-        bool is_header = true;
 
         while (std::getline(infile, line))
         {
             if (line.empty()) continue;
+
             std::stringstream ss(line);
             std::vector<std::string> tokens;
             std::string token;
+
             while (std::getline(ss, token, ','))
             {
-                token.erase(0, token.find_first_not_of(" \t"));
-                token.erase(token.find_last_not_of(" \t") + 1);
-                tokens.push_back(token);
-            }
-
-            if (is_header)
-            {
-                // ---- 检查表头列结构 ----
-                has_mcs = (std::find(tokens.begin(), tokens.end(), "mcs1") != tokens.end());
-                has_nss = (std::find(tokens.begin(), tokens.end(), "nss") != tokens.end());
-
-                // 若旧文件缺少 throughput1/2 列
-                if (tokens.size() == 10 && tokens.back() == "Throughput(Mbps)")
-                {
-                    tokens.push_back("Throughput1(Mbps)");
-                    tokens.push_back("Throughput2(Mbps)");
-                }
-
-                // 若旧文件缺少 mcs1/mcs2 → 自动补列
-                if (!has_mcs)
-                {
-                    auto it = tokens.begin() + 3; // 在 bw2 后插入
-                    tokens.insert(it, {"mcs1", "mcs2"});
-                    has_mcs = true;
-                }
-
-                // 若旧文件缺少 nss → 在 mcs2 后插入
-                if (!has_nss)
-                {
-                    auto it = std::find(tokens.begin(), tokens.end(), "mcs2");
-                    if (it != tokens.end()) ++it;
-                    tokens.insert(it, "nss");
-                    has_nss = true;
-                }
-
-                rows.push_back(tokens);
-                is_header = false;
-                continue;
-            }
-
-            // ---- 普通数据行 ----
-            if (tokens.size() >= 9)
-            {
-                if (!has_mcs)
-                {
-                    tokens.insert(tokens.begin() + 3, "13"); // mcs1
-                    tokens.insert(tokens.begin() + 4, "13"); // mcs2
-                }
-
-                if (!has_nss)
-                {
-                    tokens.insert(tokens.begin() + 5, "2"); // nss 默认值2
-                }
-
-                size_t idx_bw1 = 1;
-                size_t idx_bw2 = 2;
-                size_t idx_mcs1 = 3;
-                size_t idx_mcs2 = 4;
-                size_t idx_nss = 5;
-                size_t base = 6;
-
-                std::string f_pretitle = tokens[0];
-                int f_bw1 = std::stoi(tokens[idx_bw1]);
-                int f_bw2 = std::stoi(tokens[idx_bw2]);
-                int f_mcs1 = std::stoi(tokens[idx_mcs1]);
-                int f_mcs2 = std::stoi(tokens[idx_mcs2]);
-                int f_nss = std::stoi(tokens[idx_nss]);
-                int f_nsld1 = std::stoi(tokens[base]);
-                int f_nsld2 = std::stoi(tokens[base + 1]);
-                int f_baw = std::stoi(tokens[base + 2]);
-                int f_maxAmpduNum0 = std::stoi(tokens[base + 3]);
-                int f_maxAmpduNum1 = std::stoi(tokens[base + 4]);
-                int f_seed = std::stoi(tokens[base + 5]);
-
-                // ---- 判断是否匹配 ----
-                if (f_pretitle == pretitle && f_bw1 == bw1 && f_bw2 == bw2 &&
-                    f_mcs1 == mcs1 && f_mcs2 == mcs2 && f_nss == nss &&
-                    f_nsld1 == nsld1 && f_nsld2 == nsld2 && f_baw == baw &&
-                    f_maxAmpduNum0 == maxAmpduNum0 && f_maxAmpduNum1 == maxAmpduNum1 &&
-                    f_seed == seedNumber)
-                {
-                    if (tokens.size() >= base + 9)
-                    {
-                        tokens[base + 6] = std::to_string(totalthroughput);
-                        tokens[base + 7] = std::to_string(totalthroughput1);
-                        tokens[base + 8] = std::to_string(totalthroughput2);
-                    }
-                    else
-                    {
-                        while (tokens.size() < base + 6) tokens.push_back("");
-                        tokens.push_back(std::to_string(totalthroughput));
-                        tokens.push_back(std::to_string(totalthroughput1));
-                        tokens.push_back(std::to_string(totalthroughput2));
-                    }
-                    found = true;
-                }
+                tokens.push_back(trim(token));
             }
             rows.push_back(tokens);
         }
         infile.close();
+
+        // ========== 1.1 兼容旧 CSV，检测并升级 ==========
+        bool needUpgrade = false;
+
+        if (!rows.empty())
+        {
+            // 新格式应至少 19 列，且第 9 列是 maxAmpduNumSld0
+            if (rows[0].size() < 19 || rows[0][8] != "maxAmpduNumSld0")
+            {
+                needUpgrade = true;
+            }
+        }
+
+        if (needUpgrade)
+        {
+            // 升级表头
+            rows[0] = {
+                "pertitle","bw1","bw2","mcs1","mcs2","nss",
+                "nsld1","nsld2",
+                "maxAmpduNumSld0","maxAmpduNumSld1",
+                "baw",
+                "maxAmpduNum0","maxAmpduNum1","seed",
+                "Throughput(Mbps)","Throughput1(Mbps)","Throughput2(Mbps)",
+                "pM1","pM2"
+            };
+
+            // 升级旧数据行，回填默认值 = 1
+            for (size_t i = 1; i < rows.size(); ++i)
+            {
+                auto& r = rows[i];
+                if (r.size() >= 17)
+                {
+                    // 在 nsld2(index=7) 后插入
+                    r.insert(r.begin() + 8, "1"); // maxAmpduNumSld0
+                    r.insert(r.begin() + 9, "1"); // maxAmpduNumSld1
+                }
+            }
+        }
+
+        // ========== 1.2 查找并更新已有行 ==========
+        for (auto& tokens : rows)
+        {
+            if (tokens.size() < 19 || tokens[0] == "pertitle")
+                continue;
+
+            std::string f_pretitle = tokens[0];
+            int f_bw1 = safe_stoi(tokens[1]);
+            int f_bw2 = safe_stoi(tokens[2]);
+            int f_mcs1 = safe_stoi(tokens[3]);
+            int f_mcs2 = safe_stoi(tokens[4]);
+            int f_nss = safe_stoi(tokens[5]);
+            int f_nsld1 = safe_stoi(tokens[6]);
+            int f_nsld2 = safe_stoi(tokens[7]);
+            int f_maxAmpduNumSld0 = safe_stoi(tokens[8]);
+            int f_maxAmpduNumSld1 = safe_stoi(tokens[9]);
+            int f_baw = safe_stoi(tokens[10]);
+            int f_maxAmpduNum0 = safe_stoi(tokens[11]);
+            int f_maxAmpduNum1 = safe_stoi(tokens[12]);
+            int f_seed = safe_stoi(tokens[13]);
+
+            if (f_pretitle == pretitle &&
+                f_bw1 == bw1 && f_bw2 == bw2 &&
+                f_mcs1 == mcs1 && f_mcs2 == mcs2 &&
+                f_nss == nss &&
+                f_nsld1 == nsld1 && f_nsld2 == nsld2 &&
+                f_maxAmpduNumSld0 == maxAmpduNumSld0 &&
+                f_maxAmpduNumSld1 == maxAmpduNumSld1 &&
+                f_baw == baw &&
+                f_maxAmpduNum0 == maxAmpduNum0 &&
+                f_maxAmpduNum1 == maxAmpduNum1 &&
+                f_seed == seedNumber)
+            {
+                tokens[14] = std::to_string(totalthroughput);
+                tokens[15] = std::to_string(totalthroughput1);
+                tokens[16] = std::to_string(totalthroughput2);
+                tokens[17] = std::to_string(pM1);
+                tokens[18] = std::to_string(pM2);
+                found = true;
+                break;
+            }
+        }
     }
     else
     {
-        // ========== 2. 文件不存在 → 创建新表 ==========
+        // ================= 新文件，直接写表头 =================
         rows.push_back({
-            "pertitle", "bw1", "bw2", "mcs1", "mcs2", "nss",
-            "nsld1", "nsld2", "baw",
-            "maxAmpduNum0", "maxAmpduNum1", "seed",
-            "Throughput(Mbps)", "Throughput1(Mbps)", "Throughput2(Mbps)"
+            "pertitle","bw1","bw2","mcs1","mcs2","nss",
+            "nsld1","nsld2",
+            "maxAmpduNumSld0","maxAmpduNumSld1",
+            "baw",
+            "maxAmpduNum0","maxAmpduNum1","seed",
+            "Throughput(Mbps)","Throughput1(Mbps)","Throughput2(Mbps)",
+            "pM1","pM2"
         });
-        has_mcs = has_nss = true;
     }
 
-    // ========== 3. 插入新行 ==========
+    // ================= 2. 插入新行 =================
     if (!found)
     {
-        std::vector<std::string> new_row = {
+        rows.push_back({
             pretitle,
             std::to_string(bw1),
             std::to_string(bw2),
@@ -351,58 +264,28 @@ void updateThroughputCSV(const std::string& pretitle, int bw1, int bw2,
             std::to_string(nss),
             std::to_string(nsld1),
             std::to_string(nsld2),
+            std::to_string(maxAmpduNumSld0),
+            std::to_string(maxAmpduNumSld1),
             std::to_string(baw),
             std::to_string(maxAmpduNum0),
             std::to_string(maxAmpduNum1),
             std::to_string(seedNumber),
             std::to_string(totalthroughput),
             std::to_string(totalthroughput1),
-            std::to_string(totalthroughput2)
-        };
-
-        bool inserted = false;
-        for (auto it = rows.begin() + 1; it != rows.end(); ++it)
-        {
-            auto& r = *it;
-            if (r.size() < 9) continue;
-
-            std::string f_pretitle = r[0];
-            int f_bw1 = std::stoi(r[1]);
-            int f_bw2 = std::stoi(r[2]);
-            int f_mcs1 = std::stoi(r[3]);
-            int f_mcs2 = std::stoi(r[4]);
-            int f_nss = std::stoi(r[5]);
-            int offset = 6;
-            int f_nsld1 = std::stoi(r[offset]);
-            int f_nsld2 = std::stoi(r[offset + 1]);
-            int f_baw = std::stoi(r[offset + 2]);
-            int f_maxAmpduNum0 = std::stoi(r[offset + 3]);
-            int f_maxAmpduNum1 = std::stoi(r[offset + 4]);
-            int f_seed = std::stoi(r[offset + 5]);
-
-            if (std::tie(pretitle, bw1, bw2, mcs1, mcs2, nss,
-                         nsld1, nsld2, baw, maxAmpduNum0, maxAmpduNum1, seedNumber) <
-                std::tie(f_pretitle, f_bw1, f_bw2, f_mcs1, f_mcs2, f_nss,
-                         f_nsld1, f_nsld2, f_baw, f_maxAmpduNum0, f_maxAmpduNum1, f_seed))
-            {
-                rows.insert(it, new_row);
-                inserted = true;
-                break;
-            }
-        }
-        if (!inserted)
-            rows.push_back(new_row);
+            std::to_string(totalthroughput2),
+            std::to_string(pM1),
+            std::to_string(pM2)
+        });
     }
 
-    // ========== 4. 写回文件 ==========
+    // ================= 3. 写回文件 =================
     std::ofstream outfile(filename, std::ios::out | std::ios::trunc);
-    for (auto& row : rows)
+    for (const auto& row : rows)
     {
         for (size_t i = 0; i < row.size(); ++i)
         {
             outfile << row[i];
-            if (i != row.size() - 1)
-                outfile << ", ";
+            if (i + 1 < row.size()) outfile << ",";
         }
         outfile << "\n";
     }
@@ -410,191 +293,132 @@ void updateThroughputCSV(const std::string& pretitle, int bw1, int bw2,
 }
 
 
-
-
 std::string ppduTxOutputFile("./PPDU.csv");
 std::string rtsctsTxOutputFile("./RTSCTS.csv");
-
-void
-NotifyPpduTxDurationMLDSTA(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
+std::string baTxOutputFile("./BA.csv");
+enum class StaType
 {
-    if(ppdu->GetPsdu()->GetHeader(0).IsRts() && Simulator::Now().GetSeconds() < 6){
-            std::fstream file;
-            file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
-            file << "MLD_RTS_" << uint32_t(linkid) << "," << Simulator::Now().GetMicroSeconds() << ","
-                    << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds()<<std::endl;
-            file.close();
+    MLD_STA,
+    SLD_2G,
+    SLD_5G,
+    MLD_AP
+};
+void
+NotifyPpduTxDurationUnified(StaType staType,
+                            int32_t staIndex,
+                            Ptr<const WifiPpdu> ppdu,
+                            Time duration,
+                            uint8_t linkid) 
+{
+    const auto& hdr = ppdu->GetPsdu()->GetHeader(0);
+    uint64_t startUs = Simulator::Now().GetMicroSeconds();
+    uint64_t endUs   = startUs + duration.GetMicroSeconds();
+
+    /* ---------- 构造前缀 ---------- */
+    std::ostringstream prefix;
+    switch (staType)
+    {
+    case StaType::MLD_STA:
+        prefix << "MLD";
+        break;
+    case StaType::SLD_2G:
+        prefix << "SLD2G_" << staIndex;
+        break;
+    case StaType::SLD_5G:
+        prefix << "SLD5G_" << staIndex;
+        break;
+    case StaType::MLD_AP:
+        prefix << "AP";
+        break;
+    }
+
+    /* ---------- RTS / CTS ---------- */
+    if (hdr.IsRts() || hdr.IsCts())
+    {
+        std::fstream file(rtsctsTxOutputFile, std::ios::out | std::ios::app);
+        file << prefix.str()
+             << (hdr.IsRts() ? "_RTS_" : "_CTS_")
+             << uint32_t(linkid) << ","
+             << startUs << "," << endUs << std::endl;
         return;
     }
-    if(ppdu->GetPsdu()->GetHeader(0).IsCts() && Simulator::Now().GetSeconds() < 6){
-        std::fstream file;
-        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
-        file << "MLD_CTS_" << uint32_t(linkid) << "," << Simulator::Now().GetMicroSeconds() << ","
-                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds()<<std::endl;
-        file.close();
+
+    /* ---------- AP 专属：BA / ACK ---------- */
+    if (staType == StaType::MLD_AP && (hdr.IsBlockAck() || hdr.IsAck()))
+    {
+        std::fstream file(baTxOutputFile, std::ios::out | std::ios::app);
+        file << prefix.str()
+             << (hdr.IsBlockAck() ? "_BA_" : "_ACK_")
+             << uint32_t(linkid) << ","
+             << startUs << "," << endUs << std::endl;
         return;
     }
-    if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
+
+    /* ---------- 只统计 QoS Data ---------- */
+    if (!hdr.IsQosData())
+    {
         return;
+    }
+
+    /* ---------- MPDU 数量 ---------- */
     Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
-    uint32_t nmpdus = 0;
-    if (psdu->IsAggregate())
+    uint32_t nMpdu = psdu->IsAggregate() ? psdu->GetNMpdus() : 1;
+
+    if (nMpdu == 0)
     {
-        nmpdus = psdu->GetNMpdus();
-    } else {
-        nmpdus = 1;
+        return;
     }
-    if (Simulator::Now().GetSeconds() < 6)
-    {
-        std::fstream file;
-        file.open(ppduTxOutputFile, std::ios::out | std::ios::app);
-        if (nmpdus != 0)
-            file << "MLD" << uint32_t(linkid) << "," << Simulator::Now().GetMicroSeconds() << ","
-                    << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() << ","
-                    << nmpdus << std::endl;
-        file.close();
-    }
+
+    /* ---------- 数据帧记录 ---------- */
+    std::fstream file(ppduTxOutputFile, std::ios::out | std::ios::app);
+    file << prefix.str() << "_" << uint32_t(linkid) << ","
+         << startUs << "," << endUs << ","
+         << nMpdu << std::endl;
 }
 
-void
-NotifyPpduTxDurationSLD2G(uint32_t staIndex, Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
+
+double mpduNumMLD = 0.0;
+double mpduNumMLD2G = 0.0;
+double mpduNumMLD5G = 0.0;
+double rtsCountMLD2G = 0;
+double rtsCountMLD5G = 0;
+double ppduCountMLD2G = 0;
+double ppduCountMLD5G = 0;
+
+std::map<uint32_t, double> mpduNumSLD2G; 
+std::map<uint32_t, double> mpduNumSLD5G; 
+std::map<uint32_t, double> rtsCountSLD2G; 
+std::map<uint32_t, double> rtsCountSLD5G;
+std::map<uint32_t, double> ppduCountSLD2G; 
+std::map<uint32_t, double> ppduCountSLD5G;
+
+void NotifyPerformance(
+    Time statsBeginTime,
+    Time statsEndTime,
+    uint32_t payloadSize,
+    uint32_t staIndex,
+    bool isMld,
+    Ptr<const WifiPpdu> ppdu,
+    Time duration,
+    uint8_t linkid)
 {
-    if(ppdu->GetPsdu()->GetHeader(0).IsRts() && Simulator::Now().GetSeconds() < 6){
-        std::fstream file;
-        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
-        file << "SLD2G_RTS_" << staIndex << "_" << uint32_t(linkid) << ","
-                << Simulator::Now().GetMicroSeconds() << ","
-                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() <<std::endl;
-        file.close();
-        return;
-    }
-    if(ppdu->GetPsdu()->GetHeader(0).IsCts() && Simulator::Now().GetSeconds() < 6){
-        std::fstream file;
-        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
-        file << "SLD2G_CTS_" << staIndex << "_" << uint32_t(linkid) << ","
-                << Simulator::Now().GetMicroSeconds() << ","
-                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() <<std::endl;
-        file.close();
-        return;
-    }
-    if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
-        return;
-
-    Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
-    uint32_t nmpdus = psdu->IsAggregate() ? psdu->GetNMpdus() : 1;
-
-    if (Simulator::Now().GetSeconds() < 6 && nmpdus != 0)
-    {
-        std::fstream file;
-        file.open(ppduTxOutputFile, std::ios::out | std::ios::app);
-        file << "SLD2G_" << staIndex << "_" << uint32_t(linkid) << ","
-             << Simulator::Now().GetMicroSeconds() << ","
-             << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() << ","
-             << nmpdus << std::endl;
-        file.close();
-    }
-}
-
-void
-NotifyPpduTxDurationSLD5G(uint32_t staIndex, Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
-{
-    if(ppdu->GetPsdu()->GetHeader(0).IsRts() && Simulator::Now().GetSeconds() < 6){
-        std::fstream file;
-        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
-        file << "SLD5G_RTS_" << staIndex << "_" << uint32_t(linkid) << ","
-                << Simulator::Now().GetMicroSeconds() << ","
-                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() <<std::endl;
-        file.close();
-        return;
-    }
-    if(ppdu->GetPsdu()->GetHeader(0).IsCts() && Simulator::Now().GetSeconds() < 6){
-        std::fstream file;
-        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
-        file << "SLD5G_CTS_" << staIndex << "_" << uint32_t(linkid) << ","
-                << Simulator::Now().GetMicroSeconds() << ","
-                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() <<std::endl;
-        file.close();
-        return;
-    }
-    if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
-        return;
-
-    Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
-    uint32_t nmpdus = psdu->IsAggregate() ? psdu->GetNMpdus() : 1;
-
-    if (Simulator::Now().GetSeconds() < 6 && nmpdus != 0)
-    {
-        std::fstream file;
-        file.open(ppduTxOutputFile, std::ios::out | std::ios::app);
-        file << "SLD5G_" << staIndex << "_" << uint32_t(linkid) << ","
-             << Simulator::Now().GetMicroSeconds() << ","
-             << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() << ","
-             << nmpdus << std::endl;
-        file.close();
-    }
-}
-
-void
-NotifyPpduTxDurationMLDAP(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkid)
-{
-    if(ppdu->GetPsdu()->GetHeader(0).IsRts() && Simulator::Now().GetSeconds() < 6){
-        std::fstream file;
-        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
-        file << "AP_RTS_" << uint32_t(linkid) << "," << Simulator::Now().GetMicroSeconds() << ","
-                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() <<std::endl;
-        file.close();
-        return;
-    }
-    if(ppdu->GetPsdu()->GetHeader(0).IsCts() && Simulator::Now().GetSeconds() < 6){
-        std::fstream file;
-        file.open(rtsctsTxOutputFile, std::ios::out | std::ios::app);
-        file << "AP_CTS_" << uint32_t(linkid) << "," << Simulator::Now().GetMicroSeconds() << ","
-                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() <<std::endl;
-        file.close();
-        return;
-    }
-    if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
-        return;
-    Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
-    uint32_t nmpdus = 0;
-    if (psdu->IsAggregate())
-    {
-        nmpdus = psdu->GetNMpdus();
-        
-    } else {
-        nmpdus = 1;
-    }
-    if (Simulator::Now().GetSeconds() < 6)
-    {
-        std::fstream file;
-        file.open(ppduTxOutputFile, std::ios::out | std::ios::app);
-        if (nmpdus != 0)
-            file <<"AP_" << uint32_t(linkid) << "," << Simulator::Now().GetMicroSeconds() << ","
-                << Simulator::Now().GetMicroSeconds() + duration.GetMicroSeconds() << ","
-                << nmpdus << std::endl;
-        file.close();
-    }
-}
-
-double totalThroughput = 0.0;
-double totalThroughput1 = 0.0;
-double totalThroughput2 = 0.0;
-void 
-NotifyMLDThroughput(Time statsBeginTime,
-                    Time statsEndTime,
-                    uint32_t payloadSize,
-                    Ptr<const WifiPpdu> ppdu,
-                    Time duration,
-                    uint8_t linkid)
-{
-    // 仅统计 QoS Data 帧
-    if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
-        return;
-
     Time now = Simulator::Now();
+    if (now < statsBeginTime || now + duration > statsEndTime)
+        return;
 
-    // 仅在统计区间内统计
-    if (now < statsBeginTime || now > statsEndTime)
+    if (ppdu->GetPsdu()->GetHeader(0).IsRts())
+    {
+        if (isMld) {
+            if (linkid == 0) rtsCountMLD2G++;
+            else if (linkid == 1) rtsCountMLD5G++;
+        } else {
+            if (linkid == 0) rtsCountSLD2G[staIndex]++;
+            else if (linkid == 1) rtsCountSLD5G[staIndex]++;
+        }
+        return;
+    }
+
+    if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
         return;
 
     Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
@@ -602,32 +426,301 @@ NotifyMLDThroughput(Time statsBeginTime,
     if (nmpdus == 0)
         return;
 
-    double interval = (statsEndTime - statsBeginTime).GetSeconds();
-    double bits = static_cast<double>(nmpdus) * payloadSize * 8.0;
-    totalThroughput += bits / interval / 1e6;
-    if (linkid == 0)
-        totalThroughput1 += bits / interval / 1e6;
-    else if (linkid == 1)
-        totalThroughput2 += bits / interval / 1e6;
-
+    if (isMld) {
+        mpduNumMLD += nmpdus;
+        if (linkid == 0) {
+            mpduNumMLD2G += nmpdus;
+            ppduCountMLD2G++;
+        } else if (linkid == 1) {
+            mpduNumMLD5G += nmpdus;
+            ppduCountMLD5G++;
+        }
+    } else {
+        if (linkid == 0) {
+            mpduNumSLD2G[staIndex] += nmpdus;  
+            ppduCountSLD2G[staIndex] += 1;      
+            
+        } else if (linkid == 1) {
+            mpduNumSLD5G[staIndex] += nmpdus;
+            ppduCountSLD5G[staIndex] += 1;
+        }
+    }
 }
 
+double mpduNumMLDLast = 0.0;
+double mpduNumMLD2GLast = 0.0;
+double mpduNumMLD5GLast = 0.0;
+void
+PrintIntermediateTput(bool udp,
+                    const ApplicationContainer& serverApp,
+                    uint32_t payloadSize,
+                    Time tputInterval,
+                    Time simulationTime)
+{
+    Time now = Simulator::Now();
+    if (mpduNumMLDLast) {
+        double tp = (mpduNumMLD - mpduNumMLDLast) * 8. * payloadSize / tputInterval.GetMicroSeconds();
+        double tp1 = (mpduNumMLD2G - mpduNumMLD2GLast) * 8. * payloadSize / tputInterval.GetMicroSeconds();
+        double tp2 = (mpduNumMLD5G - mpduNumMLD5GLast) * 8. * payloadSize / tputInterval.GetMicroSeconds();
+        throughputMap[now.GetSeconds()] = {tp, tp1, tp2};
+    }
+    if (now + tputInterval < simulationTime){
+        Simulator::Schedule(tputInterval,
+                            &PrintIntermediateTput,
+                            udp,
+                            serverApp,
+                            payloadSize,
+                            tputInterval,
+                            simulationTime);
+        mpduNumMLDLast = mpduNumMLD;
+        mpduNumMLD2GLast = mpduNumMLD2G;
+        mpduNumMLD5GLast = mpduNumMLD5G;
+    }
+}
+
+void PrintSldStats(double interval, uint32_t payloadSize)
+{
+    std::cout << "------ SLD Statistics ------" << std::endl;
+    std::cout << "STA\tpS\t\tThroughput(Mbps)\tBand" << std::endl;
+
+    // 为计算平均值准备变量
+    double sumPs2G = 0.0, sumTp2G = 0.0;
+    int count2G = 0;
+    double sumPs5G = 0.0, sumTp5G = 0.0;
+    int count5G = 0;
+
+    // 处理 2.4G SLD
+    for (auto &entry : rtsCountSLD2G)
+    {
+        uint32_t staIndex = entry.first;
+        double rts = entry.second;
+        double ppdu = ppduCountSLD2G.count(staIndex) ? ppduCountSLD2G[staIndex] : 0;
+        double tp = mpduNumSLD2G.count(staIndex) ? mpduNumSLD2G[staIndex] * payloadSize * 8.0 / interval : 0;
+
+        double pS = (rts > 0) ? ppdu / rts : 0.0;
+
+        // 更新统计
+        sumPs2G += pS;
+        sumTp2G += tp;
+        count2G++;
+
+        std::cout << staIndex << "\t"
+                  << std::fixed << std::setprecision(6)
+                  << pS << "\t\t"
+                  << std::setprecision(3) << tp << "\t\t"
+                  << std::setprecision(6)
+                  << "2.4G" << std::endl;
+    }
+
+    // 处理 5G SLD
+    for (auto &entry : rtsCountSLD5G)
+    {
+        uint32_t staIndex = entry.first;
+        double rts = entry.second;
+        double ppdu = ppduCountSLD5G.count(staIndex) ? ppduCountSLD5G[staIndex] : 0;
+        double tp = mpduNumSLD5G.count(staIndex) ? mpduNumSLD5G[staIndex] * payloadSize * 8.0 / interval : 0;
+
+        double pS = (rts > 0) ? ppdu / rts : 0.0;
+
+        sumPs5G += pS;
+        sumTp5G += tp;
+        count5G++;
+
+        std::cout << staIndex << "\t"
+                  << std::fixed << std::setprecision(6)
+                  << pS << "\t\t"
+                  << std::setprecision(3) << tp << "\t\t"
+                  << std::setprecision(6) // 恢复精度设置
+                  << "5G" << std::endl;
+    }
+
+    std::cout << "-----------------------------" << std::endl;
+    
+    // 输出平均值
+    std::cout << "\n------ Averages ------" << std::endl;
+    
+    if (count2G > 0)
+    {
+        double avgPs2G = sumPs2G / count2G;
+        double avgTp2G = sumTp2G / count2G;
+        std::cout << "2.4G: pS average = " << std::fixed << std::setprecision(6) << avgPs2G
+                  << ", Throughput average = " << std::setprecision(3) << avgTp2G << " Mbps" << std::endl;
+    }
+    else
+    {
+        std::cout << "2.4G: No data" << std::endl;
+    }
+
+    if (count5G > 0)
+    {
+        double avgPs5G = sumPs5G / count5G;
+        double avgTp5G = sumTp5G / count5G;
+        std::cout << "5G:   pS average = " << std::fixed << std::setprecision(6) << avgPs5G
+                  << ", Throughput average = " << std::setprecision(3) << avgTp5G << " Mbps" << std::endl;
+    }
+    else
+    {
+        std::cout << "5G:   No data" << std::endl;
+    }
+    
+    std::cout << "---------------------" << std::endl;
+}
+
+// 退避统计类
+class BackoffAndChannelMonitor : public Object
+{
+    public:
+        struct BackoffRecord
+        {
+            Time time;
+            Time backoffStartTime;
+            uint32_t slotsDecreased;
+            uint32_t remainingSlots;
+        };
+
+        BackoffAndChannelMonitor(uint32_t nodeId, uint8_t linkId, Time statsStartTime, Time statsEndTime)
+            : m_statsStartTime(statsStartTime),
+            m_statsEndTime(statsEndTime),
+            m_nodeId(nodeId),
+            m_linkId(linkId),
+            m_totalBackoffSlots(0)
+        {
+        }
+
+        // 退避值变化回调
+        void NotifyBackoffSlotsTrace(Time backoffStartTime, uint32_t slotsDecreased, uint32_t remainingSlots)
+        {
+            Time now = Simulator::Now();
+            if( now < m_statsStartTime || now > m_statsEndTime ) return;
+            if (!m_backoffHistory.empty()) {
+                if (now == m_backoffHistory.back().time && backoffStartTime == m_backoffHistory.back().backoffStartTime 
+                    && slotsDecreased == m_backoffHistory.back().slotsDecreased && remainingSlots == m_backoffHistory.back().remainingSlots) 
+                    return;
+            }
+            m_totalBackoffSlots += slotsDecreased;        
+            m_backoffHistory.push_back(BackoffRecord{
+                now,
+                backoffStartTime,
+                slotsDecreased,
+                remainingSlots
+            });
+        }
+
+        // 打印统计结果
+        void PrintStatistics()
+        {
+            double totalTime = (m_statsEndTime - m_statsStartTime).GetSeconds();
+            Time slotTime = MicroSeconds(9);
+            Time totalBackoffTime = m_totalBackoffSlots * slotTime;
+            double backoffRatio = totalBackoffTime.GetSeconds() / totalTime * 100.0;
+            
+            std::cout << "Node " << m_nodeId << " Link " << (uint32_t)m_linkId << ":" << std::endl;
+            std::cout << "  总退避时隙数: " << m_totalBackoffSlots << std::endl;
+            std::cout << "  总退避时间: " << totalBackoffTime.GetMicroSeconds() << " μs ("
+                    << backoffRatio << "%)" << std::endl;
+        }
+
+        uint32_t GetTotalBackoffSlots() const { return m_totalBackoffSlots; }
+        const std::vector<BackoffRecord>& GetBackoffHistory() const { return m_backoffHistory; }
+
+    private:
+        Time m_statsStartTime;
+        Time m_statsEndTime;
+        uint32_t m_nodeId;
+        uint8_t m_linkId;
+        uint32_t m_totalBackoffSlots;
+        std::vector<BackoffRecord> m_backoffHistory; // 退避历史记录
+};
+
+// 全局监控器映射: nodeId -> linkId -> monitor
+std::map<uint32_t, std::map<uint8_t, Ptr<BackoffAndChannelMonitor>>> g_backoffMonitors;
+
+// 回调函数：退避值变化
+void BackoffSlotsTraceCallback(uint32_t nodeId, uint8_t linkId, Time backoffStartTime, uint32_t slotsDecreased, uint32_t remainingSlots)
+{
+    if (g_backoffMonitors.count(nodeId) && g_backoffMonitors[nodeId].count(linkId))
+    {
+        g_backoffMonitors[nodeId][linkId]->NotifyBackoffSlotsTrace(backoffStartTime, slotsDecreased, remainingSlots);
+    }
+}
+
+// 设置退避监控
+void SetupBackoffAndChannelMonitoring(NodeContainer nodes, Time statsStartTime, Time statsEndTime)
+{
+    for (uint32_t i = 0; i < nodes.GetN(); ++i)
+    {
+        Ptr<Node> node = nodes.Get(i);
+        uint32_t nodeId = node->GetId();
+        Ptr<NetDevice> device = node->GetDevice(0);
+        Ptr<WifiNetDevice> wifiDevice = DynamicCast<WifiNetDevice>(device);
+        
+        if (wifiDevice)
+        {
+            Ptr<WifiMac> mac = wifiDevice->GetMac();
+            uint8_t numLinks = mac->GetNLinks();
+            
+            for (uint8_t linkId = 0; linkId < numLinks; ++linkId)
+            {
+                g_backoffMonitors[nodeId][linkId] = Create<BackoffAndChannelMonitor>(nodeId, linkId, statsStartTime, statsEndTime);     
+                Ptr<QosTxop> edca = nullptr;
+                if (mac)
+                {
+                    edca = mac->GetQosTxop(AC_BE);
+                    if (edca)
+                    {
+                        edca->TraceConnectWithoutContext("BackoffSlotsTrace",
+                                          MakeBoundCallback(&BackoffSlotsTraceCallback, nodeId));
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 保存详细的退避历史到CSV
+void SaveDetailedBackoffHistory(const std::string& filename, 
+                                NodeContainer nodes)
+{
+    std::ofstream fout(filename);
+    fout << "NodeId,LinkId,Time,BackoffStartTime,SlotsDecreased,RemainingSlots\n";
+    
+    for (uint32_t i = 0; i < nodes.GetN(); ++i)
+    {
+        uint32_t nodeId = nodes.Get(i)->GetId();
+        
+        if (g_backoffMonitors.count(nodeId))
+        {
+            for (auto& linkEntry : g_backoffMonitors[nodeId])
+            {
+                uint8_t linkId = linkEntry.first;
+                Ptr<BackoffAndChannelMonitor> monitor = linkEntry.second;
+                
+                const auto& history = monitor->GetBackoffHistory();
+                for (const auto& record : history)
+                {
+                    fout << nodeId << ","
+                         << (uint32_t)linkId << ","
+                         << record.time.GetMicroSeconds() << ","
+                         << record.backoffStartTime.GetMicroSeconds() << ","
+                         << record.slotsDecreased << ","
+                         << record.remainingSlots << "\n";
+                }
+                monitor->PrintStatistics();
+            }
+        }
+    }
+    
+    fout.close();
+}
 
 int
 main(int argc, char* argv[])
 {
-    if (std::filesystem::exists(txopOutputFile)) { 
-        std::filesystem::remove(txopOutputFile);
-    }
-
-    if (std::filesystem::exists(txopMpduNumberOutputFile)) { 
-        std::filesystem::remove(txopMpduNumberOutputFile);
-    }
     uint32_t seedNumber = 1;
     uint32_t mcs1 = 13;
-    uint32_t mcs2 = 13;
+    uint32_t mcs2 = 10;
     uint32_t bw1 = 20;
-    uint32_t bw2 = 20;
+    uint32_t bw2 = 80;
     double r1 = 1;
     double r2 = 1;
     uint32_t ch1 = 0;
@@ -636,23 +729,25 @@ main(int argc, char* argv[])
     std::string rateCtrl{"constant"};
     // std::string rateCtrl{"minstrel"};
 
-    uint16_t mpduBufferSize{1024};
+    uint16_t mpduBufferSize{512};
     uint32_t maxAmpduSize{1024 * 8 * (1500 + 150)}; // 1048575
-    uint32_t maxAmpduSize1{1 * (1500 + 150)};
-    uint32_t maxAmpduSize2{1 * (1500 + 150)};
-    uint32_t maxAmpduNum0 = 0;
-    uint32_t maxAmpduNum1 = 0;
+    uint32_t maxAmpduSize1{1 * (1500 + 80)};
+    uint32_t maxAmpduSize2{1 * (1500 + 80)};
+    uint32_t maxAmpduNum0 = 3;
+    uint32_t maxAmpduNum1 = 209;
+    uint32_t maxAmpduNumSld0 = 1;
+    uint32_t maxAmpduNumSld1 = 1;
+    double SLDinterval = 1.0;
 
     uint32_t txoplimit1 = 0, txoplimit2 = 0;
-    uint32_t singleLink = 0;
-    uint8_t nStaSlds1 = 0;
-    uint8_t nStaSlds2 = 0;
-    double period_update = 0.1;
+    uint8_t nStaSlds1 = 1;
+    uint8_t nStaSlds2 = 1;
+    double period_update = 0.5;
     bool grid_search_enable = false;
-    uint32_t nss = 2;
+    uint32_t nss = 4;
     uint8_t mode = 1;
 
-    double simT = 0;
+    double simT = 2.45;
     double transmission_delay = 0;
     bool param_update = false;
     bool redundancy_enable = false;
@@ -661,8 +756,7 @@ main(int argc, char* argv[])
     bool logmode = false;
     Time simT_delayEnd = NanoSeconds(2);
     uint32_t maxGroupSize = 1;
-    uint32_t pretitleint = 0;
-    std::string pretitle = "my"; //my2 means caculate-2
+    uint32_t pretitleint = 6;
     std::string scenario = "default";  // 默认场景
     CommandLine cmd(__FILE__);
     std::filesystem::path filepath = __FILE__;
@@ -675,78 +769,108 @@ main(int argc, char* argv[])
     cmd.AddValue("ch2", "channel id on 5 GHz", ch2);
     cmd.AddValue("bw1", "band width on 2.4 GHz", bw1);
     cmd.AddValue("bw2", "band width on 5 GHz", bw2);
-    cmd.AddValue("ratectrl", "rate control alg", rateCtrl);
+    // cmd.AddValue("ratectrl", "rate control alg", rateCtrl);
     cmd.AddValue("bawsize", "BA Window Size", mpduBufferSize);
     cmd.AddValue("max_ampdusize", "Max AmpduSize of AP 0", maxAmpduSize);
-    cmd.AddValue("max_ampdusize1", "Max AmpduSize of AP 1", maxAmpduSize1);
-    cmd.AddValue("max_ampdusize2", "Max AmpduSize of AP 2", maxAmpduSize2);
-    cmd.AddValue("gridsearch", "enable gridsearch", grid_search_enable);
-    cmd.AddValue("mode", "MLO Mode Setting", mode);
+    // cmd.AddValue("max_ampdusize1", "Max AmpduSize of AP 1", maxAmpduSize1);
+    // cmd.AddValue("max_ampdusize2", "Max AmpduSize of AP 2", maxAmpduSize2);
+    // cmd.AddValue("gridsearch", "enable gridsearch", grid_search_enable);
+    // cmd.AddValue("mode", "MLO Mode Setting", mode);
     cmd.AddValue("simt", "simulation time", simT);
     cmd.AddValue("period", "update period", period_update);
-    cmd.AddValue("txop1", "TxopLimit on 2.4 G", txoplimit1);
-    cmd.AddValue("txop2", "TxopLimit on 5 G", txoplimit2);
-    cmd.AddValue("sl", "Single Link if > 0", singleLink);
+    // cmd.AddValue("txop1", "TxopLimit on 2.4 G", txoplimit1);
+    // cmd.AddValue("txop2", "TxopLimit on 5 G", txoplimit2);
     cmd.AddValue("nss", "mimo", nss);
     cmd.AddValue("maxgroupsize", "maxgroupsize", maxGroupSize);
-    cmd.AddValue("delay", "delay setting", transmission_delay); // 传输延时，单位为微秒
+    // cmd.AddValue("delay", "delay setting", transmission_delay); // 传输延时，单位为微秒
     cmd.AddValue("nsld1", "interference setting", nStaSlds1);
     cmd.AddValue("nsld2", "interference setting", nStaSlds2);
-    cmd.AddValue("redundancy", "redundancy setting", redundancy_enable);
-    cmd.AddValue("param_update", "param update setting", param_update); 
-    cmd.AddValue("logsender", "new transmitter architecture log setting", logsender);
-    cmd.AddValue("logreceiver", "new receiver architecture log setting", logreceiver);
-    cmd.AddValue("logmode", "mode log setting", logmode);
+    // cmd.AddValue("redundancy", "redundancy setting", redundancy_enable);
+    // cmd.AddValue("param_update", "param update setting", param_update); 
+    // cmd.AddValue("logsender", "new transmitter architecture log setting", logsender);
+    // cmd.AddValue("logreceiver", "new receiver architecture log setting", logreceiver);
+    // cmd.AddValue("logmode", "mode log setting", logmode);
     cmd.AddValue("pretitle", "pre title", pretitleint);
     cmd.AddValue("maxampdunum0", "max mpdu number of 2.4G", maxAmpduNum0);
     cmd.AddValue("maxampdunum1", "max mpdu number of 5G", maxAmpduNum1);
+    cmd.AddValue("ampdunumsld0", "max ampdu num of SLD 2.4G", maxAmpduNumSld0);
+    cmd.AddValue("ampdunumsld1", "max ampdu num of SLD 5G", maxAmpduNumSld1);
     cmd.AddValue("scenario", "Simulation scenario", scenario);
+    cmd.AddValue("SLDinterval", "interval for throughput measurement", SLDinterval);
 
     cmd.Parse(argc, argv);
 
+    maxAmpduSize1 = maxAmpduNumSld0 * (1500 + 72);
+    maxAmpduSize2 = maxAmpduNumSld1 * (1500 + 72);
     uint32_t originalSeed = seedNumber;
     if (simT == 0) simT = period_update * 10 + 1;
     Time period{Seconds(period_update)};
     if (!(nStaSlds1)) r1 = 1e-9;  
     if (!(nStaSlds2)) r2 = 1e-9;
     Time tputInterval = period; // interval for detailed throughput measurement
-    std::string title;
-    if(pretitleint == 1) pretitle = "greedy";
-    if(pretitleint == 2) {pretitle = "damla";}
-    if(pretitleint == 3) pretitle = "only5G";
-    if(pretitleint == 4) pretitle = "only2G";
-    if(pretitleint == 5) pretitle = "sumbawby2g"; // used to fixset
-    if(pretitleint == 6) pretitle = "bothset"; // used to fix2g
-    title = pretitle + "_baw_" + std::to_string(mpduBufferSize) + "_bw_" + std::to_string(bw1) + "_" + std::to_string(bw2) + "_mcs_" + std::to_string(mcs1) + "_" + std::to_string(mcs2) 
-                        + "_interference_" + std::to_string(nStaSlds1) + "_" + std::to_string(nStaSlds2) + "_seed_" + std::to_string(seedNumber);
-    if(pretitleint == 5) {
-        title = title + "_maxAmpduNum0_" + std::to_string(maxAmpduNum0);
+
+    std::string pretitle = "";
+    switch (pretitleint){
+        case 1: pretitle = "greedy";   break;
+        case 2: pretitle = "damla";    break;
+        case 3: pretitle = "only5G";   break;
+        case 4: pretitle = "only2G";   break;
+        case 5: pretitle = "sumbawby2g"; break; // AmpduNum2G = *, AmpduNum5G = BAW - *
+        case 6: pretitle = "bothset";  break;
+        default: pretitle = "unknown"; break;
     }
-    if(pretitleint == 6) {
-        title = title + "_maxAmpduNum0_" + std::to_string(maxAmpduNum0) + "_maxAmpduNum1_" + std::to_string(maxAmpduNum1);
+    std::ostringstream oss;
+    oss << pretitle
+        << "_baw_" << mpduBufferSize
+        << "_bw_" << bw1 << "_" << bw2
+        << "_mcs_" << mcs1 << "_" << mcs2
+        << "_interference_" << static_cast<uint32_t>(nStaSlds1) << "_" << static_cast<uint32_t>(nStaSlds2)
+        << "_seed_" << seedNumber;
+
+    if (SLDinterval != 1.0)
+    {
+        oss << "_sldinterval_" << SLDinterval;
+    }
+    if(maxAmpduNumSld0 != 1)
+    {
+        oss << "_maxAmpduNumSld0_" << maxAmpduNumSld0;
+    }
+    if(maxAmpduNumSld1 != 1)
+    {
+        oss << "_maxAmpduNumSld1_" << maxAmpduNumSld1;
     }
 
-    std::filesystem::path scenarioDir = filepath.parent_path() / scenario;
-    // 若文件夹不存在则创建
-    if (!std::filesystem::exists(scenarioDir))
+    if (pretitleint == 5)
     {
-        std::filesystem::create_directories(scenarioDir);
+        oss << "_maxAmpduNum0_" << maxAmpduNum0;
     }
-    ppduTxOutputFile = (scenarioDir / (title + "_PPDU.csv")).string();
-    if (std::filesystem::exists(ppduTxOutputFile)) { 
-        std::filesystem::remove(ppduTxOutputFile);
+    else if (pretitleint == 6)
+    {
+        oss << "_maxAmpduNum0_" << maxAmpduNum0
+            << "_maxAmpduNum1_" << maxAmpduNum1;
     }
-    rtsctsTxOutputFile = (scenarioDir / (title + "_RTSCTS.csv")).string();
-    if (std::filesystem::exists(rtsctsTxOutputFile)) { 
-        std::filesystem::remove(rtsctsTxOutputFile);
-    }
+
+    std::string title = oss.str();
+    std::filesystem::path scenarioDir = filepath.parent_path() / scenario;
+    std::filesystem::create_directories(scenarioDir);
+
+    auto prepareFile = [&](const std::string& name) {
+        std::string fullpath = (scenarioDir / name).string();
+        std::filesystem::remove(fullpath); // 不存在也不会报错
+        return fullpath;
+    };
+
+    ppduTxOutputFile = prepareFile(title + "_PPDU.csv");
+    rtsctsTxOutputFile = prepareFile(title + "_RTSCTS.csv");
+    baTxOutputFile = prepareFile(title + "_BA.csv");
+
+    std::string csv_file = (scenarioDir / (title + ".csv")).string();
+
     if (mode && logmode) mode = mode | (1 << 4);
     if (mode && logsender) mode = mode | (1 << 5);
     uint8_t mode_recv = 1 << 2;
     if (mode_recv && logreceiver) mode_recv = mode_recv | (1 << 6);
-    std::string csv_file = (scenarioDir / (title + ".csv")).string();
-    std::cout << csv_file << std::endl;
-    // LogComponentEnable("PhyEntity", LOG_LEVEL_DEBUG);
+
     bool udp = true;
     uint8_t nLinks = 2;
     RngSeedManager::SetSeed(seedNumber);
@@ -760,7 +884,7 @@ main(int argc, char* argv[])
     size_t nStaMlds{1};
     uint32_t payloadSize = 1500; // must fit in the max TX duration when transmitting at MCS 0 over an RU of 26 tones
 
-    if (useRts) // 默认不使用RTS CTS
+    if (useRts)
     {
         Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("0"));
         // Config::SetDefault("ns3::WifiDefaultProtectionManager::EnableMuRts", BooleanValue(true));
@@ -768,9 +892,9 @@ main(int argc, char* argv[])
     // Config::SetDefault("ns3::WifiMacQueue::MaxDelay", TimeValue(simulationTime * 2));
 
     // Set infinitely long queue
-    //  Config::SetDefault(
-    //      "ns3::WifiMacQueue::MaxSize",
-    //      QueueSizeValue(QueueSize(QueueSizeUnit::PACKETS, 1024)));
+     Config::SetDefault(
+         "ns3::WifiMacQueue::MaxSize",
+         QueueSizeValue(QueueSize(QueueSizeUnit::PACKETS, 1024*2)));
 
     // Disable fragmentation
     Config::SetDefault("ns3::WifiRemoteStationManager::FragmentationThreshold",   
@@ -906,13 +1030,17 @@ main(int argc, char* argv[])
                 "ActiveProbing",
                 BooleanValue(false));
     mldDev = wifi.Install(phy, mac, mldNodes);
+    
+    Time statsBeginTime = Seconds(1.5);
+    std::cout << "statsBeginTime: " << statsBeginTime.As(Time::S) << std::endl;
+    Time statsEndTime = period * ((simulationTime + simT_delayEnd) / period).GetInt();
+    std::cout << "statsEndTime: " << statsEndTime.As(Time::S) << std::endl;
     Ptr<WifiMac> mac_ap = DynamicCast<WifiNetDevice>(apDev.Get(0))->GetMac();
     std::cout << "AP0 MAC: " << apDev.Get(0)->GetAddress()<< std::endl;
     for (uint8_t i = 0; i < nLinks; ++i) {
         auto fem = mac_ap->GetFrameExchangeManager(i);
         std::cout << "\t apDevice " << "linkId " << std::to_string(i) << " mac address: " << fem->GetAddress() << std::endl;
     }
-    // print mac address of mld
     for (size_t id = 0; id < nStaMlds; ++id) {
         Ptr<WifiMac> mac_mld = DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetMac(); 
         std::cout << "MLD" << (id) << " MAC: " << mldDev.Get(id)->GetAddress() << std::endl;
@@ -921,36 +1049,65 @@ main(int argc, char* argv[])
             std::cout << "\t mldDevice " << "linkId " << std::to_string(i) << " mac address: " << fem->GetAddress() << std::endl;
         }
     }
+    DynamicCast<WifiNetDevice>(apDev.Get(0))->GetPhy(0)->TraceConnectWithoutContext(
+        "PpduTxDuration",
+        MakeBoundCallback(&NotifyPpduTxDurationUnified, StaType::MLD_AP, -1));
+    DynamicCast<WifiNetDevice>(apDev.Get(0))->GetPhy(1)->TraceConnectWithoutContext(
+        "PpduTxDuration",
+        MakeBoundCallback(&NotifyPpduTxDurationUnified, StaType::MLD_AP, -1));
+    DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(0)->TraceConnectWithoutContext(
+        "PpduTxDuration",
+        MakeBoundCallback(&NotifyPpduTxDurationUnified, StaType::MLD_STA, -1));
+    DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(1)->TraceConnectWithoutContext(
+        "PpduTxDuration",
+        MakeBoundCallback(&NotifyPpduTxDurationUnified, StaType::MLD_STA, -1));
+    DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(0)->TraceConnectWithoutContext(
+        "PpduTxDuration",
+         MakeBoundCallback(&NotifyPerformance, statsBeginTime, statsEndTime, payloadSize, 0, true));
+    DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(1)->TraceConnectWithoutContext(
+        "PpduTxDuration",
+         MakeBoundCallback(&NotifyPerformance, statsBeginTime, statsEndTime, payloadSize, 0, true));
+
     for (size_t id = nStaMlds; id < nStaMlds + nStaSlds1; ++id) {
         Ptr<WifiMac> mac_mld = DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetMac(); 
-        std::cout << "SLD_2.4G" << (id) << " MAC: " << mldDev.Get(id)->GetAddress() << std::endl;
+        std::cout << "SLD_2.4G_" << (id) << " MAC: " << mldDev.Get(id)->GetAddress() << std::endl;
         auto fem = mac_mld->GetFrameExchangeManager(0);
         std::cout << "\t sldDevice " << "linkId " << std::to_string(0) << " mac address: " << fem->GetAddress() << std::endl;
+        uint32_t staIndex = id - nStaMlds;
         DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetPhy(0)->TraceConnectWithoutContext(
             "PpduTxDuration",
-            MakeBoundCallback(&NotifyPpduTxDurationSLD2G, id - nStaMlds));
+            MakeBoundCallback(&NotifyPpduTxDurationUnified, StaType::SLD_2G, staIndex));
         DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetPhy(1)->TraceConnectWithoutContext(
             "PpduTxDuration",
-            MakeBoundCallback(&NotifyPpduTxDurationSLD2G, id - nStaMlds));
-    }
-    for (size_t id = nStaMlds + nStaSlds1; id < nStaMlds + nStaSlds1 + nStaSlds2; ++id) {
-        Ptr<WifiMac> mac_mld = DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetMac(); 
-        std::cout << "SLD_5G" << (id) << " MAC: " << mldDev.Get(id)->GetAddress() << std::endl;
-        auto fem = mac_mld->GetFrameExchangeManager(1);
-        std::cout << "\t sldDevice " << "linkId " << std::to_string(1) << " mac address: " << fem->GetAddress() << std::endl;
+            MakeBoundCallback(&NotifyPpduTxDurationUnified, StaType::SLD_2G, staIndex));
         DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetPhy(0)->TraceConnectWithoutContext(
             "PpduTxDuration",
-            MakeBoundCallback(&NotifyPpduTxDurationSLD5G, id - nStaMlds - nStaSlds1));
+            MakeBoundCallback(&NotifyPerformance, statsBeginTime, statsEndTime, payloadSize, staIndex, false));
         DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetPhy(1)->TraceConnectWithoutContext(
             "PpduTxDuration",
-            MakeBoundCallback(&NotifyPpduTxDurationSLD5G, id - nStaMlds - nStaSlds1));
+            MakeBoundCallback(&NotifyPerformance, statsBeginTime, statsEndTime, payloadSize, staIndex, false));
     }
 
-    // MLD AP PPDU TX Duration Output
-    DynamicCast<WifiNetDevice>(apDev.Get(0))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationMLDAP));
-    DynamicCast<WifiNetDevice>(apDev.Get(0))->GetPhy(1)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationMLDAP));
-    DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationMLDSTA));
-    DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(1)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&NotifyPpduTxDurationMLDSTA));
+    for (size_t id = nStaMlds + nStaSlds1; id < nStaMlds + nStaSlds1 + nStaSlds2; ++id) {
+        Ptr<WifiMac> mac_mld = DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetMac(); 
+        std::cout << "SLD_5G_" << (id) << " MAC: " << mldDev.Get(id)->GetAddress() << std::endl;
+        auto fem = mac_mld->GetFrameExchangeManager(1);
+        std::cout << "\t sldDevice " << "linkId " << std::to_string(1) << " mac address: " << fem->GetAddress() << std::endl;
+        uint32_t staIndex = id - nStaMlds - nStaSlds1;
+        DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetPhy(0)->TraceConnectWithoutContext(
+            "PpduTxDuration",
+            MakeBoundCallback(&NotifyPpduTxDurationUnified, StaType::SLD_5G, staIndex));
+        DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetPhy(1)->TraceConnectWithoutContext(
+            "PpduTxDuration",
+            MakeBoundCallback(&NotifyPpduTxDurationUnified, StaType::SLD_5G, staIndex));
+        DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetPhy(0)->TraceConnectWithoutContext(
+            "PpduTxDuration",
+            MakeBoundCallback(&NotifyPerformance, statsBeginTime, statsEndTime, payloadSize, staIndex, false));
+        DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetPhy(1)->TraceConnectWithoutContext(
+            "PpduTxDuration",
+            MakeBoundCallback(&NotifyPerformance, statsBeginTime, statsEndTime, payloadSize, staIndex, false));
+    }
+
 
     NetDeviceContainer devices;
     devices.Add(apDev);
@@ -989,7 +1146,7 @@ main(int argc, char* argv[])
     positionAlloc->Add(Vector(0.0, 2.0, 0.0));
     std::cout << "AP 坐标: (0.0, 2.0, 0.0)" << std::endl;
 
-    double bssRadius = 1; // 圆形分布半径
+    double bssRadius = 0.1; // 圆形分布半径
 
     // STA-SLD 2.4G
         double step = 360.0 / (nStaMlds + nStaSlds1 + nStaSlds2);
@@ -1033,18 +1190,22 @@ main(int argc, char* argv[])
     // if (rateCtrl == "ideal" || rateCtrl == "constant") mcs[0] = mcs[1] = 13;
     const auto maxLoad2 = EhtPhy::GetDataRate(mcs[0], bandwidth[0] , NanoSeconds(gi), 1) * nss;
     const auto maxLoad5 = EhtPhy::GetDataRate(mcs[1], bandwidth[1] , NanoSeconds(gi), 1) * nss;
-    const auto maxLoad =  (maxLoad2 + maxLoad5) * 2; 
     std::cout << "maxload = " << std::to_string((maxLoad2 + maxLoad5)/1e6) << " Mbps; 2.4 GHz: " <<  std::to_string(maxLoad2/1e6) << " Mbps, 5 GHz: " << std::to_string(maxLoad5/1e6) << " Mbps" << std::endl;
-    const auto packetInterval = payloadSize * 8.0 / maxLoad;
+    const auto packetInterval = payloadSize * 8.0 / (maxLoad2 + maxLoad5) / 2; 
+    const auto packetInterval2 = payloadSize * 8.0 / maxLoad2 / SLDinterval;
+    const auto packetInterval5 = payloadSize * 8.0 / maxLoad5 / SLDinterval;
+    std::cout << "2.4 GHz: " <<  std::to_string(packetInterval2) << " s, 5 GHz: " << std::to_string(packetInterval5) << " s" << std::endl;
     UdpClientHelper client(apNodeInterface.GetAddress(0), port);
     client.SetAttribute("MaxPackets", UintegerValue(0));
-    client.SetAttribute("Interval", TimeValue(Seconds(packetInterval)));
     client.SetAttribute("PacketSize", UintegerValue(payloadSize));
     for (uint32_t i = 0; i < mldNodes.GetN(); ++i){
+        client.SetAttribute("Interval", TimeValue(Seconds(packetInterval)));
+        if(i == 0) client.SetAttribute("Interval", TimeValue(Seconds(packetInterval)));
+        else if(i < nStaMlds + nStaSlds1) client.SetAttribute("Interval", TimeValue(Seconds(packetInterval2)));
+        else client.SetAttribute("Interval", TimeValue(Seconds(packetInterval5)));
         ApplicationContainer clientApp = client.Install(mldNodes.Get(i));
         seedNumber += client.AssignStreams(mldNodes.Get(i), seedNumber);
-        if(i) clientApp.Start(Seconds(1));
-        else clientApp.Start(Seconds(0.999));
+        clientApp.Start(Seconds(1));
         clientApp.Stop(simulationTime + simT_delayEnd);
     }
 
@@ -1060,11 +1221,10 @@ main(int argc, char* argv[])
     std::string mldMappingStr = "0,1,2,3,4,5,6,7 0,1";
     if(pretitleint == 3) mldMappingStr = "0,1,2,3,4,5,6,7 1"; // only 5G
     if(pretitleint == 4) mldMappingStr = "0,1,2,3,4,5,6,7 0"; // only 2G
-    if (singleLink & 0x03) mldMappingStr = "0,1,2,3,4,5,6,7 "  + std::to_string((singleLink & 0x02) > 0);
     std::string mldMappingStr1 = "0,1,2,3,4,5,6,7 0";
     std::string mldMappingStr2 = "0,1,2,3,4,5,6,7 1";
 
-    int index = 0;
+    size_t index = 0;
     for (auto i = mldDev.Begin(); i != mldDev.End(); ++i, ++index)
     {
         auto wifiDev = DynamicCast<WifiNetDevice>(*i);
@@ -1090,10 +1250,8 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/PreTitle", UintegerValue(pretitleint));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxAmpduNum0", UintegerValue(maxAmpduNum0));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxAmpduNum1", UintegerValue(maxAmpduNum1));
-    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Nsld24", UintegerValue(nStaSlds1)); 
-    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Nsld5", UintegerValue(nStaSlds2)); 
-    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/BandWidth24", UintegerValue(bw1));
-    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/BandWidth5", UintegerValue(bw2));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/DataRate24", DoubleValue(maxLoad2)); 
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/DataRate5", DoubleValue(maxLoad5));
 
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode_recv)); // 只负责接收，无msdu_grouper, mode只要非0, 接收端就是新架构，BA只包含各自链路所收到的包的接收信息，各自维护自己的bitmap
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GridSearchEnable", BooleanValue(grid_search_enable)); // 是否开启网格搜索，用于静态场景下的最优参数搜索，只有在param_update = true时才会更新参数
@@ -1106,9 +1264,9 @@ main(int argc, char* argv[])
     for (uint32_t i = 0; i < allNodes.GetN(); ++i)
     {
         Config::Set("/NodeList/" + std::to_string(i) +
-                "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{3,3}));
+                "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
         Config::Set("/NodeList/" + std::to_string(i) +
-                "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{3,3}));
+                "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
         Config::Set("/NodeList/" + std::to_string(i) +
                 "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
         Config::Set("/NodeList/" + std::to_string(i) +
@@ -1119,10 +1277,10 @@ main(int argc, char* argv[])
                 "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));   
     }
     /* BSS EDCA */
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{3,3}));
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
-    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{3,3}));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Aifsns", AttributeContainerValue<UintegerValue>(std::list<uint64_t>{2,2}));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MinCws", AttributeContainerValue<UintegerValue>(std::list<int>{15,15}));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxCws", AttributeContainerValue<UintegerValue>(std::list<int>{1023,1023}));
 
@@ -1131,34 +1289,24 @@ main(int argc, char* argv[])
     std::vector<Time> txopLimitList = {MicroSeconds(32) * txoplimit1, MicroSeconds(32) * txoplimit2};
     std::cout << txopLimitList[0] << " " << txopLimitList[1] << std::endl;
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/TxopLimits", AttributeContainerValue<TimeValue>(txopLimitList));
-
-    // phy.EnablePcap("ap0-trace-udp", apDev.Get(0));
-    // phySld2.EnablePcap("ap1-trace-udp", apDev.Get(1));
-    // phySld5.EnablePcap("ap2-trace-udp", apDev.Get(2));
-    // phy.EnablePcap("mld-trace-udp", mldDev.Get(0));
-    // phySld2.EnablePcap("sld2-trace-udp", sldDev2.Get(0));
-    // phySld5.EnablePcap("sld5-trace-udp", sldDev5.Get(0));
     Config::ConnectWithoutContext("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GetNextParams", MakeCallback(&SaveParams));
-    Config::ConnectWithoutContext("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GetTxopTimeStats",MakeCallback(&SaveTxopStats));
     
     Simulator::Schedule(Seconds(1.0), &PrintIntermediateTput, udp, ulserverApp, payloadSize, tputInterval, simulationTime + simT_delayEnd);
-    
-    // uint64_t rx_totalbytesStart = 0;
-    Time statsBeginTime = Seconds(1.0) + period*5;
-    std::cout << "statsBeginTime: " << statsBeginTime.As(Time::S) << std::endl;
-    Time statsEndTime = period * ((simulationTime + simT_delayEnd) / period).GetInt();
-    std::cout << "statsEndTime: " << statsEndTime.As(Time::S) << std::endl;
-    DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(0)->TraceConnectWithoutContext("PpduTxDuration", MakeBoundCallback(&NotifyMLDThroughput, statsBeginTime, statsEndTime, payloadSize));
-    DynamicCast<WifiNetDevice>(mldDev.Get(0))->GetPhy(1)->TraceConnectWithoutContext("PpduTxDuration", MakeBoundCallback(&NotifyMLDThroughput, statsBeginTime, statsEndTime, payloadSize));
+    Simulator::Schedule(Seconds(0.5), &SetupBackoffAndChannelMonitoring, mldNodes, statsBeginTime, statsEndTime);
+ 
     Simulator::Stop(simulationTime + simT_delayEnd);
     Simulator::Run();
     Simulator::Destroy();
-    std::cout << "Total DL Throughput [ " << statsBeginTime.As(Time::S) <<" - " << statsEndTime.As(Time::S) << "]: \t\t\t" << totalThroughput << " Mbit/s" << std::endl;
     if (mode == 0) return 0;
+    
+    // 保存详细的退避历史
+    std::string historyFile = (scenarioDir / (title + "_BackoffHistory.csv")).string();
+    SaveDetailedBackoffHistory(historyFile, mldNodes);
+
     std::ofstream fout(csv_file, std::ios::out);
-    fout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, AmpduLimit1, AmpduLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
-            "MaxSsrc1, MaxSlrc2, MaxSsrc2, RedundancyThreshold1, RedundancyThreshold2, RedundancyFixedNumber1, "
-            "RedundancyFixedNumber2, BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, PSR1, PSR2, Occupancy Rate 1, Occupancy Rate 2, blocktimerate1, blocktimerate2, severeblocktimerate1, severeblocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, pct1, Throughput(Mbps)" << std::endl;
+    fout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, AmpduLimit1, AmpduLimit2, RTS_CTS1, RTS_CTS2,"
+            "BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, "
+            "blocktimerate1, blocktimerate2, severeblocktimerate1, severeblocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, Throughput(Mbps)" << std::endl;
     if (!results.empty()) {
         for (const auto & res : results)
         {
@@ -1168,62 +1316,40 @@ main(int argc, char* argv[])
                   << ", " << params.CWmaxs[1] << ", " << params.Aifsns[0] << ", "
                   << params.Aifsns[1] << ", " << params.TxopLimits[0] << ", "
                   << params.TxopLimits[1] << ", " << params.AmpduLimits[0] << ", "
-                  << params.AmpduLimits[1] << ", " << params.RTS_CTS[0] << ", " << params.RTS_CTS[1]
-                  << ", " << params.MaxSsrcs[0] << ", " << params.MaxSsrcs[0] << ", "
-                  << params.MaxSlrcs[1] << ", " << params.MaxSlrcs[1] << ", "
-                  << params.RedundancyThresholds[0] << ", " << params.RedundancyThresholds[1]
-                  << ", " << params.RedundancyFixedNumbers[0] << ", "
-                  << params.RedundancyFixedNumbers[1] << ", " << res.blockCnt[0] << ", "
-                  << res.blockCnt[1] << ", " << res.blockCnt_tr[0] << ", " << res.blockCnt_tr[1]
+                  << params.AmpduLimits[1] << ", " << params.RTS_CTS[0] << ", " << params.RTS_CTS[1] << ", "
+                  << res.blockCnt[0] << ", "<< res.blockCnt[1] << ", " << res.blockCnt_tr[0] << ", " << res.blockCnt_tr[1]
                   << ", " << res.txopTime[0] << ", " << res.txopTime[1] << ", " << res.txopNum[0]
                   << ", " << res.txopNum[1] << ", " << res.maxAmpduLength[0] << ", "
                   << res.maxAmpduLength[1] << ", " << res.meanAmpduLength[0] << ", "
-                  << res.meanAmpduLength[1] << ", " << res.p[0] << ", " << res.p[1] << ", "
-                  << res.occ[0] << ", " << res.occ[1] << ", " << res.blocktimerate[0] << ", "
+                  << res.meanAmpduLength[1] << ", " << res.blocktimerate[0] << ", "
                   << res.blocktimerate[1] << ", " << res.severeblocktimerate[0] << ", "
                   << res.severeblocktimerate[1] << ", " << res.blockrate[0] << ", "
                   << res.blockrate[1] << ", " << res.datarate[0] << ", " << res.datarate[1] << ", "
-                  << res.thpt[0] << ", " << res.thpt[1] << ", " << res.pct1 << ", "
-                  << res.throughput << std::endl;
+                  << res.throughput[1] << ", " << res.throughput[2] << ", "<< res.throughput[0] << std::endl;
         }
         fout.close();
     }
     
     std::vector<double> res_throughputs;
-    std::cout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, AmpduLimit1, AmpduLimit2, RTS_CTS1, RTS_CTS2, MaxSlrc1, "
-            "MaxSsrc1, MaxSlrc2, MaxSsrc2, RedundancyThreshold1, RedundancyThreshold2, RedundancyFixedNumber1, "
-            "RedundancyFixedNumber2, BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, PSR1, PSR2, Occupancy Rate 1, Occupancy Rate 2, blocktimerate1, blocktimerate2, severeblocktimerate1, severeblocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, pct1, Throughput(Mbps)" << std::endl;
-    if (!results.empty())
     for (const auto & res : results)
     {
-        const mldParams & params = res.params;
-        std::cout << params.No << ", " << res.time << ", " << (uint32_t)mode << ", "
-                  << params.CWmins[0] << ", " << params.CWmaxs[0] << ", " << params.CWmins[1]
-                  << ", " << params.CWmaxs[1] << ", " << params.Aifsns[0] << ", "
-                  << params.Aifsns[1] << ", " << params.TxopLimits[0] << ", "
-                  << params.TxopLimits[1] << ", " << params.AmpduLimits[0] << ", "
-                  << params.AmpduLimits[1] << ", " << params.RTS_CTS[0] << ", " << params.RTS_CTS[1]
-                  << ", " << params.MaxSsrcs[0] << ", " << params.MaxSsrcs[0] << ", "
-                  << params.MaxSlrcs[1] << ", " << params.MaxSlrcs[1] << ", "
-                  << params.RedundancyThresholds[0] << ", " << params.RedundancyThresholds[1]
-                  << ", " << params.RedundancyFixedNumbers[0] << ", "
-                  << params.RedundancyFixedNumbers[1] << ", " << res.blockCnt[0] << ", "
-                  << res.blockCnt[1] << ", " << res.blockCnt_tr[0] << ", " << res.blockCnt_tr[1]
-                  << ", " << res.txopTime[0] << ", " << res.txopTime[1] << ", " << res.txopNum[0]
-                  << ", " << res.txopNum[1] << ", " << res.maxAmpduLength[0] << ", "
-                  << res.maxAmpduLength[1] << ", " << res.meanAmpduLength[0] << ", "
-                  << res.meanAmpduLength[1] << ", " << res.p[0] << ", " << res.p[1] << ", "
-                  << res.occ[0] << ", " << res.occ[1] << ", " << res.blocktimerate[0] << ", "
-                  << res.blocktimerate[1] << ", " << res.severeblocktimerate[0] << ", "
-                  << res.severeblocktimerate[1] << ", " << res.blockrate[0] << ", "
-                  << res.blockrate[1] << ", " << res.datarate[0] << ", " << res.datarate[1] << ", "
-                  << res.thpt[0] << ", " << res.thpt[1] << ", " << res.pct1 << ", "
-                  << res.throughput << std::endl;
-             res_throughputs.push_back(res.throughput);
+        res_throughputs.push_back(res.throughput[0]);
     }
 
-    updateThroughputCSV(pretitle, bw1, bw2, mcs1, mcs2, nss, nStaSlds1, nStaSlds2, mpduBufferSize, maxAmpduNum0, maxAmpduNum1, originalSeed, totalThroughput, totalThroughput1, totalThroughput2);
-
+    double pM1, pM2;
+    if(rtsCountMLD2G == 0) pM1 = 0;
+    else pM1 = ppduCountMLD2G / rtsCountMLD2G;
+    if(rtsCountMLD5G == 0) pM2 = 0;
+    else pM2 = ppduCountMLD5G / rtsCountMLD5G;
+    double interval = (statsEndTime - statsBeginTime).GetMicroSeconds();
+    double throughputMLD = mpduNumMLD * payloadSize * 8.0 / interval;
+    double throughputMLD2G = mpduNumMLD2G * payloadSize * 8.0 / interval;
+    double throughputMLD5G = mpduNumMLD5G * payloadSize * 8.0 / interval;
+    updateThroughputCSV(pretitle, bw1, bw2, mcs1, mcs2, nss, nStaSlds1, nStaSlds2, maxAmpduNumSld0, maxAmpduNumSld1, mpduBufferSize, maxAmpduNum0, maxAmpduNum1, originalSeed, throughputMLD, throughputMLD2G, throughputMLD5G, pM1, pM2);
+    std::cout <<"[ " << statsBeginTime.As(Time::S) <<" - " << statsEndTime.As(Time::S) << "]" << std::endl;
+    std::cout << "MLD Throughput " << throughputMLD << " Mbit/s " << throughputMLD2G << " Mbit/s (2.4G) " << throughputMLD5G << " Mbit/s (5G)" << std::endl;
+    std::cout << "pM: " << pM1 << " (2.4G), " << pM2 << " (5G)" << std::endl;
+    PrintSldStats(interval, payloadSize);
 
     auto calc_std_dev = [](std::vector<double>& v, int n) -> std::pair<double, double> {
         auto start = v.end() - n;
@@ -1252,8 +1378,6 @@ main(int argc, char* argv[])
     if (cv > 0.1) {
         std::cout << "Please set longer simulation time use: --simT" << std::endl;
     }
-    std::cout << "Throughput = " << ans.second << " Mbps" << std::endl;
-
     std::cout << "result saved: " << csv_file << std::endl;
 
     return 0;

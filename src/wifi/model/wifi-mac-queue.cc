@@ -308,6 +308,7 @@ WifiMacQueue::Peek(std::optional<uint8_t> linkId) const
     if (!queueId.has_value())
     {
         NS_LOG_DEBUG("The queue is empty");
+        std::cout << "Queue is empty" << std::endl;
         return nullptr;
     }
 
@@ -340,6 +341,7 @@ WifiMacQueue::PeekByQueueId(const WifiContainerQueueId& queueId, Ptr<const WifiM
     if (it == GetContainer().GetQueue(queueId).cend())
     {
         NS_LOG_DEBUG("The queue is empty");
+        std::cout << "Queue is empty" << std::endl;
         return nullptr;
     }
 
@@ -377,6 +379,7 @@ WifiMacQueue::PeekFirstAvailable(uint8_t linkId, Ptr<const WifiMpdu> item) const
     if (!queueId.has_value())
     {
         NS_LOG_DEBUG("The queue is empty");
+        std::cout << "Queue is empty" << std::endl;
         return nullptr;
     }
 

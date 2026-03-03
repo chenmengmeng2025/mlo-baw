@@ -759,7 +759,18 @@ FrameExchangeManager::SendRts(const WifiTxParameters& txParams)
                                               rtsCtsProtection->rtsTxVector,
                                               m_phy->GetPhyBand()) +
                    m_phy->GetSifs() + m_phy->GetSlot() +
-                   m_phy->CalculatePhyPreambleAndHeaderDuration(rtsCtsProtection->ctsTxVector);
+                   m_phy->CalculatePhyPreambleAndHeaderDuration(rtsCtsProtection->ctsTxVector); //ns3原生
+
+    // RTS碰撞后的回复退避间隔时间
+    // std::cout << "RTS Timeout set to " << timeout.GetMicroSeconds() << " us" << std::endl;
+    // std::cout << m_phy->CalculateTxDuration(GetRtsSize(),
+    //                                           rtsCtsProtection->rtsTxVector,
+    //                                           m_phy->GetPhyBand()).GetMicroSeconds() << " + "
+    //           << m_phy->GetSifs().GetMicroSeconds() << " + "
+    //           << m_phy->GetSlot().GetMicroSeconds() << " + "
+    //           << m_phy->CalculatePhyPreambleAndHeaderDuration(rtsCtsProtection->ctsTxVector).GetMicroSeconds()
+    //           << std::endl; 
+
     NS_ASSERT(!m_txTimer.IsRunning());
     m_txTimer.Set(WifiTxTimer::WAIT_CTS,
                   timeout,
@@ -1048,6 +1059,7 @@ FrameExchangeManager::DoCtsTimeout(Ptr<WifiPsdu> psdu)
         NS_LOG_DEBUG("Missed CTS, retransmit MPDU(s)");
         m_dcf->UpdateFailedCw(m_linkId);
     }
+    m_dcf->m_ctstimeout = Simulator::Now();
     // Make the sequence numbers of the MPDUs available again if the MPDUs have never
     // been transmitted, both in case the MPDUs have been discarded and in case the
     // MPDUs have to be transmitted (because a new sequence number is assigned to

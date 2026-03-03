@@ -435,10 +435,12 @@ class QosTxop : public Txop
     QosLinkEntity& GetLink(uint8_t linkId) const;
 
     void ScheduleUpdateEdcaParameters(Time period);
-
+    
     void PrintStatsResult(Time period);
 
     void SetParams(const mldParams& next_params);
+
+    mldParams GetParams();
 
   private:
     /// allow AggregationCapableTransmissionListener class access

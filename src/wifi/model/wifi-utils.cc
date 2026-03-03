@@ -63,7 +63,6 @@ GetBlockAckSize(BlockAckType type)
     hdr.SetType(WIFI_MAC_CTL_BACKRESP);
     CtrlBAckResponseHeader blockAck;
     blockAck.SetType(type);
-    // std::cout<<"hdr.GetSize() = "<< hdr.GetSize() <<" blockAck.GetSerializedSize() "<< blockAck.GetSerializedSize()<<std::endl;
     return hdr.GetSize() + blockAck.GetSerializedSize() + 4;
 }
 

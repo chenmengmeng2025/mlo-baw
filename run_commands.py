@@ -24,7 +24,10 @@ def generate_log_filename(cmd):
         'seed': r'--seed=(\d+)',
         'maxampdunum0': r'--maxampdunum0=(\d+)',
         'maxampdunum1': r'--maxampdunum1=(\d+)',
-        'scenario': r'--scenario=([\w-]+)',  # 添加scenario参数提取
+        'scenario': r'--scenario=([\w-]+)', 
+        'SLDinterval': r'--SLDinterval=([\d.]+)',
+        'ampdunumsld0': r'--ampdunumsld0=(\d+)',
+        'ampdunumsld1': r'--ampdunumsld1=(\d+)'
     }
     
     for key, pattern in patterns.items():
@@ -71,6 +74,13 @@ def generate_log_filename(cmd):
         filename_parts.append(f"maxampdunum0_{params['maxampdunum0']}")
     if 'maxampdunum1' in params and int(params['maxampdunum1']) != 0:
         filename_parts.append(f"maxampdunum1_{params['maxampdunum1']}")
+    if 'SLDinterval' in params and float(params['SLDinterval']) != 1.0:
+        filename_parts.append(f"sldinterval_{params['SLDinterval']}")
+    if 'ampdunumsld0' in params:
+        filename_parts.append(f"ampdunumsld0_{params['ampdunumsld0']}")
+    if 'ampdunumsld1' in params:
+        filename_parts.append(f"ampdunumsld1_{params['ampdunumsld1']}")
+    
     
     filename = "_".join(filename_parts) + ".log"
     
@@ -130,148 +140,61 @@ def run_command(cmd):
         sys.exit(1)
 
 # 原始命令列表（不再需要手动指定日志文件名）
-    #round 1
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=1024 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=960 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=960 --pretitle=2 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=960 --pretitle=1 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=896 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=896 --pretitle=2 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=896 --pretitle=1 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=832 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=832 --pretitle=2 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=832 --pretitle=1 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=768 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=768 --pretitle=2 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=768 --pretitle=1 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=704 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=704 --pretitle=2 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=704 --pretitle=1 --bw1=20 --bw2=160",
-    #round 2
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=256 --pretitle=1 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=256 --pretitle=2 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=320 --pretitle=1 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=320 --pretitle=2 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=384 --pretitle=1 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=384 --pretitle=2 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=448 --pretitle=1 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=448 --pretitle=2 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=512 --pretitle=1 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=512 --pretitle=2 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=576 --pretitle=1 --bw1=20 --bw2=160 --seed=2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=576 --pretitle=2 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=640 --pretitle=1 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=640 --pretitle=2 --bw1=20 --bw2=160",
-
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=1024 --pretitle=3 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=960 --pretitle=3 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=896 --pretitle=3 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=832 --pretitle=3 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=768 --pretitle=3 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=704 --pretitle=3 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=3 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=320 --pretitle=3 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=384 --pretitle=3 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=448 --pretitle=3 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=512 --pretitle=3 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=576 --pretitle=3 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=640 --pretitle=3 --bw1=20 --bw2=160",
-    # round3
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=256 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=320 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=384 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=448 --pretitle=0 --bw1=20 --bw2=160",
-
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=512 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=576 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=0 --simt=3 --bawsize=640 --pretitle=0 --bw1=20 --bw2=160",
-    # round 4
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=8 --nsld2=8 --simt=5 --bawsize=1024 --pretitle=0 --bw1=20 --bw2=160 --seed=2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=8 --simt=5 --bawsize=1024 --pretitle=0 --bw1=20 --bw2=160 --seed=2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=12 --nsld2=8 --simt=5 --bawsize=1024 --pretitle=0 --bw1=20 --bw2=160 --seed=2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=14 --nsld2=8 --simt=5 --bawsize=1024 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=16 --nsld2=8 --simt=5 --bawsize=1024 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=18 --nsld2=8 --simt=5 --bawsize=1024 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=20 --nsld2=8 --simt=5 --bawsize=1024 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=22 --nsld2=8 --simt=5 --bawsize=1024 --pretitle=0 --bw1=20 --bw2=160",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=24 --nsld2=8 --simt=5 --bawsize=1024 --pretitle=0 --bw1=20 --bw2=160",
-
-    # maxampdunum0 + maxampdunum1 = 256
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=0 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=16 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=32 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=48 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=64 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=80  --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=96 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=112 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=144 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=160 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=176  --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=192 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=208 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=224 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=240 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=5 --bw1=40 --bw2=160 --maxampdunum0=256 --seed=1",
-
-    # maxampdunum1 = 128
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=0 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=8 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=16 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=24 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=32 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=40 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=48 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=56 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=64 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=72 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=80 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=88 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=96 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=104 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=112 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=120 --maxampdunum1=128 --seed=1",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=40 --bw2=160 --maxampdunum0=128 --maxampdunum1=128 --seed=1",
-
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=10 --simt=10 --bawsize=1024 --pretitle=6 --bw1=20 --bw2=160 --maxampdunum0=105 --maxampdunum1=919 --seed=1 --scenario=debug",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=10 --simt=10 --bawsize=1024 --pretitle=6 --bw1=20 --bw2=160 --maxampdunum0=0 --maxampdunum1=919 --seed=1 --scenario=debug",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=10 --simt=10 --bawsize=1024 --pretitle=6 --bw1=20 --bw2=160 --maxampdunum0=0 --maxampdunum1=919 --seed=1 --scenario=debug",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=10 --simt=10 --bawsize=1024 --pretitle=6 --bw1=20 --bw2=160 --maxampdunum0=105 --maxampdunum1=919 --seed=2 --scenario=debug",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=10 --simt=10 --bawsize=1024 --pretitle=6 --bw1=20 --bw2=160 --maxampdunum0=105 --maxampdunum1=919 --seed=3 --scenario=debug",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=10 --simt=10 --bawsize=1024 --pretitle=6 --bw1=20 --bw2=160 --maxampdunum0=0 --maxampdunum1=919 --seed=2 --scenario=debug",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=10 --nsld2=10 --simt=10 --bawsize=1024 --pretitle=6 --bw1=20 --bw2=160 --maxampdunum0=0 --maxampdunum1=919 --seed=3 --scenario=debug",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=10 --simt=10 --bawsize=1024 --pretitle=6 --bw1=20 --bw2=160 --maxampdunum0=0 --maxampdunum1=919 --seed=2 --scenario=debug",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=10 --simt=10 --bawsize=1024 --pretitle=6 --bw1=20 --bw2=160 --maxampdunum0=0 --maxampdunum1=919 --seed=3 --scenario=debug",
-
 commands = [
-    # maxampdunum0 = 128; maxampdunum1 = 128; change r1/r2
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=3 --bw1=20 --bw2=20 --mcs1=12 --mcs2=12 --nss=4 --scenario=blockshow-changer1r2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=3 --bw1=20 --bw2=40 --mcs1=12 --mcs2=8 --nss=4 --scenario=blockshow-changer1r2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=3 --bw1=20 --bw2=40 --mcs1=12 --mcs2=11 --nss=4 --scenario=blockshow-changer1r2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=3 --bw1=20 --bw2=40 --mcs1=12 --mcs2=13 --nss=4 --scenario=blockshow-changer1r2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=3 --bw1=20 --bw2=80 --mcs1=12 --mcs2=8 --nss=4 --scenario=blockshow-changer1r2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=3 --bw1=20 --bw2=80 --mcs1=12 --mcs2=9 --nss=4 --scenario=blockshow-changer1r2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=3 --bw1=20 --bw2=80 --mcs1=12 --mcs2=10 --nss=4 --scenario=blockshow-changer1r2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=3 --bw1=20 --bw2=80 --mcs1=12 --mcs2=11 --nss=4 --scenario=blockshow-changer1r2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=3 --bw1=20 --bw2=80 --mcs1=12 --mcs2=12 --nss=4 --scenario=blockshow-changer1r2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=3 --bw1=20 --bw2=80 --mcs1=12 --mcs2=13 --nss=4 --scenario=blockshow-changer1r2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=3 --bw1=20 --bw2=160 --mcs1=12 --mcs2=9 --nss=4 --scenario=blockshow-changer1r2",
-    # "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=3 --bw1=20 --bw2=160 --mcs1=12 --mcs2=10 --nss=4 --scenario=blockshow-changer1r2"
-    "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=20 --bw2=20 --mcs1=12 --mcs2=12 --nss=4 --maxampdunum0=32 --maxampdunum1=224 --scenario=blockshow-changer1r2",
-    "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=20 --bw2=40 --mcs1=12 --mcs2=8 --nss=4 --maxampdunum0=32 --maxampdunum1=224 --scenario=blockshow-changer1r2",
-    "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=20 --bw2=40 --mcs1=12 --mcs2=11 --nss=4 --maxampdunum0=32 --maxampdunum1=224 --scenario=blockshow-changer1r2",
-    "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=20 --bw2=40 --mcs1=12 --mcs2=13 --nss=4 --maxampdunum0=32 --maxampdunum1=224 --scenario=blockshow-changer1r2",
-    "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=20 --bw2=80 --mcs1=12 --mcs2=8 --nss=4 --maxampdunum0=32 --maxampdunum1=224 --scenario=blockshow-changer1r2",
-    "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=20 --bw2=80 --mcs1=12 --mcs2=9 --nss=4 --maxampdunum0=32 --maxampdunum1=224 --scenario=blockshow-changer1r2",
-    "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=20 --bw2=80 --mcs1=12 --mcs2=10 --nss=4 --maxampdunum0=32 --maxampdunum1=224 --scenario=blockshow-changer1r2",
-    "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=20 --bw2=80 --mcs1=12 --mcs2=11 --nss=4 --maxampdunum0=32 --maxampdunum1=224 --scenario=blockshow-changer1r2",
-    "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=20 --bw2=80 --mcs1=12 --mcs2=12 --nss=4 --maxampdunum0=32 --maxampdunum1=224 --scenario=blockshow-changer1r2",
-    "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=20 --bw2=80 --mcs1=12 --mcs2=13 --nss=4 --maxampdunum0=32 --maxampdunum1=224 --scenario=blockshow-changer1r2",
-    "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=20 --bw2=160 --mcs1=12 --mcs2=9 --nss=4 --maxampdunum0=32 --maxampdunum1=224 --scenario=blockshow-changer1r2",
-    "./ns3 run mode-test-udp-1vN-dl -- --nsld1=0 --nsld2=0 --simt=3 --bawsize=256 --pretitle=6 --bw1=20 --bw2=160 --mcs1=12 --mcs2=10 --nss=4 --maxampdunum0=32 --maxampdunum1=224 --scenario=blockshow-changer1r2"
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=4  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=5  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=6  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=7  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=8  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=9  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=10  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=11  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=12  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=13  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+
+
+
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=4  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=4  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=5  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=5  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=6  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=6  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=7  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=7  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=8  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=8  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=9  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=9  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=10  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=10  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=11  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=11  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=12  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=12  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=13  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=13  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=4  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=4  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=5  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=5  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=6  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=6  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=7  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=7  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=8  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=8  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=9  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=9  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=10  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=10  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=11  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=11  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=12  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=12  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=13  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=13  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
 
 ]
 
@@ -286,10 +209,10 @@ for i, cmd in enumerate(commands, 1):
 print("\n" + "=" * 60)
 print("所有命令执行完成！")
 
-# 显示生成的日志文件
-print("\n生成的日志文件:")
-for folder in os.listdir('.'):
-    if os.path.isdir(folder) and not folder.startswith('.'):
-        log_files = [f for f in os.listdir(folder) if f.endswith('.log')]
-        for log_file in sorted(log_files):
-            print(f"  - {folder}/{log_file}")
+# # 显示生成的日志文件
+# print("\n生成的日志文件:")
+# for folder in os.listdir('.'):
+#     if os.path.isdir(folder) and not folder.startswith('.'):
+#         log_files = [f for f in os.listdir(folder) if f.endswith('.log')]
+#         for log_file in sorted(log_files):
+#             print(f"  - {folder}/{log_file}")

@@ -2215,10 +2215,6 @@ WifiRemoteStationManager::UseLdpcForDestination(Mac48Address dest) const
 
 std::vector<uint32_t>
 WifiRemoteStationManager::GetMaxSsrcAndMaxSlrcAndRtsCtsThreshold() const {
-    // std::cout << "MaxSsrc " << m_maxSsrc << std::endl;
-    // std::cout << "MaxSlrc " << m_maxSlrc << std::endl;
-    // std::cout << "RtsCtsThreshold " << m_rtsCtsThreshold << std::endl;
-    // std::cout << "RtsCtsTxDurationThresh"  << m_rtsCtsTxDurationThresh << std::endl;
     return {m_maxSsrc, m_maxSlrc, m_rtsCtsThreshold};
 }
 

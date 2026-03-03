@@ -6,19 +6,21 @@ from matplotlib.patches import Patch
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Plot PPDU Timeline with RTS/CTS annotations (per-device color)')
-    parser.add_argument('--begin', type=float, default=2.2,
+    parser.add_argument('--begin', type=float, default=1.66,
                         help='Begin time for the plot (in seconds)')
-    parser.add_argument('--end', type=float, default=2.22,
+    parser.add_argument('--end', type=float, default=1.70,
                         help='End time for the plot (in seconds)')
     parser.add_argument("--tcp", action="store_true", help="Enable TCP mode")
     parser.add_argument("--csv", type=str,
-                        default="scratch/mode-test-udp-1vN-dl/blockshow-changer1r2/bothset_baw_256_bw_20_20_mcs_12_12_interference_0_0_seed_1_maxAmpduNum0_64_maxAmpduNum1_192_PPDU.csv",
+                        default="scratch/mode-test-udp-1vN-dl/changer1r2-inter-sldagg-2/greedy_baw_256_bw_40_40_mcs_13_13_interference_2_2_seed_1_maxAmpduNumSld0_32_maxAmpduNumSld1_244_PPDU.csv",
                         help="CSV file path for PPDU data")
     parser.add_argument("--rtscts", type=str,
-                        default="scratch/mode-test-udp-1vN-dl/blockshow-changer1r2/bothset_baw_256_bw_20_20_mcs_12_12_interference_0_0_seed_1_maxAmpduNum0_64_maxAmpduNum1_192_RTSCTS.csv",
+                        default="scratch/mode-test-udp-1vN-dl/changer1r2-inter-sldagg-2/greedy_baw_256_bw_40_40_mcs_13_13_interference_2_2_seed_1_maxAmpduNumSld0_32_maxAmpduNumSld1_244_RTSCTS.csv",
                         help="CSV file path for RTS/CTS data")
+    parser.add_argument("--ba", type=str,
+                    default="scratch/mode-test-udp-1vN-dl/changer1r2-inter-sldagg-2/greedy_baw_256_bw_40_40_mcs_13_13_interference_2_2_seed_1_maxAmpduNumSld0_32_maxAmpduNumSld1_244_BA.csv",
+                    help="CSV file path for BlockAck data")
     return parser.parse_args()
-
 
 if __name__ == "__main__":
     args = parse_args()
@@ -26,15 +28,15 @@ if __name__ == "__main__":
     end = int(args.end * 1e6)
     tcp = bool(args.tcp)
 
-    # === 1️⃣ 读取主 PPDU 数据 ===
     df = pd.read_csv(args.csv, header=None)
     df.columns = ["type", "start", "end", "num"]
 
-    # === 2️⃣ 读取 RTS/CTS 数据 ===
     rtscts_df = pd.read_csv(args.rtscts, header=None)
     rtscts_df.columns = ["type", "start", "end"]
 
-    # === 3️⃣ 定义颜色映射 ===
+    ba_df = pd.read_csv(args.ba, header=None)
+    ba_df.columns = ["type", "start", "end"]
+
     color_map = {
         "MLD0": "#1f77b4",   # 蓝 - MLD link0
         "MLD1": "#2ca02c",   # 绿 - MLD link1
@@ -42,6 +44,8 @@ if __name__ == "__main__":
         "SLD5G": "#d62728",  # 深红 - 干扰 5G
         "AP_0": "#9467bd",   # 紫 - AP 0
         "AP_1": "#8c564b",   # 棕 - AP 1
+        "AP_BA": "#dd00ff",
+        "AP_ACK": "#4800ff",
     }
 
     # 为不同设备的RTS/CTS定义衍生颜色（亮/暗）
@@ -100,7 +104,6 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots(figsize=(30, 4))
 
-    # === 4️⃣ 绘制 PPDU 区间 ===
     for _, row in df.iterrows():
         type_, x_start, x_end, num = row
         if x_start > begin and x_start < end:
@@ -112,8 +115,17 @@ if __name__ == "__main__":
             ax.add_patch(rect)
             ax.text(x_start + width / 2, y, num,
                     ha='center', va='center', fontsize=7, color='black')
+            
+    for _, row in ba_df.iterrows():
+        type_, x_start, x_end = row
+        if x_start > begin and x_start < end:
+            width = x_end - x_start
+            y = get_y(type_)
+            color = get_color(type_)
+            rect = plt.Rectangle((x_start, y - 0.4), width, 0.8,
+                                 facecolor=color, alpha=0.6)
+            ax.add_patch(rect)
 
-    # === 5️⃣ 优化版：绘制 RTS/CTS 控制帧（仅同链路重叠时显示标签） ===
     for i, row in rtscts_df.iterrows():
         type_, x_start, x_end = row
         if x_start < begin or x_start > end:
@@ -122,33 +134,10 @@ if __name__ == "__main__":
         width = x_end - x_start
         y = get_y(type_)
         color = get_color(type_)
-
-        # 绘制矩形
         rect = plt.Rectangle((x_start, y + 0.45), width, 0.12,
                             facecolor=color, alpha=0.5, edgecolor='black', linewidth=0.2)
         ax.add_patch(rect)
 
-        # # ===== 检查与同链路帧的重叠 =====
-        # overlap_same_link = False
-        # for j in range(i + 1, len(rtscts_df)):
-        #     type2, ox_start, ox_end = rtscts_df.iloc[j]
-        #     y2 = get_y(type2)
-
-        #     # 后续帧开始时间超过当前结束 → 无需再查
-        #     if ox_start > x_end:
-        #         break
-
-        #     # 只检测同链路帧
-        #     if y2 == y and ox_start < x_end:
-        #         overlap_same_link = True
-        #         break
-
-        # # ===== 仅当同链路重叠时绘制标签 =====
-        # if overlap_same_link:
-        #     ax.text(x_start + width / 2, y + 0.6, type_,
-        #             ha='center', va='bottom', fontsize=6, color='black', rotation=45)
-
-    # === 6️⃣ 坐标轴与图例 ===
     ax.set_yticks([0, 1])
     ax.set_yticklabels(['2.4G (link0)', '5G (link1)'])
     ax.set_xlabel('Time (µs)')
@@ -175,5 +164,5 @@ if __name__ == "__main__":
     ax.set_ylim(-0.7, 1.8)
     ax.autoscale(enable=True, axis='x', tight=True)
     plt.tight_layout()
-    plt.savefig('PPDU_Timeline_with_RTSCTS_colored.png', dpi=400)
+    plt.savefig('PPDU_Timeline_with_RTSCTS.png', dpi=400)
     plt.show()

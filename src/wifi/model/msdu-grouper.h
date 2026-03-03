@@ -404,7 +404,7 @@ public:
 
     std::vector<double> m_end_time = {0, 0};
     std::vector<std::vector<double>> m_t = {{}, {}};
-    std::vector<uint32_t> m_bandwidth={20, 160};
+    std::vector<uint32_t> m_datarate_setting = {0, 0};
 private:
     uint32_t m_maxGroupSize;  // 每组的最大MSDU数量
     Ptr<WifiMacQueue> m_queue;//!< the wifi MAC queue

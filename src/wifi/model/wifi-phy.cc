@@ -1880,28 +1880,28 @@ WifiPhy::Send(const WifiConstPsduMap& psdus, const WifiTxVector& txVector)
     }
 
     const auto& it = psdus.begin();
-    // if(it->second->GetHeader(0).GetType() == WIFI_MAC_CTL_RTS){
-    //     std::cout<<std::endl;
-    //     if(it->second->GetHeader(0).GetAddr1() == "00:00:00:00:00:05" || it->second->GetHeader(0).GetAddr1() == "00:00:00:00:00:06") std::cout<<"MLD ";
-    //     else std::cout<<"SLD ";
-    //     std::cout<<"RTS "<<GetFrequency()<<"MHZ "<<Simulator::Now().GetMicroSeconds()<<" us"<<std::endl;
-    //     std::cout << "A-MPDU Subframe Size (1): " << it->second->GetAmpduSubframeSize(0) << std::endl;
-    //     std::cout << "Number of MPDUs: " << it->second->GetNMpdus() << std::endl;
-    //     std::cout << "Size: " << it->second->GetSize() << std::endl;
-    //     std::cout << "MPDU'S Header Size (1): " << it->second->GetHeader(0).GetSize() << std::endl;
-    //     std::cout << "MPDU's Payload (1): " << it->second->GetPayload(0)->GetSize() << std::endl;
+    // if(it->second->GetSize() == 1570){
+    //     std::cout<<"SLD PPDU size "<<it->second->GetSize()<<" bytes; ";
     // }
-    if(it->second->GetNMpdus()>=1 &&  it->second->GetHeader(0).GetType() == WIFI_MAC_QOSDATA){
-    std::cout<<"SLD PSDU "<<GetFrequency()<<"MHZ; "<<Simulator::Now().GetMicroSeconds()<<" us; ";
-    std::cout << "A-MPDU Subframe Size (1): " << it->second->GetAmpduSubframeSize(0) << "; ";
-    std::cout << "Number of MPDUs: " << it->second->GetNMpdus() << std::endl;
-    }
     const auto txDuration = CalculateTxDuration(psdus, txVector, GetPhyBand());
 
-    // if(it->second->GetHeader(0).GetType() == WIFI_MAC_CTL_RTS){std::cout<<"RTS txDuration "<<txDuration.GetMicroSeconds()<<"us"<<std::endl;}
-    // if(it->second->GetNMpdus()>=1 &&  it->second->GetHeader(0).GetType() == WIFI_MAC_QOSDATA){
-    //     std::cout<<"PhyPreambleAndHeaderDuration "<<CalculatePhyPreambleAndHeaderDuration(txVector).GetMicroSeconds()<<"us;"<<std::endl;
-    //     std::cout<<"txDuration "<<txDuration.GetMicroSeconds()<<"us"<<std::endl;
+    // if(it->second->GetHeader(0).GetType() == WIFI_MAC_CTL_RTS){
+    //     std::cout<<"RTS txDuration "<<txDuration.GetMicroSeconds()<<"us; ";
+    //     std::cout<<"Header:" << it->second->GetHeader(0).GetSize()<<" bytes; ";
+    //     std::cout<<"Size "<<it->second->GetSize()<<" bytes; ";
+    //     std::cout<<"PhyPreambleAndHeaderDuration "<<CalculatePhyPreambleAndHeaderDuration(txVector).GetMicroSeconds()<<"us"<<std::endl;
+    // }
+    // if(it->second->GetHeader(0).GetType() == WIFI_MAC_CTL_CTS){
+    //     std::cout<<"CTS txDuration "<<txDuration.GetMicroSeconds()<<"us; ";
+    //     std::cout<<"Header:" << it->second->GetHeader(0).GetSize()<<" bytes; ";
+    //     std::cout<<"Size "<<it->second->GetSize()<<" bytes; ";
+    //     std::cout<<"PhyPreambleAndHeaderDuration "<<CalculatePhyPreambleAndHeaderDuration(txVector).GetMicroSeconds()<<"us"<<std::endl;
+    // }
+    // if(it->second->GetHeader(0).GetType() == WIFI_MAC_QOSDATA){
+    //     std::cout<<"SLD PPDU txDuration "<<txDuration.GetMicroSeconds()<<"us; ";
+    //     std::cout<<"Header:" << it->second->GetHeader(0).GetSize()<<" bytes; ";
+    //     std::cout<<"Size "<<it->second->GetSize()<<" bytes; ";
+    //     std::cout<<"PhyPreambleAndHeaderDuration "<<CalculatePhyPreambleAndHeaderDuration(txVector).GetMicroSeconds()<<"us"<<std::endl;
     // }
     auto noEndPreambleDetectionEvent = true;
     for (const auto& [mc, entity] : m_phyEntities)
@@ -2026,21 +2026,17 @@ WifiPhy::DoSend(const WifiConstPsduMap& psdus, const WifiTxVector& txVector, uin
     
 
     const auto& it = psdus.begin();
+    const auto txDuration = CalculateTxDuration(psdus, txVector, GetPhyBand());
     if(it->second->GetNMpdus()>1){
         std::cout<<"MLD PSDU "<<GetFrequency()<<"MHZ; "<<Simulator::Now().GetMicroSeconds()<<" us; ";
-        std::cout << "A-MPDU Subframe Size: " << it->second->GetAmpduSubframeSize(1) << "; ";
-        std::cout << "Number of MPDUs: " << it->second->GetNMpdus() << std::endl;
-        // it->second->Print(std::cout);
-        // std::cout<<std::endl;
+        // std::cout<<"Header:" << it->second->GetHeader(0).GetSize()<<" bytes; ";
+        // std::cout<<"Size "<<it->second->GetSize()<<" bytes; ";
+        // std::cout << "A-MPDU Subframe Size: " << it->second->GetAmpduSubframeSize(1) << "; ";
+        std::cout << "Number of MPDUs: " << it->second->GetNMpdus() << "; ";
+        // std::cout<<"PhyPreambleAndHeaderDuration "<<CalculatePhyPreambleAndHeaderDuration(txVector).GetMicroSeconds()<<"us; ";
+        // std::cout<<"txDuration "<<txDuration.GetMicroSeconds()<<"us; ";
+        std::cout<<std::endl;
     }
-    const auto txDuration = CalculateTxDuration(psdus, txVector, GetPhyBand());
-
-    // if(it->second->GetNMpdus()>1){
-    //     std::cout<<"PhyPreambleAndHeaderDuration "<<CalculatePhyPreambleAndHeaderDuration(txVector).GetMicroSeconds()<<"us;"<<std::endl;
-    //     std::cout<<"txDuration "<<txDuration.GetMicroSeconds()<<"us"<<std::endl;
-    //     std::cout<<std::endl;
-    // }
-
     size_t maxMpduCount = 0;
     size_t maxMsduCount = 0;
     // 遍历 WifiConstPsduMap，获得最大的聚合数量

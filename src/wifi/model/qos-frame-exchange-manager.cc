@@ -391,7 +391,6 @@ QosFrameExchangeManager::TryAddMpdu(Ptr<const WifiMpdu> mpdu,
         ppduDurationLimit = availableTime - *protectionTime - *acknowledgmentTime;
     }
     uint32_t maxNMpdus = std::numeric_limits<uint32_t>::max();
-    // 注释后可以表示greedy?
     if (m_edca->GetMode() & 0x03) {
         uint8_t linkId = m_phy->GetPhyBand() == WIFI_PHY_BAND_2_4GHZ ? 0 : 1;
         if(m_edca->GetPreTitle() == 0 || m_edca->GetPreTitle() == 5 || m_edca->GetPreTitle() == 6)  maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit0(linkId);

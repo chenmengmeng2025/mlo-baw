@@ -463,6 +463,9 @@ class Txop : public Object
      */
     uint32_t GetMaxGroupSize() const;
 
+    Time m_ctstimeout = MicroSeconds(0); //!< CTS timeout flag
+    bool m_afterctstimeout = false;
+
   protected:
     ///< ChannelAccessManager associated class
     friend class ChannelAccessManager;
@@ -586,19 +589,26 @@ class Txop : public Object
 
     BackoffValueTracedCallback m_backoffTrace; //!< backoff trace value
     CwValueTracedCallback m_cwTrace;           //!< CW trace value
+
+    /**
+     * TracedCallback signature for backoff slots update.
+     *
+     * \param linkId the link ID
+     * \param slotsDecreased 本次减少的退避时隙数
+     * \param remainingSlots 剩余的退避时隙数
+     */
+    typedef TracedCallback<uint8_t /* linkId */, Time /*beginBackoffTime*/,uint32_t /* slotsDecreased */, uint32_t /* remainingSlots */> BackoffSlotsTraceCallback;
+    BackoffSlotsTraceCallback m_backoffSlotsTrace;
     
     uint32_t m_mode;
     uint32_t m_pertitle;
-    uint32_t m_bandwith0;
-    uint32_t m_bandwith1;
-    uint32_t m_nsld0;
-    uint32_t m_nsld1;
+    uint32_t m_datarate0;
+    uint32_t m_datarate1;
     uint32_t m_maxAmpduNum0;
     uint32_t m_maxAmpduNum1;
     double m_link1Pct;
     bool m_gs_enable;
     bool m_param_update;
-    
   private:
     /**
      * Create a LinkEntity object.

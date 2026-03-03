@@ -371,9 +371,9 @@ HtFrameExchangeManager::StartFrameExchange(Ptr<QosTxop> edca, Time availableTime
     //     }
     // }
 
-    if (!peekedItem) // 不考虑开启rongyu模式
+    if (!peekedItem) // 不考虑开启冗余模式
     {
-        if(edca->GetMsduGrouper()) std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
+        std::cout << Simulator::Now().GetMicroSeconds() << "us, " << m_mac->GetAddress() << " no frames available for transmission on " << +m_linkId << std::endl;
         return false;
     }
 
