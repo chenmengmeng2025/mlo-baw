@@ -486,7 +486,7 @@ Txop::UpdateBackoffSlotsNow(uint32_t nSlots, Time backoffUpdateBound, uint8_t li
     auto& link = GetLink(linkId);
     link.backoffSlots -= nSlots;
     link.backoffStart = backoffUpdateBound;
-    // if(m_mode & 0x03 && linkId == 1) std::cout<<Simulator::Now().GetMicroSeconds() << " backoffUpdateBound=" << backoffUpdateBound.GetMicroSeconds() << " us, decrease " << nSlots << " slots, new backoff=" << link.backoffSlots << " slots"<<std::endl;
+    // if(m_mode & 0x01 && linkId == 1) std::cout<<Simulator::Now().GetMicroSeconds() << " backoffUpdateBound=" << backoffUpdateBound.GetMicroSeconds() << " us, decrease " << nSlots << " slots, new backoff=" << link.backoffSlots << " slots"<<std::endl;
     m_backoffSlotsTrace(linkId, backoffUpdateBound - nSlots * MicroSeconds(9), nSlots, link.backoffSlots);
     NS_LOG_DEBUG("update slots=" << nSlots << " slots, backoff=" << link.backoffSlots);
 }
@@ -496,7 +496,7 @@ Txop::StartBackoffNow(uint32_t nSlots, uint8_t linkId)
 {
     NS_LOG_FUNCTION(this << nSlots << linkId);
     auto& link = GetLink(linkId);
-    // if(m_mode & 0x03){
+    // if(m_mode & 0x01){
     //     std::cout<<m_mac->GetAddress()<<"; "<<m_mac->GetWifiPhy(linkId)->GetFrequency()<<" MHz; "<<Simulator::Now().GetMicroSeconds()<<" us; ";
     //     if (link.backoffSlots != 0)
     //     {
@@ -750,10 +750,10 @@ Txop::Queue(Ptr<WifiMpdu> mpdu)
     }
     m_queue->Enqueue(mpdu);
     
-    if((m_mode & 0x03) && mpdu->GetHeader().IsQosData() && mpdu->GetPacketSize() != mpdu->GetPacket()->GetAdjustment()){
-        // std::cout<< "msdu入队" <<std::endl;
-        m_grouper->AggregateMsdu(mpdu);
-    }
+    // if((m_mode & 0x01) && mpdu->GetHeader().IsQosData() && mpdu->GetPacketSize() != mpdu->GetPacket()->GetAdjustment()){
+    //     // std::cout<< "msdu入队" <<std::endl;
+    //     m_grouper->AggregateMsdu(mpdu);
+    // }
 
     // shuffle link IDs not to request channel access on links always in the same order
     std::vector<uint8_t> shuffledLinkIds(linkIds.cbegin(), linkIds.cend());
@@ -833,7 +833,7 @@ Txop::DoInitialize()
         GenerateBackoff(id);
     }
     // The initialization of m_queue and m_mac has been completed.
-    if (m_mode & 0x03) {
+    if(m_mode & 0x01) {
         m_grouper = Create<MsduGrouper>(m_maxGroupSize, 4096, m_queue, m_mac, m_mode, m_period);
         m_grouper->m_datarate_setting[0] = m_datarate0;
         m_grouper->m_datarate_setting[1] = m_datarate1;

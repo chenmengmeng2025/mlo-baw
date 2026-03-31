@@ -420,7 +420,7 @@ MsduGrouper::MsduGrouper(uint32_t maxGroupSize,
     m_maxRedundantPackets = {0, 0};
     m_RedundantPacketCnt = {0, 0};
     m_redundancyFixedNumber = {0, 0};
-    m_inflighted = {0, 0};
+    // m_inflighted = {0, 0};
     m_gs_enable = false;
     m_param_update = false;
     m_redundancy_enable = 0; // 默认关闭冗余模式
@@ -678,63 +678,63 @@ MsduGrouper::SetLink1PctTcp(double thp1, double thp2, double rethp)
     return newLink1Pct;
 }
 
-void
-MsduGrouper::AggregateMsdu(Ptr<WifiMpdu> msdu)
-{
-    if(msdu->GetPacketSize() > 1000 && !istcp){
-        istcp = true; // 判断测试流量为TCP流量
-        m_link1Pct = 0.5;
-    }
-    if (m_mode == 0 || m_maxGroupSize == 1)
-        return;
-    // 检查是否需要切换组
-    if (m_currentCount >= m_maxGroupSize) {
-        m_currentGroup = (m_currentGroup + 1) % m_maxGroupNumber;
-        m_currentCount = 0;
-        m_firstMsdu = nullptr;
-    }
+// void
+// MsduGrouper::AggregateMsdu(Ptr<WifiMpdu> msdu)
+// {
+//     if(msdu->GetPacketSize() > 1000 && !istcp){
+//         istcp = true; // 判断测试流量为TCP流量
+//         m_link1Pct = 0.5;
+//     }
+//     if (m_mode == 0 || m_maxGroupSize == 1)
+//         return;
+//     // 检查是否需要切换组
+//     if (m_currentCount >= m_maxGroupSize) {
+//         m_currentGroup = (m_currentGroup + 1) % m_maxGroupNumber;
+//         m_currentCount = 0;
+//         m_firstMsdu = nullptr;
+//     }
 
-    // 设置当前MSDU的组号并递增计数器
-    msdu->SetGroupNumber(m_currentGroup);
-    m_currentCount++;
-    bool log = (m_mode & (1 << 4));
-    // 处理首个MSDU或聚合逻辑
-    if (m_currentCount == 1) {
-        m_firstMsdu = msdu;
-        if (log) {
-            std::cout << Simulator::Now() << " First MSDU added to Group-" << m_currentGroup << std::endl;
-        }
-        if (m_mode & 0x02) {
-            AssignAmsduByCnt(); // 模式二，基于优先级的提前连续分配
-        }
-    } else {
-        // 聚合到首个MSDU
-        if (m_firstMsdu && m_firstMsdu->GetGroupNumber() == msdu->GetGroupNumber() && m_firstMsdu != msdu) {
-            m_queue->DequeueIfQueued({m_firstMsdu});
-            m_firstMsdu->Aggregate(msdu);
-            m_queue->Replace(msdu, m_firstMsdu);
-            if (log) std::cout << Simulator::Now() << " Amsdu聚合: 第" << m_currentCount << "个Msdu聚合到 Group-" << m_currentGroup << std::endl;
-        }
-    }
+//     // 设置当前MSDU的组号并递增计数器
+//     msdu->SetGroupNumber(m_currentGroup);
+//     m_currentCount++;
+//     bool log = (m_mode & (1 << 4));
+//     // 处理首个MSDU或聚合逻辑
+//     if (m_currentCount == 1) {
+//         m_firstMsdu = msdu;
+//         if (log) {
+//             std::cout << Simulator::Now() << " First MSDU added to Group-" << m_currentGroup << std::endl;
+//         }
+//         if (m_mode & 0x02) {
+//             AssignAmsduByCnt(); // 模式二，基于优先级的提前连续分配
+//         }
+//     } else {
+//         // 聚合到首个MSDU
+//         if (m_firstMsdu && m_firstMsdu->GetGroupNumber() == msdu->GetGroupNumber() && m_firstMsdu != msdu) {
+//             m_queue->DequeueIfQueued({m_firstMsdu});
+//             m_firstMsdu->Aggregate(msdu);
+//             m_queue->Replace(msdu, m_firstMsdu);
+//             if (log) std::cout << Simulator::Now() << " Amsdu聚合: 第" << m_currentCount << "个Msdu聚合到 Group-" << m_currentGroup << std::endl;
+//         }
+//     }
 
-    // 组满后准备切换
-    if (m_currentCount == m_maxGroupSize) {
-        m_currentGroup = (m_currentGroup + 1) % m_maxGroupNumber;
-        m_currentCount = 0;
-        m_firstMsdu = nullptr;
-    }
-}
+//     // 组满后准备切换
+//     if (m_currentCount == m_maxGroupSize) {
+//         m_currentGroup = (m_currentGroup + 1) % m_maxGroupNumber;
+//         m_currentCount = 0;
+//         m_firstMsdu = nullptr;
+//     }
+// }
 
-void
-MsduGrouper::AddCurrentGroup(uint32_t itemgroup)
-{
-    if (itemgroup == m_currentGroup)
-    {
-        m_currentGroup = (m_currentGroup + 1) % m_maxGroupNumber;
-        m_currentCount = 0;
-        m_firstMsdu = nullptr;
-    }
-}
+// void
+// MsduGrouper::AddCurrentGroup(uint32_t itemgroup)
+// {
+//     if (itemgroup == m_currentGroup)
+//     {
+//         m_currentGroup = (m_currentGroup + 1) % m_maxGroupNumber;
+//         m_currentCount = 0;
+//         m_firstMsdu = nullptr;
+//     }
+// }
 
 // MPDU 入队
 void
@@ -788,79 +788,79 @@ MsduGrouper::NotifyPpduTxDuration(Ptr<const WifiPpdu> ppdu, Time duration, uint8
         }
     }
 
-    PPDUInfo ppduinfo;
-    ppduinfo.linkId = 1 << linkId;
-    ppduinfo.txDuration = duration;
-    ppduinfo.txTime = Simulator::Now();
-    Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
-    uint32_t nmpdus = 0;
-    if (psdu->IsAggregate())
-    {
-        nmpdus = psdu->GetNMpdus();
-        for (uint32_t i = 0; i < nmpdus; i++)
-        {
-            Ptr<Packet> packet = psdu->GetAmpduSubframe(i);
-            auto it = std::find_if(
-                m_queueStats.m_mpduinfos.rbegin(),
-                m_queueStats.m_mpduinfos.rend(),
-                [&packet](const MPDUInfo& it) { return it.m_Uid == packet->GetUid(); });
-            if (it != m_queueStats.m_mpduinfos.rend())
-            {
-                it->m_txTime = Simulator::Now();
-                ppduinfo.m_mpduinfos.push_back(*it);
-            }
-            else
-            {
-                NS_ABORT_MSG("MsduGrouper::NotifyPpduTxDuration: MPDU not found in QueueStats"
-                             << Simulator::Now() << " " << packet->GetUid());
-            }
-        }
-    }
-    else
-    {
-        nmpdus = 1;
-        Ptr<const Packet> packet = psdu->GetPacket();
-        auto it =
-            std::find_if(m_queueStats.m_mpduinfos.rbegin(),
-                         m_queueStats.m_mpduinfos.rend(),
-                         [&packet](const MPDUInfo& it) { return it.m_Uid == packet->GetUid(); });
-        if (it != m_queueStats.m_mpduinfos.rend())
-        {
-            it->m_txTime = Simulator::Now();
-            ppduinfo.m_mpduinfos.push_back(*it);
-        }
-        else
-        {
-            NS_ABORT_MSG("MsduGrouper::NotifyPpduTxDuration: MPDU not found in QueueStats"
-                         << Simulator::Now() << " " << packet->GetUid());
-        }
-    }
-    m_txtime_nmpdu_List[linkId].emplace_back(Simulator::Now().GetMicroSeconds(), duration.GetMicroSeconds(), nmpdus);
-    m_queueStats.m_ppduinfos.push_back(ppduinfo);
+    // PPDUInfo ppduinfo;
+    // ppduinfo.linkId = 1 << linkId;
+    // ppduinfo.txDuration = duration;
+    // ppduinfo.txTime = Simulator::Now();
+    // Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
+    // uint32_t nmpdus = 0;
+    // if (psdu->IsAggregate())
+    // {
+    //     nmpdus = psdu->GetNMpdus();
+    //     for (uint32_t i = 0; i < nmpdus; i++)
+    //     {
+    //         Ptr<Packet> packet = psdu->GetAmpduSubframe(i);
+    //         auto it = std::find_if(
+    //             m_queueStats.m_mpduinfos.rbegin(),
+    //             m_queueStats.m_mpduinfos.rend(),
+    //             [&packet](const MPDUInfo& it) { return it.m_Uid == packet->GetUid(); });
+    //         if (it != m_queueStats.m_mpduinfos.rend())
+    //         {
+    //             it->m_txTime = Simulator::Now();
+    //             ppduinfo.m_mpduinfos.push_back(*it);
+    //         }
+    //         else
+    //         {
+    //             NS_ABORT_MSG("MsduGrouper::NotifyPpduTxDuration: MPDU not found in QueueStats"
+    //                          << Simulator::Now() << " " << packet->GetUid());
+    //         }
+    //     }
+    // }
+    // else
+    // {
+    //     nmpdus = 1;
+    //     Ptr<const Packet> packet = psdu->GetPacket();
+    //     auto it =
+    //         std::find_if(m_queueStats.m_mpduinfos.rbegin(),
+    //                      m_queueStats.m_mpduinfos.rend(),
+    //                      [&packet](const MPDUInfo& it) { return it.m_Uid == packet->GetUid(); });
+    //     if (it != m_queueStats.m_mpduinfos.rend())
+    //     {
+    //         it->m_txTime = Simulator::Now();
+    //         ppduinfo.m_mpduinfos.push_back(*it);
+    //     }
+    //     else
+    //     {
+    //         NS_ABORT_MSG("MsduGrouper::NotifyPpduTxDuration: MPDU not found in QueueStats"
+    //                      << Simulator::Now() << " " << packet->GetUid());
+    //     }
+    // }
+    // m_txtime_nmpdu_List[linkId].emplace_back(Simulator::Now().GetMicroSeconds(), duration.GetMicroSeconds(), nmpdus);
+    // m_queueStats.m_ppduinfos.push_back(ppduinfo);
 }
 
-// MPDU Discard
-void
-MsduGrouper::NotifyDiscardedMpdu(Ptr<const WifiMpdu> mpdu)
-{
-    m_queueStats.Pop(mpdu, false);
-}
+// // MPDU Discard
+// void
+// MsduGrouper::NotifyDiscardedMpdu(Ptr<const WifiMpdu> mpdu)
+// {
+//     m_queueStats.Pop(mpdu, false);
+// }
 
-void 
-MsduGrouper::NotifyPacketRedundancy(Ptr<const WifiMpdu> mpdu, uint8_t linkId)
-/*
-** 冗余模式发包检测
-*/
-{
-    uint64_t id = mpdu->GetPacket()->GetUid(); // 获得包号
-    auto it = std::find_if(m_queueStats.m_mpduinfos.begin(),
-                           m_queueStats.m_mpduinfos.end(),
-                           [&id](const MPDUInfo& it) { return it.m_Uid == id; });
-    if (it != m_queueStats.m_mpduinfos.end())
-    {
-        it->m_redundancy = 1 << linkId;
-    }
-}
+// void 
+// MsduGrouper::NotifyPacketRedundancy(Ptr<const WifiMpdu> mpdu, uint8_t linkId)
+// /*
+// ** 冗余模式发包检测
+// */
+// {
+//     uint64_t id = mpdu->GetPacket()->GetUid(); // 获得包号
+//     auto it = std::find_if(m_queueStats.m_mpduinfos.begin(),
+//                            m_queueStats.m_mpduinfos.end(),
+//                            [&id](const MPDUInfo& it) { return it.m_Uid == id; });
+//     if (it != m_queueStats.m_mpduinfos.end())
+//     {
+//         it->m_redundancy = 1 << linkId;
+//     }
+// }
 
 void
 MsduGrouper::NotifyPhyTxEvent(Ptr<const Packet> packet,
@@ -964,49 +964,49 @@ MsduGrouper::NotifyPhyTxEvent(Ptr<const Packet> packet,
     }
 }
 
-void
-MsduGrouper::NotifyAcked(Ptr<const WifiMpdu> mpdu, uint8_t linkId)
-{
-    uint64_t id = mpdu->GetPacket()->GetUid(); // 获得包号
-    auto it = std::find_if(m_queueStats.m_mpduinfos.begin(),
-                           m_queueStats.m_mpduinfos.end(),
-                           [&id](const MPDUInfo& it) { return it.m_Uid == id; });
-    if (it != m_queueStats.m_mpduinfos.end())
-    {
-        it->m_msduNum = mpdu->GetNMsdus();
-        it->m_rxstate = true;
-        it->m_ackTime = Simulator::Now();
-    }
-    m_queueStats.Pop(mpdu, true);
-}
+// void
+// MsduGrouper::NotifyAcked(Ptr<const WifiMpdu> mpdu, uint8_t linkId)
+// {
+//     uint64_t id = mpdu->GetPacket()->GetUid(); // 获得包号
+//     auto it = std::find_if(m_queueStats.m_mpduinfos.begin(),
+//                            m_queueStats.m_mpduinfos.end(),
+//                            [&id](const MPDUInfo& it) { return it.m_Uid == id; });
+//     if (it != m_queueStats.m_mpduinfos.end())
+//     {
+//         it->m_msduNum = mpdu->GetNMsdus();
+//         it->m_rxstate = true;
+//         it->m_ackTime = Simulator::Now();
+//     }
+//     m_queueStats.Pop(mpdu, true);
+// }
 
-bool
-MsduGrouper::GetRedundancyMode(uint8_t linkId)
-// 对应链路上冗余模式是否开启
-{
-    return m_redundancyMode & (1 << linkId);
-}
+// bool
+// MsduGrouper::GetRedundancyMode(uint8_t linkId)
+// // 对应链路上冗余模式是否开启
+// {
+//     return m_redundancyMode & (1 << linkId);
+// }
 
-void
-MsduGrouper::SetRedundancyMode(uint8_t linkId, uint32_t re_num)
-// 开启对应链路上的冗余模式，最大冗余个数设置为re_num
-{
-    if (re_num == 0)
-        return;
-    m_redundancyMode = m_redundancyMode | (1 << linkId);
-    m_maxRedundantPackets[linkId] = re_num;
-    // std::cout << "Redundancy mode opened on Link " << uint32_t(linkId) << " MaxNum: " << re_num
-    // << std::endl;
-}
+// void
+// MsduGrouper::SetRedundancyMode(uint8_t linkId, uint32_t re_num)
+// // 开启对应链路上的冗余模式，最大冗余个数设置为re_num
+// {
+//     if (re_num == 0)
+//         return;
+//     m_redundancyMode = m_redundancyMode | (1 << linkId);
+//     m_maxRedundantPackets[linkId] = re_num;
+//     // std::cout << "Redundancy mode opened on Link " << uint32_t(linkId) << " MaxNum: " << re_num
+//     // << std::endl;
+// }
 
-void
-MsduGrouper::ResetRedundancyMode(uint8_t linkId)
-{
-    // std::cout << "Redundancy mode closed on Link " << uint32_t(linkId) << std::endl;
-    m_redundancyMode = m_redundancyMode & ~(1 << linkId);
-    m_RedundantPacketCnt[linkId] = 0;
-    m_maxRedundantPackets[linkId] = 0;
-}
+// void
+// MsduGrouper::ResetRedundancyMode(uint8_t linkId)
+// {
+//     // std::cout << "Redundancy mode closed on Link " << uint32_t(linkId) << std::endl;
+//     m_redundancyMode = m_redundancyMode & ~(1 << linkId);
+//     m_RedundantPacketCnt[linkId] = 0;
+//     m_maxRedundantPackets[linkId] = 0;
+// }
 
 uint32_t
 MsduGrouper::GetBAWindowThreshold(uint8_t linkId)
@@ -1014,95 +1014,95 @@ MsduGrouper::GetBAWindowThreshold(uint8_t linkId)
     return m_maxAmpduSize[linkId] * m_redundancyThreshold[linkId];
 }
 
-bool
+void
 MsduGrouper::UpdateAmpduSize(uint8_t linkId, uint32_t size)
 {
     if (!m_mode)
-        return false;
+        return;
     if (size > m_maxAmpduSize[linkId])
     {
         m_maxAmpduSize[linkId] = size;
     }
-    if (Simulator::Now() > m_startTime + MilliSeconds(10))
-    {
-        if (size < GetBAWindowThreshold(linkId))
-        {
-            m_blockrateList[linkId].emplace_back(Simulator::Now(),
-                                                 (double)size / m_maxAmpduSize[linkId]);
-            if (!m_queueStats.blockwindow_begin[linkId].IsStrictlyPositive())
-            {
-                m_queueStats.blockwindow_begin[linkId] = Simulator::Now();
-                // std::cout << Simulator::Now() << " 卡窗开始 on Link " << (uint32_t)linkId <<
-                // std::endl;
-            }
-            if (m_inflighted[1 - linkId])
-                m_queueStats.blockwindow_time_other_inflight[linkId].push_back(Simulator::Now());
-        }
-        else
-        {
-            if (m_queueStats.blockwindow_begin[linkId].IsStrictlyPositive())
-            {
-                m_queueStats.blockwindow_Total[linkId] +=
-                    Simulator::Now() - m_queueStats.blockwindow_begin[linkId];
-                m_queueStats.blockwindow_time[linkId].emplace_back(
-                    m_queueStats.blockwindow_begin[linkId],
-                    Simulator::Now() - m_queueStats.blockwindow_begin[linkId]);
-                // std::cout << Simulator::Now() << " 卡窗结束 on Link " << (uint32_t)linkId <<
-                // std::endl;
-                m_queueStats.blockwindow_begin[linkId] = Seconds(0);
-            }
-        }
-        if (size == 0) {
-            if (!m_queueStats.severe_blockwindow_begin[linkId].IsStrictlyPositive())
-            {
-            m_queueStats.severe_blockwindow_begin[linkId] = Simulator::Now();
-            }
-        } else {
-            if (m_queueStats.severe_blockwindow_begin[linkId].IsStrictlyPositive())
-            {
-                m_queueStats.severe_blockwindow_time[linkId].emplace_back(
-                    m_queueStats.severe_blockwindow_begin[linkId],
-                    Simulator::Now() - m_queueStats.severe_blockwindow_begin[linkId]);
-                m_queueStats.severe_blockwindow_begin[linkId] = Seconds(0);
-            }
-        }
-    }
+    // if (Simulator::Now() > m_startTime + MilliSeconds(10))
+    // {
+    //     if (size < GetBAWindowThreshold(linkId))
+    //     {
+    //         m_blockrateList[linkId].emplace_back(Simulator::Now(),
+    //                                              (double)size / m_maxAmpduSize[linkId]);
+    //         if (!m_queueStats.blockwindow_begin[linkId].IsStrictlyPositive())
+    //         {
+    //             m_queueStats.blockwindow_begin[linkId] = Simulator::Now();
+    //             // std::cout << Simulator::Now() << " 卡窗开始 on Link " << (uint32_t)linkId <<
+    //             // std::endl;
+    //         }
+    //         if (m_inflighted[1 - linkId])
+    //             m_queueStats.blockwindow_time_other_inflight[linkId].push_back(Simulator::Now());
+    //     }
+    //     else
+    //     {
+    //         if (m_queueStats.blockwindow_begin[linkId].IsStrictlyPositive())
+    //         {
+    //             m_queueStats.blockwindow_Total[linkId] +=
+    //                 Simulator::Now() - m_queueStats.blockwindow_begin[linkId];
+    //             m_queueStats.blockwindow_time[linkId].emplace_back(
+    //                 m_queueStats.blockwindow_begin[linkId],
+    //                 Simulator::Now() - m_queueStats.blockwindow_begin[linkId]);
+    //             // std::cout << Simulator::Now() << " 卡窗结束 on Link " << (uint32_t)linkId <<
+    //             // std::endl;
+    //             m_queueStats.blockwindow_begin[linkId] = Seconds(0);
+    //         }
+    //     }
+    //     if (size == 0) {
+    //         if (!m_queueStats.severe_blockwindow_begin[linkId].IsStrictlyPositive())
+    //         {
+    //         m_queueStats.severe_blockwindow_begin[linkId] = Simulator::Now();
+    //         }
+    //     } else {
+    //         if (m_queueStats.severe_blockwindow_begin[linkId].IsStrictlyPositive())
+    //         {
+    //             m_queueStats.severe_blockwindow_time[linkId].emplace_back(
+    //                 m_queueStats.severe_blockwindow_begin[linkId],
+    //                 Simulator::Now() - m_queueStats.severe_blockwindow_begin[linkId]);
+    //             m_queueStats.severe_blockwindow_begin[linkId] = Seconds(0);
+    //         }
+    //     }
+    // }
 
-    uint32_t redundancy_num = 0;
-    if (Simulator::Now() > m_startTime && size == 0 && (m_mode & 0x01)) 
-    // 模式一，硬卡窗，开启冗余
-    {
-        if (m_redundancy_enable & (1 << linkId))
-        {
-            // std::cout << "开启冗余 on Link " << (uint32_t)linkId << std::endl;
-            uint32_t mpdusize = GetMeanMpduSize();
-            auto datarate = m_queueStats.GetAverageDataRate(linkId, m_period);
-            auto it = m_queueStats.m_ppduinfos.rbegin();
-            while(it!=m_queueStats.m_ppduinfos.rend() && (it->linkId & (1 << linkId))) {++it;};
-            if (it != m_queueStats.m_ppduinfos.rend() && it->txTime + it->txDuration > Simulator::Now() + MicroSeconds(32)) {
-                redundancy_num =  std::floor((it->txTime + it->txDuration - Simulator::Now()).GetMicroSeconds() * datarate / mpdusize / 8);
-                if (redundancy_num > 0 && m_mode & (1 << 5)) std::cout << "开启冗余 on Link " << (uint32_t)linkId <<  ", redundancy_num = " << redundancy_num << std::endl;
-            }
-            SetRedundancyMode(linkId, redundancy_num);   
-            UpdateRedundancyCnt(linkId); 
-        }
-        return redundancy_num > 0;
-    }
-    if (Simulator::Now() > m_startTime && size == 0 && (m_mode & 0x02) && linkId == 1) 
-    // 模式二，硬卡窗，只在5G上开启冗余
-    {
-        if (m_redundancy_enable & (1 << linkId)) {
-            redundancy_num = static_cast<uint32_t>(std::lround(256 * (1.0 - m_link1Pct)));
-            if (istcp && (m_link1Pct == 0.5 || m_state != 3))
-                redundancy_num = 0; 
-            // if (redundancy_num > 0) std::cout << "开启冗余 on Link " << (uint32_t)linkId <<  ",
-            // redundancy_num = " << redundancy_num << std::endl;
-            SetRedundancyMode(linkId, redundancy_num);
-            UpdateRedundancyCnt(linkId);
-        }
-        return redundancy_num > 0;
-    }
-    return false;
+    // uint32_t redundancy_num = 0;
+    // if (Simulator::Now() > m_startTime && size == 0 && (m_mode & 0x01)) 
+    // // 模式一，硬卡窗，开启冗余
+    // {
+    //     if (m_redundancy_enable & (1 << linkId))
+    //     {
+    //         // std::cout << "开启冗余 on Link " << (uint32_t)linkId << std::endl;
+    //         uint32_t mpdusize = GetMeanMpduSize();
+    //         auto datarate = m_queueStats.GetAverageDataRate(linkId, m_period);
+    //         auto it = m_queueStats.m_ppduinfos.rbegin();
+    //         while(it!=m_queueStats.m_ppduinfos.rend() && (it->linkId & (1 << linkId))) {++it;};
+    //         if (it != m_queueStats.m_ppduinfos.rend() && it->txTime + it->txDuration > Simulator::Now() + MicroSeconds(32)) {
+    //             redundancy_num =  std::floor((it->txTime + it->txDuration - Simulator::Now()).GetMicroSeconds() * datarate / mpdusize / 8);
+    //             if (redundancy_num > 0 && m_mode & (1 << 5)) std::cout << "开启冗余 on Link " << (uint32_t)linkId <<  ", redundancy_num = " << redundancy_num << std::endl;
+    //         }
+    //         SetRedundancyMode(linkId, redundancy_num);   
+    //         UpdateRedundancyCnt(linkId); 
+    //     }
+    //     return redundancy_num > 0;
+    // }
+    // if (Simulator::Now() > m_startTime && size == 0 && (m_mode & 0x02) && linkId == 1) 
+    // // 模式二，硬卡窗，只在5G上开启冗余
+    // {
+    //     if (m_redundancy_enable & (1 << linkId)) {
+    //         redundancy_num = static_cast<uint32_t>(std::lround(256 * (1.0 - m_link1Pct)));
+    //         if (istcp && (m_link1Pct == 0.5 || m_state != 3))
+    //             redundancy_num = 0; 
+    //         // if (redundancy_num > 0) std::cout << "开启冗余 on Link " << (uint32_t)linkId <<  ",
+    //         // redundancy_num = " << redundancy_num << std::endl;
+    //         SetRedundancyMode(linkId, redundancy_num);
+    //         UpdateRedundancyCnt(linkId);
+    //     }
+    //     return redundancy_num > 0;
+    // }
+    return;
 }
 
 mldParams
@@ -1238,24 +1238,24 @@ MsduGrouper::GetNewEdcaParameters(bool initial, uint16_t winSize, double p1, dou
     return params;
 }
 
-uint32_t
-MsduGrouper::AvailableRedundancy(uint8_t linkId)
-{
-    if (m_redundancyMode & (1 << linkId))
-    {
-        if (m_maxRedundantPackets[linkId] > m_RedundantPacketCnt[linkId])
-        {
-            m_RedundantPacketCnt[linkId] += 1;
-            return 1;
-        }
-        else
-        {
-            ResetRedundancyMode(linkId);
-            return 0;
-        }
-    }
-    return 0;
-}
+// uint32_t
+// MsduGrouper::AvailableRedundancy(uint8_t linkId)
+// {
+//     if (m_redundancyMode & (1 << linkId))
+//     {
+//         if (m_maxRedundantPackets[linkId] > m_RedundantPacketCnt[linkId])
+//         {
+//             m_RedundantPacketCnt[linkId] += 1;
+//             return 1;
+//         }
+//         else
+//         {
+//             ResetRedundancyMode(linkId);
+//             return 0;
+//         }
+//     }
+//     return 0;
+// }
 
 void
 MsduGrouper::UpdateRedundancyCnt(uint8_t linkId)
@@ -1299,20 +1299,20 @@ MsduGrouper::EnableParamUpdate() {
     m_param_update = true;
 }
 
-void
-MsduGrouper::SetTxopTimeEnd(uint64_t time /* us */, uint8_t linkId)
-{
-    m_txopTimeEnd[linkId] = time;
-    m_txopList[linkId].emplace_back(m_txopTimeBegin[linkId], m_txopTimeEnd[linkId]);
-    m_txopTimeEnd[linkId] = 0;
-}
+// void
+// MsduGrouper::SetTxopTimeEnd(uint64_t time /* us */, uint8_t linkId)
+// {
+//     m_txopTimeEnd[linkId] = time;
+//     m_txopList[linkId].emplace_back(m_txopTimeBegin[linkId], m_txopTimeEnd[linkId]);
+//     m_txopTimeEnd[linkId] = 0;
+// }
 
-void
-MsduGrouper::ResetInflighedCnt()
-{
-    m_inflighted[0] = 0;
-    m_inflighted[1] = 0;
-}
+// void
+// MsduGrouper::ResetInflighedCnt()
+// {
+//     m_inflighted[0] = 0;
+//     m_inflighted[1] = 0;
+// }
 
 std::vector<uint32_t>
 MsduGrouper::GetMaxAmpduLength()
@@ -1472,14 +1472,14 @@ MsduGrouper::GetMode() {
     return m_mode;
 }
 
-uint32_t 
-MsduGrouper::GetAmpduLimit0(uint8_t linkId) {
-    // 无干扰
-    return m_ampduLimits[linkId];
-}
+// uint32_t 
+// MsduGrouper::GetAmpduLimit0(uint8_t linkId) {
+//     // 无干扰
+//     return m_ampduLimits[linkId];
+// }
 
 uint32_t 
-MsduGrouper::GetAmpduLimit1(uint8_t linkId, uint32_t preTitle) {
+MsduGrouper::GetAmpduLimit(uint8_t linkId, uint32_t preTitle, uint32_t mpduBufferSize) {
     if(preTitle == 1){
         return std::numeric_limits<uint32_t>::max();
     }
@@ -1489,80 +1489,153 @@ MsduGrouper::GetAmpduLimit1(uint8_t linkId, uint32_t preTitle) {
     else if(preTitle == 4){
         return linkId ? 0 : std::numeric_limits<uint32_t>::max();
     }
+    else if(preTitle == 5 || preTitle == 6){
+        return m_ampduLimits[linkId];
+    }
+    else if(preTitle == 2){
+        std::vector<double> R = {0.0, 0.0};
+        NS_ASSERT_MSG(m_datarate_setting.size() >= 2 && m_datarate_setting[0] != 0.0 && m_datarate_setting[1] != 0.0, "Data rate not available for both links.");
+        R[0] = m_datarate_setting[0] / 1e6;
+        R[1] = m_datarate_setting[1] / 1e6;
+        std::vector<int> CW_min = {16, 16};
+        double L_subf = 1572 * 8;
+        double sigma = 9;
+        std::vector<double> T_SIFS = {10, 16};
+        std::vector<double> T_RTS = {30, 24};
+        std::vector<double> T_CTS = {34, 28};
+        double T_PH = 56.0;
+
+        std::vector<double> R_f;
+        for (double r : R) {
+            R_f.push_back(r / L_subf);
+        }
+        
+        std::vector<int> T_DIFS;
+        for (int sifs : T_SIFS) {
+            T_DIFS.push_back(sifs + 2 * sigma);
+        }
+        std::vector<int> T_BA;
+        if (mpduBufferSize <= 256) {
+            T_BA = {46, 40};
+        } else if (mpduBufferSize <= 512) {
+            T_BA = {58, 52};
+        } else {
+            T_BA = {78, 72};
+        }
+
+        // if(Simulator::Now().GetMicroSeconds() < 1.05) {
+        //     std::cout << "start period, m_ampduLimits" << (uint32_t)linkId << " = " << mpduBufferSize/2 << std::endl;
+        //     return static_cast<int>(std::ceil(mpduBufferSize/2));
+        // }
+
+        std::vector<double> t;
+        for (const auto& vec : m_t) {
+            if (vec.empty()) t.push_back(0);
+            else{
+                double sum = 0.0;
+                for (double value : vec) {
+                    sum += value;
+                }
+                t.push_back(sum / vec.size() + T_PH);
+            }
+        }
+
+        double T_i2u = 0;
+        double T_u2i = 0;
+        T_i2u = m_end_time[1-linkId] + t[1-linkId] - Simulator::Now().GetMicroSeconds();
+        if(T_i2u > 0){
+            T_u2i = (mpduBufferSize * R_f[linkId] + t[linkId] * (R_f[0]*R_f[0] + R_f[1]*R_f[1]) - t[1-linkId] * (R_f[linkId]*R_f[linkId])) / (R_f[0]*R_f[0] + R_f[0]*R_f[1] + R_f[1]*R_f[1]);    
+            int ampduLimit = static_cast<int>(std::ceil((T_i2u + std::max(0.0, T_u2i - t[linkId])) * R_f[linkId]));
+            if(ampduLimit != m_ampduLimits[linkId]) {
+                std::cout<<"caculate with end time, m_ampduLimits"<< (uint32_t)linkId<<" = "<<m_ampduLimits[linkId] << std::endl;
+                // for(size_t  i = 0; i<t.size(); i++){
+                //     std::cout<<"t"<< i <<" = "<< t[i] <<"; ( "<< T_SIFS[i] * 3 + T_BA[i] + T_DIFS[i] + T_RTS[i] + T_CTS[i] + T_PH << ", "<< T_SIFS[i] * 3 + T_BA[i] + T_DIFS[i] + T_RTS[i] + T_CTS[i] + T_PH + CW_min[i] * sigma<<" )"<<std::endl;
+                // }
+            }
+            m_ampduLimits[linkId] = ampduLimit;
+        } 
+        else{
+            m_ampduLimits[linkId] = std::numeric_limits<uint32_t>::max();
+            // m_ampduLimits[linkId] = mpduBufferSize / 2;
+        }
+            
+        if (m_ampduLimits[linkId] < 0) return std::numeric_limits<uint32_t>::max();
+        return m_ampduLimits[linkId];
+    }
 }
 
-// DAMLA
-uint32_t 
-MsduGrouper::GetAmpduLimit2(uint8_t linkId, uint16_t mpduBufferSize) {
-    std::vector<double> R = {0.0, 0.0};
-    NS_ASSERT_MSG(m_datarate_setting.size() >= 2 && m_datarate_setting[0] != 0.0 && m_datarate_setting[1] != 0.0, "Data rate not available for both links.");
-    R[0] = m_datarate_setting[0] / 1e6;
-    R[1] = m_datarate_setting[1] / 1e6;
-    std::vector<int> CW_min = {16, 16};
-    double L_subf = 1572 * 8;
-    double sigma = 9;
-    std::vector<double> T_SIFS = {10, 16};
-    std::vector<double> T_RTS = {30, 24};
-    std::vector<double> T_CTS = {34, 28};
-    double T_PH = 56.0;
+// // DAMLA
+// uint32_t 
+// MsduGrouper::GetAmpduLimit2(uint8_t linkId, uint16_t mpduBufferSize) {
+//     std::vector<double> R = {0.0, 0.0};
+//     NS_ASSERT_MSG(m_datarate_setting.size() >= 2 && m_datarate_setting[0] != 0.0 && m_datarate_setting[1] != 0.0, "Data rate not available for both links.");
+//     R[0] = m_datarate_setting[0] / 1e6;
+//     R[1] = m_datarate_setting[1] / 1e6;
+//     std::vector<int> CW_min = {16, 16};
+//     double L_subf = 1572 * 8;
+//     double sigma = 9;
+//     std::vector<double> T_SIFS = {10, 16};
+//     std::vector<double> T_RTS = {30, 24};
+//     std::vector<double> T_CTS = {34, 28};
+//     double T_PH = 56.0;
 
-    std::vector<double> R_f;
-    for (double r : R) {
-        R_f.push_back(r / L_subf);
-    }
+//     std::vector<double> R_f;
+//     for (double r : R) {
+//         R_f.push_back(r / L_subf);
+//     }
     
-    std::vector<int> T_DIFS;
-    for (int sifs : T_SIFS) {
-        T_DIFS.push_back(sifs + 2 * sigma);
-    }
-    std::vector<int> T_BA;
-    if (mpduBufferSize <= 256) {
-        T_BA = {46, 40};
-    } else if (mpduBufferSize <= 512) {
-        T_BA = {58, 52};
-    } else {
-        T_BA = {78, 72};
-    }
+//     std::vector<int> T_DIFS;
+//     for (int sifs : T_SIFS) {
+//         T_DIFS.push_back(sifs + 2 * sigma);
+//     }
+//     std::vector<int> T_BA;
+//     if (mpduBufferSize <= 256) {
+//         T_BA = {46, 40};
+//     } else if (mpduBufferSize <= 512) {
+//         T_BA = {58, 52};
+//     } else {
+//         T_BA = {78, 72};
+//     }
 
-    // if(Simulator::Now().GetMicroSeconds() < 1.05) {
-    //     std::cout << "start period, m_ampduLimits" << (uint32_t)linkId << " = " << mpduBufferSize/2 << std::endl;
-    //     return static_cast<int>(std::ceil(mpduBufferSize/2));
-    // }
+//     // if(Simulator::Now().GetMicroSeconds() < 1.05) {
+//     //     std::cout << "start period, m_ampduLimits" << (uint32_t)linkId << " = " << mpduBufferSize/2 << std::endl;
+//     //     return static_cast<int>(std::ceil(mpduBufferSize/2));
+//     // }
 
-    std::vector<double> t;
-    for (const auto& vec : m_t) {
-        if (vec.empty()) t.push_back(0);
-        else{
-            double sum = 0.0;
-            for (double value : vec) {
-                sum += value;
-            }
-            t.push_back(sum / vec.size() + T_PH);
-        }
-    }
+//     std::vector<double> t;
+//     for (const auto& vec : m_t) {
+//         if (vec.empty()) t.push_back(0);
+//         else{
+//             double sum = 0.0;
+//             for (double value : vec) {
+//                 sum += value;
+//             }
+//             t.push_back(sum / vec.size() + T_PH);
+//         }
+//     }
 
-    double T_i2u = 0;
-    double T_u2i = 0;
-    T_i2u = m_end_time[1-linkId] + t[1-linkId] - Simulator::Now().GetMicroSeconds();
-    if(T_i2u > 0){
-        T_u2i = (mpduBufferSize * R_f[linkId] + t[linkId] * (R_f[0]*R_f[0] + R_f[1]*R_f[1]) - t[1-linkId] * (R_f[linkId]*R_f[linkId])) / (R_f[0]*R_f[0] + R_f[0]*R_f[1] + R_f[1]*R_f[1]);    
-        int ampduLimit = static_cast<int>(std::ceil((T_i2u + std::max(0.0, T_u2i - t[linkId])) * R_f[linkId]));
-        if(ampduLimit != m_ampduLimits[linkId]) {
-            std::cout<<"caculate with end time, m_ampduLimits"<< (uint32_t)linkId<<" = "<<m_ampduLimits[linkId] << std::endl;
-            // for(size_t  i = 0; i<t.size(); i++){
-            //     std::cout<<"t"<< i <<" = "<< t[i] <<"; ( "<< T_SIFS[i] * 3 + T_BA[i] + T_DIFS[i] + T_RTS[i] + T_CTS[i] + T_PH << ", "<< T_SIFS[i] * 3 + T_BA[i] + T_DIFS[i] + T_RTS[i] + T_CTS[i] + T_PH + CW_min[i] * sigma<<" )"<<std::endl;
-            // }
-        }
-        m_ampduLimits[linkId] = ampduLimit;
-    } 
-    else{
-        m_ampduLimits[linkId] = std::numeric_limits<uint32_t>::max();
-        // m_ampduLimits[linkId] = mpduBufferSize / 2;
-    }
+//     double T_i2u = 0;
+//     double T_u2i = 0;
+//     T_i2u = m_end_time[1-linkId] + t[1-linkId] - Simulator::Now().GetMicroSeconds();
+//     if(T_i2u > 0){
+//         T_u2i = (mpduBufferSize * R_f[linkId] + t[linkId] * (R_f[0]*R_f[0] + R_f[1]*R_f[1]) - t[1-linkId] * (R_f[linkId]*R_f[linkId])) / (R_f[0]*R_f[0] + R_f[0]*R_f[1] + R_f[1]*R_f[1]);    
+//         int ampduLimit = static_cast<int>(std::ceil((T_i2u + std::max(0.0, T_u2i - t[linkId])) * R_f[linkId]));
+//         if(ampduLimit != m_ampduLimits[linkId]) {
+//             std::cout<<"caculate with end time, m_ampduLimits"<< (uint32_t)linkId<<" = "<<m_ampduLimits[linkId] << std::endl;
+//             // for(size_t  i = 0; i<t.size(); i++){
+//             //     std::cout<<"t"<< i <<" = "<< t[i] <<"; ( "<< T_SIFS[i] * 3 + T_BA[i] + T_DIFS[i] + T_RTS[i] + T_CTS[i] + T_PH << ", "<< T_SIFS[i] * 3 + T_BA[i] + T_DIFS[i] + T_RTS[i] + T_CTS[i] + T_PH + CW_min[i] * sigma<<" )"<<std::endl;
+//             // }
+//         }
+//         m_ampduLimits[linkId] = ampduLimit;
+//     } 
+//     else{
+//         m_ampduLimits[linkId] = std::numeric_limits<uint32_t>::max();
+//         // m_ampduLimits[linkId] = mpduBufferSize / 2;
+//     }
         
-    if (m_ampduLimits[linkId] < 0) return std::numeric_limits<uint32_t>::max();
-    return m_ampduLimits[linkId];
-} 
+//     if (m_ampduLimits[linkId] < 0) return std::numeric_limits<uint32_t>::max();
+//     return m_ampduLimits[linkId];
+// } 
 
 void 
 MsduGrouper::SetAmpduLimit(uint8_t linkId, int limit) {

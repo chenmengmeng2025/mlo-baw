@@ -38,11 +38,11 @@ FrameExchangeManager::GetTypeId()
     static TypeId tid = TypeId("ns3::FrameExchangeManager")
                             .SetParent<Object>()
                             .AddConstructor<FrameExchangeManager>()
-                            .SetGroupName("Wifi")
-                            .AddTraceSource("AckedMpdu",
-                            "An MPDU that was successfully acknowledged via non-Block Ack (Normal Ack).",
-                            MakeTraceSourceAccessor(&FrameExchangeManager::m_ackMpduCallback),
-                            "ns3::FrameExchangeManager::MpduAndLinkIdTracedCallback");
+                            .SetGroupName("Wifi");
+                            // .AddTraceSource("AckedMpdu",
+                            // "An MPDU that was successfully acknowledged via non-Block Ack (Normal Ack).",
+                            // MakeTraceSourceAccessor(&FrameExchangeManager::m_ackMpduCallback),
+                            // "ns3::FrameExchangeManager::MpduAndLinkIdTracedCallback");
     return tid;
 }
 
@@ -435,7 +435,7 @@ FrameExchangeManager::SendMpduWithProtection(Ptr<WifiMpdu> mpdu, WifiTxParameter
     // it is not put back in a queue if the RTS/CTS exchange fails
     NS_ASSERT(m_txParams.m_protection->method == WifiProtection::NONE ||
               m_mpdu->GetHeader().IsCtl() || m_mpdu->IsQueued());
-    
+
     // Make sure that the acknowledgment time has been computed, so that SendRts()
     // and SendCtsToSelf() can reuse this value.
     NS_ASSERT(m_txParams.m_acknowledgment);
@@ -502,7 +502,6 @@ FrameExchangeManager::SendMpdu()
                                                  m_txParams.m_txVector,
                                                  m_phy->GetPhyBand());
 
-
     NS_ASSERT(m_txParams.m_acknowledgment);
 
     if (m_txParams.m_acknowledgment->method == WifiAcknowledgment::NONE)
@@ -531,10 +530,10 @@ FrameExchangeManager::SendMpdu()
         // at the PHY-TXEND.confirm primitive" (section 10.3.2.9 or 10.22.2.2 of 802.11-2016).
         // aRxPHYStartDelay equals the time to transmit the PHY header.
         auto normalAcknowledgment = static_cast<WifiNormalAck*>(m_txParams.m_acknowledgment.get());
-        Time transmissionDelay = m_phy->CalculateTransmissionDelay(m_mpdu->GetNMsdus() >= 1, 1, m_mpdu->GetNMsdus(), Create<WifiPsdu>(m_mpdu, false));
+
         Time timeout =
             txDuration + m_phy->GetSifs() + m_phy->GetSlot() +
-            m_phy->CalculatePhyPreambleAndHeaderDuration(normalAcknowledgment->ackTxVector) + transmissionDelay;
+            m_phy->CalculatePhyPreambleAndHeaderDuration(normalAcknowledgment->ackTxVector);
         NS_ASSERT(!m_txTimer.IsRunning());
         m_txTimer.Set(WifiTxTimer::WAIT_NORMAL_ACK,
                       timeout,
@@ -759,18 +758,7 @@ FrameExchangeManager::SendRts(const WifiTxParameters& txParams)
                                               rtsCtsProtection->rtsTxVector,
                                               m_phy->GetPhyBand()) +
                    m_phy->GetSifs() + m_phy->GetSlot() +
-                   m_phy->CalculatePhyPreambleAndHeaderDuration(rtsCtsProtection->ctsTxVector); //ns3原生
-
-    // RTS碰撞后的回复退避间隔时间
-    // std::cout << "RTS Timeout set to " << timeout.GetMicroSeconds() << " us" << std::endl;
-    // std::cout << m_phy->CalculateTxDuration(GetRtsSize(),
-    //                                           rtsCtsProtection->rtsTxVector,
-    //                                           m_phy->GetPhyBand()).GetMicroSeconds() << " + "
-    //           << m_phy->GetSifs().GetMicroSeconds() << " + "
-    //           << m_phy->GetSlot().GetMicroSeconds() << " + "
-    //           << m_phy->CalculatePhyPreambleAndHeaderDuration(rtsCtsProtection->ctsTxVector).GetMicroSeconds()
-    //           << std::endl; 
-
+                   m_phy->CalculatePhyPreambleAndHeaderDuration(rtsCtsProtection->ctsTxVector);
     NS_ASSERT(!m_txTimer.IsRunning());
     m_txTimer.Set(WifiTxTimer::WAIT_CTS,
                   timeout,
@@ -906,7 +894,7 @@ FrameExchangeManager::SendNormalAck(const WifiMacHeader& hdr,
     SnrTag tag;
     tag.Set(dataSnr);
     packet->AddPacketTag(tag);
-    // std::cout << Simulator::Now() << " SendNormalAck: " << hdr.GetSequenceNumber() << " " << ackTxVector.GetChannelWidth() << " duration: " << duration << std::endl;
+
     ForwardMpduDown(Create<WifiMpdu>(packet, ack), ackTxVector);
 }
 
@@ -990,7 +978,6 @@ FrameExchangeManager::NormalAckTimeout(Ptr<WifiMpdu> mpdu, const WifiTxVector& t
         NotifyPacketDiscarded(mpdu);
         // Dequeue the MPDU if it is stored in a queue
         DequeueMpdu(mpdu);
-        std::cout << "Missed Ack, discard MPDU " << mpdu->GetHeader().GetSequenceNumber() << std::endl;
         GetWifiRemoteStationManager()->ReportFinalDataFailed(mpdu);
         m_dcf->ResetCw(m_linkId);
     }
@@ -1059,7 +1046,6 @@ FrameExchangeManager::DoCtsTimeout(Ptr<WifiPsdu> psdu)
         NS_LOG_DEBUG("Missed CTS, retransmit MPDU(s)");
         m_dcf->UpdateFailedCw(m_linkId);
     }
-    m_dcf->m_ctstimeout = Simulator::Now();
     // Make the sequence numbers of the MPDUs available again if the MPDUs have never
     // been transmitted, both in case the MPDUs have been discarded and in case the
     // MPDUs have to be transmitted (because a new sequence number is assigned to

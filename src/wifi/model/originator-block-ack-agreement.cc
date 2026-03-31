@@ -92,7 +92,7 @@ OriginatorBlockAckAgreement::InitTxWindow()
 
 bool
 OriginatorBlockAckAgreement::AllAckedMpdusInTxWindow(const std::set<uint16_t>& seqNumbers) const
-{ 
+{
     std::set<std::size_t> distances;
     for (const auto seqN : seqNumbers)
     {
@@ -120,9 +120,7 @@ OriginatorBlockAckAgreement::AdvanceTxWindow()
     while (m_txWindow.At(0))
     {
         m_txWindow.Advance(1); // reset the current head -- ensures loop termination
-        // std::cout << "winStart: " << m_txWindow.GetWinStart() << std::endl;
     }
-    // std::cout << "winStart: " << m_txWindow.GetWinStart() << std::endl;
 }
 
 void

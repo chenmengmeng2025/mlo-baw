@@ -343,11 +343,11 @@ class BlockAckManager : public Object
      * typedef for a callback to invoke when an MPDU is dropped.
      */
     typedef Callback<void, Ptr<const WifiMpdu>> DroppedOldMpdu;
-    /**
-     * typedef for a callback to invoke when an MPDU that was successfully acknowledged via Block Ack.
-     * 
-     */
-    typedef TracedCallback<Ptr<const WifiMpdu>, uint8_t> MpduAndLinkIdTracedCallback;
+    // /**
+    //  * typedef for a callback to invoke when an MPDU that was successfully acknowledged via Block Ack.
+    //  * 
+    //  */
+    // typedef TracedCallback<Ptr<const WifiMpdu>, uint8_t> MpduAndLinkIdTracedCallback;
     /**
      * \param callback the callback to invoke when a
      * packet transmission was completed successfully.
@@ -432,7 +432,7 @@ class BlockAckManager : public Object
      * \param recipient the recipient
      * \param tid the TID
      */
-    void RemoveFromSendBarIfDataQueuedList(const Mac48Address& recipient, uint8_t tid);\
+    void RemoveFromSendBarIfDataQueuedList(const Mac48Address& recipient, uint8_t tid);
     
     /**
      * Get the minimum read pointer value among all links.
@@ -549,7 +549,7 @@ class BlockAckManager : public Object
     TxOk m_txOkCallback;                                    ///< transmit OK callback
     TxFailed m_txFailedCallback;                            ///< transmit failed callback
     DroppedOldMpdu m_droppedOldMpduCallback;                ///< the dropped MPDU callback
-    MpduAndLinkIdTracedCallback m_ackMpduCallback;  
+    // MpduAndLinkIdTracedCallback m_ackMpduCallback;  
     /**
      * The trace source fired when a state transition occurred.
      */

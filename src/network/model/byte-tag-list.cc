@@ -588,10 +588,10 @@ ByteTagList::Deserialize(const uint32_t* buffer, uint32_t size)
     return (sizeCheck != 0) ? 0 : 1;
 }
 
-uint32_t
-ByteTagList::GetAdjustment() const
-{
-    return m_adjustment;
-}
+// uint32_t
+// ByteTagList::GetAdjustment() const
+// {
+//     return m_adjustment;
+// }
 
 } // namespace ns3

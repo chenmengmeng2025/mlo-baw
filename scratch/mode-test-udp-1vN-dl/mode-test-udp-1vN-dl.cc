@@ -82,24 +82,24 @@ struct Stats {
         {}
 };
 
-std::vector<Stats> results;
+// std::vector<Stats> results;
 std::unordered_map<double, std::vector<double>> throughputMap;
 
-void
-SaveParams(mldParams pm, double pct1, double time, std::vector<double> thpt, std::vector<double> p, std::vector<double> occ, std::vector<double> datarate, std::vector<double> blocktimerate,std::vector<double> severeblocktimerate, std::vector<double> blockrate, std::vector<uint32_t> blockCnt, std::vector<uint32_t> blockCnt_tr, std::vector<uint64_t> txopTime, std::vector<uint32_t> txopNum, std::vector<uint32_t> maxAmpduLength, std::vector<uint32_t> meanAmpduLength)
-{
-    Stats res{{0}, time, datarate, blocktimerate, severeblocktimerate, blockrate, blockCnt, blockCnt_tr, txopNum, txopTime, pm, maxAmpduLength, meanAmpduLength};
-    results.push_back(res);
-    Simulator::Schedule(NanoSeconds(1), [&](){
-        for (auto & result : results)
-        {
-            if(throughputMap.find(result.time) != throughputMap.end())
-            {
-                result.throughput = throughputMap[result.time];
-            }
-        }
-    });
-}
+// void
+// SaveParams(mldParams pm, double pct1, double time, std::vector<double> thpt, std::vector<double> p, std::vector<double> occ, std::vector<double> datarate, std::vector<double> blocktimerate,std::vector<double> severeblocktimerate, std::vector<double> blockrate, std::vector<uint32_t> blockCnt, std::vector<uint32_t> blockCnt_tr, std::vector<uint64_t> txopTime, std::vector<uint32_t> txopNum, std::vector<uint32_t> maxAmpduLength, std::vector<uint32_t> meanAmpduLength)
+// {
+//     Stats res{{0}, time, datarate, blocktimerate, severeblocktimerate, blockrate, blockCnt, blockCnt_tr, txopNum, txopTime, pm, maxAmpduLength, meanAmpduLength};
+//     results.push_back(res);
+//     Simulator::Schedule(NanoSeconds(1), [&](){
+//         for (auto & result : results)
+//         {
+//             if(throughputMap.find(result.time) != throughputMap.end())
+//             {
+//                 result.throughput = throughputMap[result.time];
+//             }
+//         }
+//     });
+// }
 
 // 安全 stoi，遇到非法字符返回默认值
 int safe_stoi(const std::string& s, int default_val = 0)
@@ -1289,7 +1289,7 @@ main(int argc, char* argv[])
     std::vector<Time> txopLimitList = {MicroSeconds(32) * txoplimit1, MicroSeconds(32) * txoplimit2};
     std::cout << txopLimitList[0] << " " << txopLimitList[1] << std::endl;
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/TxopLimits", AttributeContainerValue<TimeValue>(txopLimitList));
-    Config::ConnectWithoutContext("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GetNextParams", MakeCallback(&SaveParams));
+    // Config::ConnectWithoutContext("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/GetNextParams", MakeCallback(&SaveParams));
     
     Simulator::Schedule(Seconds(1.0), &PrintIntermediateTput, udp, ulserverApp, payloadSize, tputInterval, simulationTime + simT_delayEnd);
     Simulator::Schedule(Seconds(0.5), &SetupBackoffAndChannelMonitoring, mldNodes, statsBeginTime, statsEndTime);
@@ -1303,38 +1303,38 @@ main(int argc, char* argv[])
     std::string historyFile = (scenarioDir / (title + "_BackoffHistory.csv")).string();
     SaveDetailedBackoffHistory(historyFile, mldNodes);
 
-    std::ofstream fout(csv_file, std::ios::out);
-    fout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, AmpduLimit1, AmpduLimit2, RTS_CTS1, RTS_CTS2,"
-            "BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, "
-            "blocktimerate1, blocktimerate2, severeblocktimerate1, severeblocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, Throughput(Mbps)" << std::endl;
-    if (!results.empty()) {
-        for (const auto & res : results)
-        {
-            const mldParams & params = res.params;
-            fout << params.No << ", " << res.time << ", " << (uint32_t)mode << ", "
-                  << params.CWmins[0] << ", " << params.CWmaxs[0] << ", " << params.CWmins[1]
-                  << ", " << params.CWmaxs[1] << ", " << params.Aifsns[0] << ", "
-                  << params.Aifsns[1] << ", " << params.TxopLimits[0] << ", "
-                  << params.TxopLimits[1] << ", " << params.AmpduLimits[0] << ", "
-                  << params.AmpduLimits[1] << ", " << params.RTS_CTS[0] << ", " << params.RTS_CTS[1] << ", "
-                  << res.blockCnt[0] << ", "<< res.blockCnt[1] << ", " << res.blockCnt_tr[0] << ", " << res.blockCnt_tr[1]
-                  << ", " << res.txopTime[0] << ", " << res.txopTime[1] << ", " << res.txopNum[0]
-                  << ", " << res.txopNum[1] << ", " << res.maxAmpduLength[0] << ", "
-                  << res.maxAmpduLength[1] << ", " << res.meanAmpduLength[0] << ", "
-                  << res.meanAmpduLength[1] << ", " << res.blocktimerate[0] << ", "
-                  << res.blocktimerate[1] << ", " << res.severeblocktimerate[0] << ", "
-                  << res.severeblocktimerate[1] << ", " << res.blockrate[0] << ", "
-                  << res.blockrate[1] << ", " << res.datarate[0] << ", " << res.datarate[1] << ", "
-                  << res.throughput[1] << ", " << res.throughput[2] << ", "<< res.throughput[0] << std::endl;
-        }
-        fout.close();
-    }
+    // std::ofstream fout(csv_file, std::ios::out);
+    // fout << "No, Time, Mode, CWmin1, CWmax1, CWmin2, CWmax2, Aifsn1, Aifsn2, TxopLimit1, TxopLimit2, AmpduLimit1, AmpduLimit2, RTS_CTS1, RTS_CTS2,"
+    //         "BlockCnt1, BlockCnt2, BlockCnt1_True, BlockCnt2_True, TxopTime1(us), TxopTime2(us), TxopCnt1, TxopCnt2, MaxAmpduLength1, MaxAmpduLength2, MeanAmpduLength1, MeanAmpduLength2, "
+    //         "blocktimerate1, blocktimerate2, severeblocktimerate1, severeblocktimerate2, blockrate1, blockrate2, datarate1, datarate2, throughput1, throughput2, Throughput(Mbps)" << std::endl;
+    // if (!results.empty()) {
+    //     for (const auto & res : results)
+    //     {
+    //         const mldParams & params = res.params;
+    //         fout << params.No << ", " << res.time << ", " << (uint32_t)mode << ", "
+    //               << params.CWmins[0] << ", " << params.CWmaxs[0] << ", " << params.CWmins[1]
+    //               << ", " << params.CWmaxs[1] << ", " << params.Aifsns[0] << ", "
+    //               << params.Aifsns[1] << ", " << params.TxopLimits[0] << ", "
+    //               << params.TxopLimits[1] << ", " << params.AmpduLimits[0] << ", "
+    //               << params.AmpduLimits[1] << ", " << params.RTS_CTS[0] << ", " << params.RTS_CTS[1] << ", "
+    //               << res.blockCnt[0] << ", "<< res.blockCnt[1] << ", " << res.blockCnt_tr[0] << ", " << res.blockCnt_tr[1]
+    //               << ", " << res.txopTime[0] << ", " << res.txopTime[1] << ", " << res.txopNum[0]
+    //               << ", " << res.txopNum[1] << ", " << res.maxAmpduLength[0] << ", "
+    //               << res.maxAmpduLength[1] << ", " << res.meanAmpduLength[0] << ", "
+    //               << res.meanAmpduLength[1] << ", " << res.blocktimerate[0] << ", "
+    //               << res.blocktimerate[1] << ", " << res.severeblocktimerate[0] << ", "
+    //               << res.severeblocktimerate[1] << ", " << res.blockrate[0] << ", "
+    //               << res.blockrate[1] << ", " << res.datarate[0] << ", " << res.datarate[1] << ", "
+    //               << res.throughput[1] << ", " << res.throughput[2] << ", "<< res.throughput[0] << std::endl;
+    //     }
+    //     fout.close();
+    // }
     
-    std::vector<double> res_throughputs;
-    for (const auto & res : results)
-    {
-        res_throughputs.push_back(res.throughput[0]);
-    }
+    // std::vector<double> res_throughputs;
+    // for (const auto & res : results)
+    // {
+    //     res_throughputs.push_back(res.throughput[0]);
+    // }
 
     double pM1, pM2;
     if(rtsCountMLD2G == 0) pM1 = 0;
@@ -1351,34 +1351,34 @@ main(int argc, char* argv[])
     std::cout << "pM: " << pM1 << " (2.4G), " << pM2 << " (5G)" << std::endl;
     PrintSldStats(interval, payloadSize);
 
-    auto calc_std_dev = [](std::vector<double>& v, int n) -> std::pair<double, double> {
-        auto start = v.end() - n;
-        double sum = std::accumulate(start, v.end(), 0.0);
-        double mean = sum / n;
-        double var = 0.0;
-        double mn = 1e5;
-        int idx = 0;
-        for (auto it = start; it != v.end(); ++it) {
-            double d = std::abs(*it - mean);
-            var += std::pow(d, 2);
-            if (d < mn) {
-                mn = d;
-                idx = v.end() - it;
-            }
-        }
-        std::cout << "use the " << idx << "th to the last of the result." << std::endl;
-        var /= n;
-    return std::make_pair(sqrt(var), mean);
-    };
-    auto ans = calc_std_dev(res_throughputs, 3);
-    double cv =  ans.first / ans.second;
+    // auto calc_std_dev = [](std::vector<double>& v, int n) -> std::pair<double, double> {
+    //     auto start = v.end() - n;
+    //     double sum = std::accumulate(start, v.end(), 0.0);
+    //     double mean = sum / n;
+    //     double var = 0.0;
+    //     double mn = 1e5;
+    //     int idx = 0;
+    //     for (auto it = start; it != v.end(); ++it) {
+    //         double d = std::abs(*it - mean);
+    //         var += std::pow(d, 2);
+    //         if (d < mn) {
+    //             mn = d;
+    //             idx = v.end() - it;
+    //         }
+    //     }
+    //     std::cout << "use the " << idx << "th to the last of the result." << std::endl;
+    //     var /= n;
+    // return std::make_pair(sqrt(var), mean);
+    // };
+    // auto ans = calc_std_dev(res_throughputs, 3);
+    // double cv =  ans.first / ans.second;
     
-    std::cout << "standard deviation: " << ans.first << std::endl;
-    std::cout << "coeff of variation: " << cv * 100 << "% " << std::endl;
-    if (cv > 0.1) {
-        std::cout << "Please set longer simulation time use: --simT" << std::endl;
-    }
-    std::cout << "result saved: " << csv_file << std::endl;
+    // std::cout << "standard deviation: " << ans.first << std::endl;
+    // std::cout << "coeff of variation: " << cv * 100 << "% " << std::endl;
+    // if (cv > 0.1) {
+    //     std::cout << "Please set longer simulation time use: --simT" << std::endl;
+    // }
+    // std::cout << "result saved: " << csv_file << std::endl;
 
     return 0;
 }

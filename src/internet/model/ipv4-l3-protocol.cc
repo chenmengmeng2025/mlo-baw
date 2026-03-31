@@ -736,7 +736,6 @@ Ipv4L3Protocol::Send(Ptr<Packet> packet,
                      Ptr<Ipv4Route> route)
 {
     NS_LOG_FUNCTION(this << packet << source << destination << uint32_t(protocol) << route);
-    // std::cout << "packetSize = " << packet->GetSize() << std::endl;
     bool mayFragment = true;
     // we need a copy of the packet with its tags in case we need to invoke recursion.
     Ptr<Packet> pktCopyWithTags = packet->Copy();

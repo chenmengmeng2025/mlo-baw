@@ -252,10 +252,6 @@ QosFrameExchangeManager::StartTransmission(Ptr<QosTxop> edca, Time txopDuration)
     {
         m_edca->NotifyChannelAccessed(m_linkId, Seconds(0));
         return true;
-    } 
-    else {
-        // std::cout << "Link " << std::to_string(m_linkId) << "卡窗 " << std::endl;
-        // std::cout << m_edca->GetWifiMacQueue()->GetNPackets() << " " << std::endl;
     }
 
     NS_LOG_DEBUG("No frame transmitted");
@@ -287,7 +283,6 @@ QosFrameExchangeManager::StartFrameExchange(Ptr<QosTxop> edca,
     txParams.m_txVector =
         GetWifiRemoteStationManager()->GetDataTxVector(mpdu->GetHeader(), m_allowedWidth);
 
-    // std::cout << std::to_string(availableTime.GetSeconds()) << std::endl;
     Ptr<WifiMpdu> item = edca->GetNextMpdu(m_linkId, mpdu, txParams, availableTime, initialFrame);
 
     if (!item)
@@ -391,21 +386,19 @@ QosFrameExchangeManager::TryAddMpdu(Ptr<const WifiMpdu> mpdu,
         ppduDurationLimit = availableTime - *protectionTime - *acknowledgmentTime;
     }
     uint32_t maxNMpdus = std::numeric_limits<uint32_t>::max();
-    if (m_edca->GetMode() & 0x03) {
+    if (m_edca->GetMode() & 0x01) {
         uint8_t linkId = m_phy->GetPhyBand() == WIFI_PHY_BAND_2_4GHZ ? 0 : 1;
-        if(m_edca->GetPreTitle() == 0 || m_edca->GetPreTitle() == 5 || m_edca->GetPreTitle() == 6)  maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit0(linkId);
-        if(m_edca->GetPreTitle() == 1 || m_edca->GetPreTitle() == 3 || m_edca->GetPreTitle() == 4) maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit1(linkId, m_edca->GetPreTitle());
-        if(m_edca->GetPreTitle() == 2){
-            maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit2(linkId, m_mac->GetMpduBufferSize());
-        }
+        maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit(linkId, m_edca->GetPreTitle(), m_mac->GetMpduBufferSize());
+        // if(m_edca->GetPreTitle() == 0 || m_edca->GetPreTitle() == 5 || m_edca->GetPreTitle() == 6)  maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit0(linkId);
+        // if(m_edca->GetPreTitle() == 1 || m_edca->GetPreTitle() == 3 || m_edca->GetPreTitle() == 4) maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit1(linkId, m_edca->GetPreTitle());
+        // if(m_edca->GetPreTitle() == 2){
+        //     maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit2(linkId, m_mac->GetMpduBufferSize());
+        // }
     }
     if (!IsWithinLimitsIfAddMpdu(mpdu, txParams, ppduDurationLimit) || txParams.GetCurrentMpduNumber(mpdu->GetHeader().GetAddr1()) > maxNMpdus)
     {
         // adding MPDU failed, undo the addition of the MPDU and restore protection and
         // acknowledgment methods if they were swapped
-        // if(m_phy->GetPhyBand() == WIFI_PHY_BAND_2_4GHZ){
-        //     maxNMpdus = maxNMpdus + 1;
-        // }
         txParams.UndoAddMpdu();
         txParams.m_txDuration = prevTxDuration;
         if (protectionSwapped)
@@ -464,7 +457,7 @@ QosFrameExchangeManager::IsWithinSizeAndTimeLimits(uint32_t ppduPayloadSize,
     NS_ASSERT_MSG(txParams.m_txDuration, "TX duration not yet computed");
     auto txTime = txParams.m_txDuration.value();
     NS_LOG_DEBUG("PPDU duration: " << txTime.As(Time::MS));
-    
+
     if ((ppduDurationLimit.IsStrictlyPositive() && txTime > ppduDurationLimit) ||
         (maxPpduDuration.IsStrictlyPositive() && txTime > maxPpduDuration))
     {

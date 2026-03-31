@@ -141,61 +141,8 @@ def run_command(cmd):
 
 # 原始命令列表（不再需要手动指定日志文件名）
 commands = [
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=4  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=5  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=6  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=7  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=8  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=9  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=10  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=11  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=12  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=13  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-
-
-
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=4  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=4  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=5  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=5  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=6  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=6  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=7  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=7  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=8  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=8  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=9  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=9  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=10  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=10  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=11  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=11  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=12  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=12  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=1 --bw1=20 --bw2=80 --mcs1=13  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=13  --mcs2=10 --nss=4 --ampdunumsld0=96 --ampdunumsld1=928 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=4  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=4  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=5  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=5  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=6  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=6  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=7  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=7  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=8  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=8  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=9  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=9  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=10  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=10  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=11  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=11  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=12  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=12  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=1 --bw1=20 --bw2=80 --mcs1=13  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=256 --pretitle=2 --bw1=20 --bw2=80 --mcs1=13  --mcs2=10 --nss=4 --ampdunumsld0=24 --ampdunumsld1=232 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
-
+"./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=2 --bw1=20 --bw2=80 --mcs1=10  --mcs2=10 --nss=4 --maxampdunum0=0 --maxampdunum1=0 --seed=7 --scenario=changer1r2-new",
+# "./ns3 run mode-test-udp-1vN-dl --  --nsld1=3 --nsld2=1 --simt=6.5 --bawsize=1024 --pretitle=6 --bw1=20 --bw2=80 --mcs1=10  --mcs2=10 --nss=4 --maxampdunum0=124 --maxampdunum1=900 --seed=1 --ampdunumsld0=96 --ampdunumsld1=928 --scenario=changer1r2-new",
 ]
 
 print("开始顺序执行命令...")

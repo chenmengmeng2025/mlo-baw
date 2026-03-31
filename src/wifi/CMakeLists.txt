@@ -167,7 +167,6 @@ set(source_files
     model/yans-wifi-phy.cc
     model/wifi-spectrum-value-helper.cc
 
-    helper/wifi-tx-stats-helper.cc
     model/msdu-grouper.cc
 )
 
@@ -342,7 +341,6 @@ set(header_files
     model/wifi-spectrum-value-helper.h
     test/wifi-mlo-test.h
 
-    helper/wifi-tx-stats-helper.h
     model/msdu-grouper.h
 )
 

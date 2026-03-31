@@ -310,7 +310,7 @@ public:
 
     uint32_t GetBAWindowThreshold(uint8_t linkId);
 
-    bool UpdateAmpduSize(uint8_t linkId, uint32_t size);
+    void UpdateAmpduSize(uint8_t linkId, uint32_t size);
 
     void SetTxopTimeEnd(uint64_t time /* ns */, uint8_t linkId);
 
@@ -343,7 +343,7 @@ public:
 
     mldParams GetNewEdcaParameters(bool initial, uint16_t winSize = 256, double p1 = 1, double p2 = 1, double datarate1 = 0, double datarate2 = 0, double occ1 = 0, double occ2 = 0);
 
-    uint32_t AvailableRedundancy(uint8_t linkId);
+    // uint32_t AvailableRedundancy(uint8_t linkId);
 
     void UpdateRedundancyCnt(uint8_t linkId);
 
@@ -353,7 +353,7 @@ public:
         return m_period;
     }
 
-    void ResetInflighedCnt();
+    // void ResetInflighedCnt();
     
     std::vector<uint32_t> GetMaxAmpduLength();
 
@@ -369,9 +369,7 @@ public:
 
     Mac48Address GetRecipient();
 
-    uint32_t GetAmpduLimit0(uint8_t linkId);
-    uint32_t GetAmpduLimit1(uint8_t linkId, uint32_t preTitle);
-    uint32_t GetAmpduLimit2(uint8_t linkId, uint16_t mpduBufferSize);
+    uint32_t GetAmpduLimit(uint8_t linkId, uint32_t preTitle, uint32_t mpduBufferSize);
 
     void SetAmpduLimit(uint8_t linkId, int limit);
 

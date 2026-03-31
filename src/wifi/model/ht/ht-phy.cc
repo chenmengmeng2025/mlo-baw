@@ -324,7 +324,6 @@ HtPhy::GetPayloadDuration(uint32_t size,
         break;
     }
     case NORMAL_MPDU:
-    // payloadDuration的计算方式
     case SINGLE_MPDU: {
         // Not an A-MPDU or single MPDU (i.e. the current payload contains both service and padding)
         // The number of OFDM symbols in the data field when BCC encoding

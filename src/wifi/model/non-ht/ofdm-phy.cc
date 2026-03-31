@@ -259,7 +259,7 @@ OfdmPhy::GetPayloadDuration(uint32_t size,
 
     double numDataBitsPerSymbol =
         txVector.GetMode().GetDataRate(txVector) * symbolDuration.GetNanoSeconds() / 1e9;
-    // std::cout<<txVector.GetMode().GetDataRate(txVector)<<std::endl;
+
     // The number of OFDM symbols in the data field when BCC encoding
     // is used is given in equation 19-32 of the IEEE 802.11-2016 standard.
     double numSymbols =

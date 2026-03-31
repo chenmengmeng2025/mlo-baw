@@ -349,31 +349,16 @@ HtFrameExchangeManager::StartFrameExchange(Ptr<QosTxop> edca, Time availableTime
     {
         return true;
     }
-    if (edca->GetMsduGrouper())
-        edca->GetMsduGrouper()->ResetInflighedCnt();
+    // if (edca->GetMsduGrouper())
+    //     edca->GetMsduGrouper()->ResetInflighedCnt();
     Ptr<WifiMpdu> peekedItem = edca->PeekNextMpdu(m_linkId);
 
     // Even though channel access is requested when the queue is not empty, at
     // the time channel access is granted the lifetime of the packet might be
     // expired and the queue might be empty.
-    // if (!peekedItem)
-    // {
-    //     NS_LOG_DEBUG("No frames available for transmission");
-    //     if (edca->GetMsduGrouper())
-    //     {
-    //         std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
-    //         edca->GetMsduGrouper()->UpdateAmpduSize(m_linkId, 0); // 通过UpdateAmpduSize，让算法决定是否开启冗余，然后重新Peek
-    //         peekedItem = edca->PeekNextMpdu(m_linkId);
-    //     }
-    //     if (!peekedItem) {
-    //         // 卡TCP窗，此时需要尽可能减少对TCP ACK的干扰
-    //         return false;
-    //     }
-    // }
-
-    if (!peekedItem) // 不考虑开启冗余模式
+    if (!peekedItem)
     {
-        std::cout << Simulator::Now().GetMicroSeconds() << "us, " << m_mac->GetAddress() << " no frames available for transmission on " << +m_linkId << std::endl;
+        NS_LOG_DEBUG("No frames available for transmission");
         return false;
     }
 
@@ -618,26 +603,27 @@ HtFrameExchangeManager::SendDataFrame(Ptr<WifiMpdu> peekedItem,
         return false;
     }
     // try A-MPDU aggregation
-    if (edca->GetMsduGrouper()) {
-        edca->GetMsduGrouper()->ResetInflighedCnt();
-    }
+    // if (edca->GetMsduGrouper()) {
+    //     edca->GetMsduGrouper()->ResetInflighedCnt();
+    // }
     std::vector<Ptr<WifiMpdu>> mpduList =
         m_mpduAggregator->GetNextAmpdu(mpdu, txParams, availableTime);
     NS_ASSERT(txParams.m_acknowledgment);
     if (edca->GetMsduGrouper()) {
-        bool flag = edca->GetMsduGrouper()->UpdateAmpduSize(m_linkId, mpduList.size());
-        if (flag)
-        {
-            txParams.Clear();
-            txParams.m_txVector =
-                GetWifiRemoteStationManager()->GetDataTxVector(peekedItem->GetHeader(),
-                                                               m_allowedWidth);
-            mpdu = edca->GetNextMpdu(m_linkId, peekedItem, txParams, availableTime, initialFrame);
-            mpduList = m_mpduAggregator->GetNextAmpdu(mpdu, txParams, availableTime);
-            edca->GetMsduGrouper()->ResetRedundancyMode(m_linkId);
-        }
-        if (edca->GetMsduGrouper()->GetRedundancyMode(m_linkId))
-            edca->GetMsduGrouper()->ResetRedundancyMode(m_linkId);
+        // bool flag = 
+        edca->GetMsduGrouper()->UpdateAmpduSize(m_linkId, mpduList.size());
+        // if (flag)
+        // {
+        //     txParams.Clear();
+        //     txParams.m_txVector =
+        //         GetWifiRemoteStationManager()->GetDataTxVector(peekedItem->GetHeader(),
+        //                                                        m_allowedWidth);
+        //     mpdu = edca->GetNextMpdu(m_linkId, peekedItem, txParams, availableTime, initialFrame);
+        //     mpduList = m_mpduAggregator->GetNextAmpdu(mpdu, txParams, availableTime);
+        //     edca->GetMsduGrouper()->ResetRedundancyMode(m_linkId);
+        // }
+        // if (edca->GetMsduGrouper()->GetRedundancyMode(m_linkId))
+        //     edca->GetMsduGrouper()->ResetRedundancyMode(m_linkId);
 
         if (edca->GetMsduGrouper()->GetMode() & 1 << 5) // sender log
         {
@@ -650,13 +636,6 @@ HtFrameExchangeManager::SendDataFrame(Ptr<WifiMpdu> peekedItem,
             } else std::cout << mpdu->GetHeader().GetSequenceNumber() <<  "], 长度 = 1" << std::endl;
         }
     }
-    // if (Simulator::Now()> Seconds(3.075) && edca->GetMsduGrouper()) {
-    //     std::cout << Simulator::Now() << " SendDataFrame on Link " << (uint32_t)m_linkId << std::endl << "[";
-    //     for (const auto & it : mpduList) {
-    //         std::cout << it->GetHeader().GetSequenceNumber() << ", ";
-    //     }
-    //     std::cout << "], 长度 = " << mpduList.size() << ", packetSize = " << mpduList[0]->GetPacketSize() << std::endl;
-    // }
     
     if (mpduList.size() > 1)
     {
@@ -687,18 +666,9 @@ HtFrameExchangeManager::CalculateAcknowledgmentTime(WifiAcknowledgment* acknowle
     if (acknowledgment->method == WifiAcknowledgment::BLOCK_ACK)
     {
         auto blockAcknowledgment = static_cast<WifiBlockAck*>(acknowledgment);
-        // std::cout<<std::endl;
-        // std::cout<<"BLOCK ACK "<<m_phy->GetFrequency()<<"MHZ; ";
         Time baTxDuration = m_phy->CalculateTxDuration(GetBlockAckSize(blockAcknowledgment->baType),
                                                        blockAcknowledgment->blockAckTxVector,
                                                        m_phy->GetPhyBand());
-        
-        // std::cout<<"sifs "<<m_phy->GetSifs().GetMicroSeconds()<<"us; ";
-        // std::cout<<"MpduBufferSize "<<m_mac->GetMpduBufferSize()<<"; ";
-        // std::cout<<"blockacksize "<<GetBlockAckSize(blockAcknowledgment->baType)<<"; ";
-        // std::cout<<"baTxDuration "<<baTxDuration.GetMicroSeconds()<<"us; ";
-        // std::cout<<"PhyPreambleAndHeaderDuration "<<m_phy->CalculatePhyPreambleAndHeaderDuration(blockAcknowledgment->blockAckTxVector).GetMicroSeconds()<<"us;";
-        // std::cout<<std::endl;
         blockAcknowledgment->acknowledgmentTime = m_phy->GetSifs() + baTxDuration;
     }
     else if (acknowledgment->method == WifiAcknowledgment::BAR_BLOCK_ACK)
@@ -756,7 +726,7 @@ HtFrameExchangeManager::NotifyReceivedNormalAck(Ptr<WifiMpdu> mpdu)
         }
     }
     else if (mpdu->GetHeader().IsAction())
-    {   
+    {
         auto addr1 = mpdu->GetHeader().GetAddr1();
         auto address = GetWifiRemoteStationManager()->GetMldAddress(addr1).value_or(addr1);
         WifiActionHeader actionHdr;
@@ -1072,17 +1042,10 @@ HtFrameExchangeManager::SendPsdu()
         // at the PHY-TXEND.confirm primitive" (section 10.3.2.9 or 10.22.2.2 of 802.11-2016).
         // aRxPHYStartDelay equals the time to transmit the PHY header.
         auto blockAcknowledgment = static_cast<WifiBlockAck*>(m_txParams.m_acknowledgment.get());
-        Time transmissionDelay = m_phy->CalculateTransmissionDelay(m_psdu->IsAggregate(), m_psdu->GetNMpdus(), m_psdu->GetNMsdus(), m_psdu);
-        // std::cout << "SendPsdu BLOCK_ACK transmissionDelay: " << m_psdu->GetNMpdus() << " " << m_psdu->GetNMsdus() << " " << transmissionDelay.As(Time::US) << std::endl;
         Time timeout =
             txDuration + m_phy->GetSifs() + m_phy->GetSlot() +
-            m_phy->CalculatePhyPreambleAndHeaderDuration(blockAcknowledgment->blockAckTxVector) + transmissionDelay;
+            m_phy->CalculatePhyPreambleAndHeaderDuration(blockAcknowledgment->blockAckTxVector);
         NS_ASSERT(!m_txTimer.IsRunning());
-        // std::cout<<""<<m_phy->GetFrequency()<<"MHZ;";
-        // std::cout<<"sifs "<<m_phy->GetSifs().GetMicroSeconds()<<"us;";
-        // std::cout<<"slot "<<m_phy->GetSlot().GetMicroSeconds()<<"us;";
-        // std::cout<<"BA PhyPreambleAndHeaderDuration"<<m_phy->CalculatePhyPreambleAndHeaderDuration(blockAcknowledgment->blockAckTxVector).GetMicroSeconds()<<"us;";
-        // std::cout<<std::endl;
         m_txTimer.Set(WifiTxTimer::WAIT_BLOCK_ACK,
                       timeout,
                       {m_psdu->GetAddr1()},
@@ -1105,8 +1068,8 @@ HtFrameExchangeManager::SendPsdu()
         Ptr<QosTxop> edca = m_mac->GetQosTxop(tid);
         auto [reqHdr, hdr] = edca->PrepareBlockAckRequest(m_psdu->GetAddr1(), tid);
         GetBaManager(tid)->ScheduleBar(reqHdr, hdr);
-        Time transmissionDelay = m_phy->CalculateTransmissionDelay(m_psdu->IsAggregate(), m_psdu->GetNMpdus(), m_psdu->GetNMsdus(), m_psdu);
-        Simulator::Schedule(txDuration + transmissionDelay, &HtFrameExchangeManager::TransmissionSucceeded, this);
+        
+        Simulator::Schedule(txDuration, &HtFrameExchangeManager::TransmissionSucceeded, this);
     }
     else
     {
@@ -1209,22 +1172,22 @@ HtFrameExchangeManager::ForwardPsduDown(Ptr<const WifiPsdu> psdu, WifiTxVector& 
         txVector.SetAggregation(true);
     }
     if (m_mac->GetNLinks() > 1) {
-        if (psdu->GetTids().size() && m_mac->GetQosTxop(*psdu->GetTids().begin())->GetMode() & 0x03)
-        { // 模式一 or 模式二
-            // bool logfl = m_mac->GetQosTxop(*psdu->GetTids().begin())->GetMode() & (1 << 5);
-            // if (logfl) {
-            //     std::cout << Simulator::Now() << " ForwardPsduDown on Link " << +m_linkId << std::endl;
-            //     std::cout << "\t Before ForwardPsduDown, TxStatus: (" << m_mac->GetLinkTxStatus()[0] << ", "
-            //               << m_mac->GetLinkTxStatus()[1] << ")" << std::endl;
-            // }
+        if (psdu->GetTids().size() && m_mac->GetQosTxop(*psdu->GetTids().begin())->GetMode() & 0x01)
+        {
+            bool logfl = m_mac->GetQosTxop(*psdu->GetTids().begin())->GetMode() & (1 << 5);
+            if (logfl) {
+                std::cout << Simulator::Now() << " ForwardPsduDown on Link " << +m_linkId << std::endl;
+                std::cout << "\t Before ForwardPsduDown, TxStatus: (" << m_mac->GetLinkTxStatus()[0] << ", "
+                          << m_mac->GetLinkTxStatus()[1] << ")" << std::endl;
+            }
             m_phy->Send(psdu, txVector, m_linkId, m_mac->GetLinkTxStatus());
-            // if (logfl)
-            //     std::cout << "\t After ForwardPsduDown, TxStatus: (" << m_mac->GetLinkTxStatus()[0] << ", "
-            //               << m_mac->GetLinkTxStatus()[1] << ")" << std::endl;
+            if (logfl)
+                std::cout << "\t After ForwardPsduDown, TxStatus: (" << m_mac->GetLinkTxStatus()[0] << ", "
+                          << m_mac->GetLinkTxStatus()[1] << ")" << std::endl;
         }
         else
             m_phy->Send(psdu, txVector);
-    } 
+    }
     else m_phy->Send(psdu, txVector);
 }
 
@@ -1578,8 +1541,6 @@ HtFrameExchangeManager::SendBlockAck(const RecipientBlockAckAgreement& agreement
         std::cout << Simulator::Now() << " Link " << +m_linkId << ", Send Block Ack:" << std::endl;
         blockAck.Print(std::cout << "\t");
     }
-    // std::cout << Simulator::Now() << " Send Block Ack: ";
-    // blockAck.Print(std::cout);
     Ptr<Packet> packet = Create<Packet>();
     packet->AddHeader(blockAck);
     Ptr<WifiPsdu> psdu = GetWifiPsdu(Create<WifiMpdu>(packet, hdr), blockAckTxVector);
@@ -1657,7 +1618,6 @@ HtFrameExchangeManager::ReceiveMpdu(Ptr<const WifiMpdu> mpdu,
             mpdu->GetPacket()->PeekHeader(blockAck);
             uint8_t tid = blockAck.GetTidInfo();
 
-            // 接收BA前: 查看各链路状态
             for (const auto & linkId : m_mac->GetLinkIds())
             {
                 GetBaManager(tid)->UpdateLinkRPtrSyncEnabled(linkId, m_mac->GetLinkTxStatus()[linkId]);
@@ -1665,16 +1625,16 @@ HtFrameExchangeManager::ReceiveMpdu(Ptr<const WifiMpdu> mpdu,
 
             std::pair<uint16_t, uint16_t> ret =
                 GetBaManager(tid)->NotifyGotBlockAck(m_linkId,
-                                                    blockAck,
-                                                    m_mac->GetMldAddress(sender).value_or(sender),
-                                                    {tid});
+                                                     blockAck,
+                                                     m_mac->GetMldAddress(sender).value_or(sender),
+                                                     {tid});
                                                     
             GetWifiRemoteStationManager()->ReportAmpduTxStatus(sender,
-                                                            ret.first,
-                                                            ret.second, 
-                                                            rxSnr,
-                                                            tag.Get(),
-                                                            m_txParams.m_txVector);
+                                                               ret.first,
+                                                               ret.second, 
+                                                               rxSnr,
+                                                               tag.Get(),
+                                                               m_txParams.m_txVector);
 
             // cancel the timer
             m_txTimer.Cancel();
@@ -1801,7 +1761,6 @@ HtFrameExchangeManager::ReceiveMgtAction(Ptr<const WifiMpdu> mpdu, const WifiTxV
             // We've received an ADDBA Request. Our policy here is to automatically accept it,
             // so we get the ADDBA Response on its way as soon as we finish transmitting the Ack,
             // to avoid to concurrently send Ack and ADDBA Response in case of multi-link devices
-            std::cout << m_mac->GetAddress() << " Send ADDBAResponse, originator: " << *GetWifiRemoteStationManager()->GetMldAddress(from) << std::endl;
             Simulator::Schedule(m_phy->GetSifs() + ackTxTime,
                                 &HtFrameExchangeManager::SendAddBaResponse,
                                 this,

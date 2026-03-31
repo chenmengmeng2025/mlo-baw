@@ -251,10 +251,10 @@ class ByteTagList
      */
     uint32_t Deserialize(const uint32_t* buffer, uint32_t size);
 
-    /*
-    Get m_adjustment
-    */
-    uint32_t GetAdjustment() const;
+    // /*
+    // Get m_adjustment
+    // */
+    // uint32_t GetAdjustment() const;
 
   private:
     /**
