@@ -467,16 +467,16 @@ class BlockAckManager : public Object
      */
     void UpdateLinkRPtrSyncEnabled(uint8_t linkId, bool txStatus);
 
-    /**
-     * Get read pointer values for both links.
-     *
-     * \param recipient the recipient MAC address
-     * \param tid Traffic ID
-     * \return vector containing read pointer values and window start
-     */
-    std::vector<uint16_t> GetRptr(const Mac48Address& recipient, uint8_t tid);
-
     void SetMode(uint32_t mode);
+    void SetPERAllZero(bool isAllZero);
+
+    OriginatorBlockAckAgreement* GetOriginatorBlockAckAgreement(const Mac48Address& recipient, uint8_t tid);
+
+    typedef void (*BlockAckResultTracedCallback)(Mac48Address recipient,
+                                             uint8_t tid,
+                                             uint8_t linkId,
+                                             uint16_t nSuccessfulMpdus,
+                                             uint16_t nFailedMpdus);
 
   protected:
     void DoDispose() override;
@@ -555,8 +555,10 @@ class BlockAckManager : public Object
      */
     TracedCallback<Time, Mac48Address, uint8_t, OriginatorBlockAckAgreement::State>
         m_originatorAgreementState;
-    std::vector<bool> m_linkRPtrSyncEnabled{true, true}; //!< Per-link ACK mode enabled flags
+    std::vector<bool> m_linkRPtrSyncEnabled{true, true, true}; //!< Per-link ACK mode enabled flags
     uint32_t m_mode;
+    bool m_isPERAllZero;
+    TracedCallback<Mac48Address, uint8_t, uint8_t, uint16_t, uint16_t> m_blockAckResultCallback;
 };
 
 } // namespace ns3

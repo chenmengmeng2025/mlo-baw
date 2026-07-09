@@ -814,13 +814,13 @@ PhyEntity::GetReceptionStatus(Ptr<WifiMpdu> mpdu,
         staId,
         {relativeMpduStart, relativeMpduStart + mpduDuration});
 
+    if(m_fixedPER && mpdu->GetHeader().IsQosData()) snrPer.per = m_fixedPER; //重新赋值为固定的PER值
     WifiMode mode = event->GetPpdu()->GetTxVector().GetMode(staId);
     NS_LOG_DEBUG("rate=" << (mode.GetDataRate(event->GetPpdu()->GetTxVector(), staId))
                          << ", SNR(dB)=" << RatioToDb(snrPer.snr) << ", PER=" << snrPer.per
                          << ", size=" << mpdu->GetSize()
                          << ", relativeStart = " << relativeMpduStart.As(Time::NS)
                          << ", duration = " << mpduDuration.As(Time::NS));
-
     // There are two error checks: PER and receive error model check.
     // PER check models is typical for Wi-Fi and is based on signal modulation;
     // Receive error model is optional, if we have an error model and
@@ -833,11 +833,13 @@ PhyEntity::GetReceptionStatus(Ptr<WifiMpdu> mpdu,
           m_wifiPhy->m_postReceptionErrorModel->IsCorrupt(mpdu->GetPacket()->Copy())))
     {
         NS_LOG_DEBUG("Reception succeeded: " << *mpdu);
+        // if(m_fixedPER && mpdu->GetHeader().IsQosData()) std::cout << mpdu->GetHeader().GetSequenceNumber() <<": PER=" << snrPer.per << ", Reception succeeded" << std::endl;
         return {true, signalNoise};
     }
     else
     {
         NS_LOG_DEBUG("Reception failed: " << *mpdu);
+        // if(m_fixedPER && mpdu->GetHeader().IsQosData()) std::cout << mpdu->GetHeader().GetSequenceNumber() <<": PER=" << snrPer.per << ", Reception failed" << std::endl;
         return {false, signalNoise};
     }
 }

@@ -349,8 +349,7 @@ HtFrameExchangeManager::StartFrameExchange(Ptr<QosTxop> edca, Time availableTime
     {
         return true;
     }
-    // if (edca->GetMsduGrouper())
-    //     edca->GetMsduGrouper()->ResetInflighedCnt();
+
     Ptr<WifiMpdu> peekedItem = edca->PeekNextMpdu(m_linkId);
 
     // Even though channel access is requested when the queue is not empty, at
@@ -358,6 +357,7 @@ HtFrameExchangeManager::StartFrameExchange(Ptr<QosTxop> edca, Time availableTime
     // expired and the queue might be empty.
     if (!peekedItem)
     {
+        // if (edca->GetMsduGrouper()) std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
         NS_LOG_DEBUG("No frames available for transmission");
         return false;
     }
@@ -603,27 +603,24 @@ HtFrameExchangeManager::SendDataFrame(Ptr<WifiMpdu> peekedItem,
         return false;
     }
     // try A-MPDU aggregation
-    // if (edca->GetMsduGrouper()) {
-    //     edca->GetMsduGrouper()->ResetInflighedCnt();
-    // }
     std::vector<Ptr<WifiMpdu>> mpduList =
         m_mpduAggregator->GetNextAmpdu(mpdu, txParams, availableTime);
     NS_ASSERT(txParams.m_acknowledgment);
     if (edca->GetMsduGrouper()) {
-        // bool flag = 
-        edca->GetMsduGrouper()->UpdateAmpduSize(m_linkId, mpduList.size());
-        // if (flag)
-        // {
-        //     txParams.Clear();
-        //     txParams.m_txVector =
-        //         GetWifiRemoteStationManager()->GetDataTxVector(peekedItem->GetHeader(),
-        //                                                        m_allowedWidth);
-        //     mpdu = edca->GetNextMpdu(m_linkId, peekedItem, txParams, availableTime, initialFrame);
-        //     mpduList = m_mpduAggregator->GetNextAmpdu(mpdu, txParams, availableTime);
-        //     edca->GetMsduGrouper()->ResetRedundancyMode(m_linkId);
-        // }
-        // if (edca->GetMsduGrouper()->GetRedundancyMode(m_linkId))
-        //     edca->GetMsduGrouper()->ResetRedundancyMode(m_linkId);
+        auto recipient = mpdu->GetHeader().GetAddr1();
+        if (auto mldAddr = GetWifiRemoteStationManager()->GetMldAddress(recipient))
+        {
+            recipient = *mldAddr;
+        }
+        auto agreement = edca->GetBaManager()->GetOriginatorBlockAckAgreement(recipient, mpdu->GetHeader().GetQosTid());
+        if (!mpduList.empty()) {
+            for (const auto & it : mpduList) {
+                if(!m_dcf->IsPERAllZero()) agreement->GetTxWindow().SetElementState(agreement->GetDistance(it->GetHeader().GetSequenceNumber()), agreement->GetTxWindow().InflightStateForLink(m_linkId));
+            }
+        }
+        else{
+            if(!m_dcf->IsPERAllZero()) agreement->GetTxWindow().SetElementState(agreement->GetDistance(mpdu->GetHeader().GetSequenceNumber()), agreement->GetTxWindow().InflightStateForLink(m_linkId));
+        }
 
         if (edca->GetMsduGrouper()->GetMode() & 1 << 5) // sender log
         {
@@ -634,6 +631,7 @@ HtFrameExchangeManager::SendDataFrame(Ptr<WifiMpdu> peekedItem,
                 }
                 std::cout << "], 长度 = " << mpduList.size() << ", mpduSize = " << mpduList[0]->GetPacketSize() << std::endl;
             } else std::cout << mpdu->GetHeader().GetSequenceNumber() <<  "], 长度 = 1" << std::endl;
+            // agreement->GetTxWindow().Print(std::cout);
         }
     }
     

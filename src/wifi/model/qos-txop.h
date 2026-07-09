@@ -29,13 +29,6 @@ class WifiTxVector;
 class QosFrameExchangeManager;
 class WifiTxParameters;
 
-// enum RedundancyMode: uint8_t { 
-//   NONE = 0,    // 两条链路都不开启
-//   LINK1 = 1,   // 第一条链路开启
-//   LINK2 = 2,   // 第二条链路开启
-//   BOTH = 3     // 两条链路都开启
-//   };
-
 /**
  * \brief Handles the packet queue and stores DCF/EDCA access parameters
  * (one Txop per AC).
@@ -398,10 +391,6 @@ class QosTxop : public Txop
      */
     uint8_t GetAifsn(uint8_t linkId) const override;
 
-    // bool IsLinkUp(uint8_t linkId);
-
-    // void SetLinkUp(uint8_t newLinkUp);
-    
   protected:
     /**
      * Structure holding information specific to a single link. Here, the meaning of
@@ -434,13 +423,6 @@ class QosTxop : public Txop
      */
     QosLinkEntity& GetLink(uint8_t linkId) const;
 
-    // void ScheduleUpdateEdcaParameters(Time period);
-    
-    // void PrintStatsResult(Time period);
-
-    // // void SetParams(const mldParams& next_params);
-
-    // mldParams GetParams();
   private:
     /// allow AggregationCapableTransmissionListener class access
     friend class AggregationCapableTransmissionListener;
@@ -456,11 +438,6 @@ class QosTxop : public Txop
      * \return true if the MPDU is to be considered old, false otherwise
      */
     bool IsQosOldPacket(Ptr<const WifiMpdu> mpdu);
-
-    // /**
-    //  * 判断mpdu是否可以在此link上发送
-    //  */
-    // bool IsLinkAllocated(uint8_t linkId, uint8_t allocatedlink);
 
     AcIndex m_ac;                     //!< the access category
     Ptr<BlockAckManager> m_baManager; //!< the block ack manager
@@ -483,30 +460,6 @@ class QosTxop : public Txop
         TxopTracedCallback;
 
     TxopTracedCallback m_txopTrace; //!< TXOP trace callback
-    
-    // uint8_t m_link_up;
-    // TracedCallback<mldParams,
-    //                double /*link1Pct*/,
-    //                double /*Time*/,
-    //                std::vector<double> /* throughput */,
-    //                std::vector<double> /* MPDU success rate*/,
-    //                std::vector<double> /* occupy rate */,
-    //                std::vector<double> /* avg data rate */,
-    //                std::vector<double> /* block time rate */,
-    //                std::vector<double> /* severe block time rate */,
-    //                std::vector<double> /* block rate */,
-    //                std::vector<uint32_t> /* block cnt */,
-    //                std::vector<uint32_t> /* block cnt true */,
-    //                std::vector<uint64_t> /* txopTime */,
-    //                std::vector<uint32_t> /* txopNum */,
-    //                std::vector<uint32_t> /* maxAmpduLength */,
-    //                std::vector<uint32_t> /* meanAmpduLength */>
-    //     TracedParamsAndStats;
-    // TracedCallback<std::unordered_map<uint8_t, std::vector<std::pair<uint64_t, uint64_t>>>,
-    //                std::unordered_map<uint8_t, std::vector<std::tuple<uint64_t, uint64_t, uint32_t>>>>
-    //     TracedTxopTime;
-    // std::vector<uint32_t> m_alg_txop_limits;
-    // std::vector<int32_t> m_alg_rts_cts_thresholds;
 };
 
 } // namespace ns3

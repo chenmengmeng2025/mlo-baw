@@ -2213,9 +2213,4 @@ WifiRemoteStationManager::UseLdpcForDestination(Mac48Address dest) const
     return (GetLdpcSupported() && GetLdpcSupported(dest));
 }
 
-std::vector<uint32_t>
-WifiRemoteStationManager::GetMaxSsrcAndMaxSlrcAndRtsCtsThreshold() const {
-    return {m_maxSsrc, m_maxSlrc, m_rtsCtsThreshold};
-}
-
 } // namespace ns3

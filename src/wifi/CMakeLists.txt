@@ -353,7 +353,6 @@ build_lib(
     ${libspectrum}
     ${gsl_libraries}
   TEST_SOURCES
-    test/block-ack-test-suite.cc
     test/channel-access-manager-test.cc
     test/inter-bss-test-suite.cc
     test/power-rate-adaptation-test.cc

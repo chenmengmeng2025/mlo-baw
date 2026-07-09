@@ -40,11 +40,12 @@ BlockAckManager::GetTypeId()
             .AddTraceSource("AgreementState",
                             "The state of the ADDBA handshake",
                             MakeTraceSourceAccessor(&BlockAckManager::m_originatorAgreementState),
-                            "ns3::BlockAckManager::AgreementStateTracedCallback");
-            // .AddTraceSource("AckedMpdu",
-            //                 "An MPDU that was successfully acknowledged via Block Ack.",
-            //                 MakeTraceSourceAccessor(&BlockAckManager::m_ackMpduCallback),
-            //                 "ns3::BlockAckManager::MpduAndLinkIdTracedCallback");
+                            "ns3::BlockAckManager::AgreementStateTracedCallback")
+            .AddTraceSource("BlockAckResult",
+                "Notified when a Block Ack is received, with the number of "
+                "successful and failed MPDUs.",
+                MakeTraceSourceAccessor(&BlockAckManager::m_blockAckResultCallback),
+                "ns3::BlockAckManager::BlockAckResultTracedCallback");
     return tid;
 }
 
@@ -70,6 +71,29 @@ BlockAckManager::DoDispose()
 void
 BlockAckManager::SetMode(uint32_t mode) {
     m_mode = mode;
+}
+
+void
+BlockAckManager::SetPERAllZero(bool isAllZero) {
+    m_isPERAllZero = isAllZero;
+}
+
+OriginatorBlockAckAgreement*
+BlockAckManager::GetOriginatorBlockAckAgreement(const Mac48Address& recipient, uint8_t tid)
+{
+    NS_LOG_FUNCTION(this << recipient << +tid);
+
+    auto it = m_originatorAgreements.find({recipient, tid});
+    
+    if (it != m_originatorAgreements.end())
+    {
+        return &(it->second.first); 
+    }
+
+    NS_FATAL_ERROR("OriginatorBlockAckAgreement not found for recipient " << recipient 
+                    << " and TID " << +tid << ". Ensure an agreement is established before access.");
+    
+    return nullptr; 
 }
 
 BlockAckManager::OriginatorAgreementOptConstRef
@@ -111,6 +135,7 @@ BlockAckManager::CreateOriginatorAgreement(const MgtAddBaRequestHeader& reqHdr,
     agreement.SetTimeout(reqHdr.GetTimeout());
     agreement.SetAmsduSupport(reqHdr.IsAmsduSupported());
     agreement.SetHtSupported(true);
+    agreement.SetMode(m_mode);
     if (reqHdr.IsImmediateBlockAck())
     {
         agreement.SetImmediateBlockAck();
@@ -393,15 +418,12 @@ BlockAckManager::NotifyGotAck(uint8_t linkId, Ptr<const WifiMpdu> mpdu)
     {
         if ((*queueIt)->GetHeader().GetSequenceNumber() == mpdu->GetHeader().GetSequenceNumber())
         {
-            // if (!m_ackMpduCallback.IsEmpty())
-            // {
-            //     m_ackMpduCallback(*queueIt, *((*queueIt)->GetInFlightLinkIds().begin()));
-            // }
             m_queue->DequeueIfQueued({*queueIt});
             HandleInFlightMpdu(linkId, queueIt, ACKNOWLEDGED, it, Simulator::Now());
             break;
         }
     }
+    m_blockAckResultCallback(recipient, tid, linkId, 1, 0);
 }
 
 void
@@ -505,10 +527,6 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
             {
                 m_txOkCallback(*queueIt);
             }
-            // if (!m_ackMpduCallback.IsEmpty())
-            // {
-            //     m_ackMpduCallback(*queueIt, *((*queueIt)->GetInFlightLinkIds().begin()));
-            // }
             acked.emplace_back(*queueIt);
             queueIt = HandleInFlightMpdu(linkId, queueIt, ACKNOWLEDGED, it, now);
         }
@@ -517,13 +535,7 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
             ++queueIt;
         }
     }
-    if (logfl) {
-        std::cout << "Received Mpdus: [";
-        for (auto seq : recv_seqs) {
-            std::cout << seq << ", ";
-        }
-        std::cout << "], nSuccessfulMpdus = " << nSuccessfulMpdus << std::endl;
-    }
+
     // 同步linkId链路的信息到其他链路 , 无论是否传输成功，均要将自己的读指针和全局读指针进行同步
     if (m_mode & 0x01) {
         NS_ASSERT(m_linkRPtrSyncEnabled[linkId]);
@@ -539,9 +551,9 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
         // transmission actually failed if the MPDU is inflight only on the same link on
         // which we received the BlockAck frame
         auto linkIds = (*queueIt)->GetInFlightLinkIds();
-
         if (linkIds.size() == 1 && *linkIds.begin() == linkId)
         {
+            if(!m_isPERAllZero) it->second.first.m_txWindow.SetElementState(it->second.first.GetDistance((*queueIt)->GetHeader().GetSequenceNumber()), BlockAckWindow::ElementState::UNACKED);
             nFailedMpdus++;
             if (!m_txFailedCallback.IsNull())
             {
@@ -561,7 +573,16 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
 
         queueIt = HandleInFlightMpdu(linkId, queueIt, STAY_INFLIGHT, it, now);
     }
+    if (logfl) {
+        std::cout << "Received Mpdus: [";
+        for (auto seq : recv_seqs) {
+            std::cout << seq << ", ";
+        }
+        std::cout << "], nSuccessfulMpdus = " << nSuccessfulMpdus << std::endl;
+        // it->second.first.m_txWindow.Print(std::cout);
+    }
 
+    m_blockAckResultCallback(recipient, tid, linkId, nSuccessfulMpdus, nFailedMpdus);
     return {nSuccessfulMpdus, nFailedMpdus};
 }
 
@@ -1025,13 +1046,6 @@ BlockAckManager::UpdateLinkRPtrSyncEnabled(uint8_t linkId, bool txStatus)
 {
     if(m_mode & 0x01)
         m_linkRPtrSyncEnabled[linkId] = !txStatus;
-}
-
-std::vector<uint16_t>
-BlockAckManager::GetRptr(const Mac48Address& recipient, uint8_t tid)
-{
-    auto it = m_originatorAgreements.find({recipient, tid}); 
-    return {it->second.first.m_linkRPtr[0], it->second.first.m_linkRPtr[1], it->second.first.m_txWindow.GetWinStart()};
 }
 
 } // namespace ns3

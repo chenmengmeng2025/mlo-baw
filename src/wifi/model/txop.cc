@@ -155,20 +155,6 @@ Txop::GetTypeId()
                           PointerValue(),
                           MakePointerAccessor(&Txop::GetWifiMacQueue),
                           MakePointerChecker<WifiMacQueue>())
-            .AddAttribute(
-                "MaxGroupSize",
-                "The maximum number of MSDUs allowed in each group",
-                UintegerValue(1), // Default value
-                MakeUintegerAccessor(&Txop::SetMaxGroupSize, &Txop::GetMaxGroupSize),
-                MakeUintegerChecker<uint32_t>()
-                )
-            .AddAttribute(
-                "Link1Pct",
-                "The ratio of packets allocated to link1 (must be between 0.0 and 1.0)",
-                DoubleValue(0),
-                MakeDoubleAccessor(&Txop::m_link1Pct),
-                MakeDoubleChecker<double>(0.0, 1.0) 
-            )
             .AddAttribute("Mode",
                 "Mode Setting",
                 UintegerValue(0),
@@ -193,6 +179,12 @@ Txop::GetTypeId()
                         MakeDoubleAccessor(&Txop::m_datarate1),
                 MakeDoubleChecker<double>()
                 )
+            .AddAttribute("DataRate6",
+                        "Data rate 6G",
+                        DoubleValue(0.0),
+                        MakeDoubleAccessor(&Txop::m_datarate2),
+                MakeDoubleChecker<double>()
+                )
             .AddAttribute("MaxAmpduNum0",
                 "Max Ampdu Num 2.4G",
                 UintegerValue(64),
@@ -205,36 +197,17 @@ Txop::GetTypeId()
                 MakeUintegerAccessor(&Txop::m_maxAmpduNum1),
                 MakeUintegerChecker<uint32_t>()
                 )
-            .AddAttribute("GridSearchEnable",
-                "Enable GridSearch",
-                BooleanValue(false),
-                MakeBooleanAccessor(&Txop::m_gs_enable),
-                MakeBooleanChecker()
+            .AddAttribute("MaxAmpduNum2",
+                "Max Ampdu Num 6G",
+                UintegerValue(64),
+                MakeUintegerAccessor(&Txop::m_maxAmpduNum2),
+                MakeUintegerChecker<uint32_t>()
                 )
-            .AddAttribute("ParamUpdate",
-                "GridSearch to Update Params",
-                BooleanValue(false),
-                MakeBooleanAccessor(&Txop::m_param_update),
-                MakeBooleanChecker()
-                )
-            .AddAttribute("GridSearchParameter",
-                "GridSearchParameter Setting",
-                StringValue("./scratch/params.json"),
-                MakeStringAccessor(&Txop::m_jsonFileName),
-                MakeStringChecker()
-                )
-            .AddAttribute("RedundancyEnable",
-                "Redundancy Setting",
-                BooleanValue(false),
-                MakeBooleanAccessor(&Txop::m_reduandancyEnable),
-                MakeBooleanChecker()
-                )
-            .AddAttribute("Period",
-                "Stats Period Setting",
-                TimeValue(Seconds(3.0)),
-                MakeTimeAccessor(&Txop::m_period),
-                MakeTimeChecker()
-                )
+            .AddAttribute("FixedPER",
+                "Fixed PER for each link (sorted in increasing order of link ID). An empty vector means no fixed PER.",
+                AttributeContainerValue<DoubleValue>(),
+                MakeAttributeContainerAccessor<DoubleValue>(&Txop::SetFixedPER, &Txop::GetFixedPER),
+                MakeAttributeContainerChecker<DoubleValue>(MakeDoubleChecker<double>(0.0, 1.0)))
             .AddTraceSource("BackoffTrace",
                             "Trace source for backoff values",
                             MakeTraceSourceAccessor(&Txop::m_backoffTrace),
@@ -242,11 +215,7 @@ Txop::GetTypeId()
             .AddTraceSource("CwTrace",
                             "Trace source for contention window values",
                             MakeTraceSourceAccessor(&Txop::m_cwTrace),
-                            "ns3::Txop::CwValueTracedCallback")
-            .AddTraceSource("BackoffSlotsTrace",
-                            "Trace source indicating backoff slots updates. ",
-                            MakeTraceSourceAccessor(&Txop::m_backoffSlotsTrace),
-                            "ns3::Txop::BackoffSlotsCallback");
+                            "ns3::Txop::CwValueTracedCallback");
     return tid;
 }
 
@@ -486,8 +455,6 @@ Txop::UpdateBackoffSlotsNow(uint32_t nSlots, Time backoffUpdateBound, uint8_t li
     auto& link = GetLink(linkId);
     link.backoffSlots -= nSlots;
     link.backoffStart = backoffUpdateBound;
-    // if(m_mode & 0x01 && linkId == 1) std::cout<<Simulator::Now().GetMicroSeconds() << " backoffUpdateBound=" << backoffUpdateBound.GetMicroSeconds() << " us, decrease " << nSlots << " slots, new backoff=" << link.backoffSlots << " slots"<<std::endl;
-    m_backoffSlotsTrace(linkId, backoffUpdateBound - nSlots * MicroSeconds(9), nSlots, link.backoffSlots);
     NS_LOG_DEBUG("update slots=" << nSlots << " slots, backoff=" << link.backoffSlots);
 }
 
@@ -496,17 +463,6 @@ Txop::StartBackoffNow(uint32_t nSlots, uint8_t linkId)
 {
     NS_LOG_FUNCTION(this << nSlots << linkId);
     auto& link = GetLink(linkId);
-    // if(m_mode & 0x01){
-    //     std::cout<<m_mac->GetAddress()<<"; "<<m_mac->GetWifiPhy(linkId)->GetFrequency()<<" MHz; "<<Simulator::Now().GetMicroSeconds()<<" us; ";
-    //     if (link.backoffSlots != 0)
-    //     {
-    //         std::cout<<"reset backoff from " << link.backoffSlots << " to " << nSlots << " slots"<<std::endl;
-    //     }
-    //     else
-    //     {
-    //         std::cout<<"start backoff=" << nSlots << " slots"<<std::endl;
-    //     }
-    // }
 
     if (link.backoffSlots != 0)
     {
@@ -518,7 +474,6 @@ Txop::StartBackoffNow(uint32_t nSlots, uint8_t linkId)
     }
     link.backoffSlots = nSlots;
     link.backoffStart = Simulator::Now();
-    m_backoffSlotsTrace(linkId, link.backoffStart, nSlots, link.backoffSlots);
 }
 
 void
@@ -749,11 +704,6 @@ Txop::Queue(Ptr<WifiMpdu> mpdu)
         hasFramesToTransmit[linkId] = HasFramesToTransmit(linkId);
     }
     m_queue->Enqueue(mpdu);
-    
-    // if((m_mode & 0x01) && mpdu->GetHeader().IsQosData() && mpdu->GetPacketSize() != mpdu->GetPacket()->GetAdjustment()){
-    //     // std::cout<< "msdu入队" <<std::endl;
-    //     m_grouper->AggregateMsdu(mpdu);
-    // }
 
     // shuffle link IDs not to request channel access on links always in the same order
     std::vector<uint8_t> shuffledLinkIds(linkIds.cbegin(), linkIds.cend());
@@ -834,22 +784,13 @@ Txop::DoInitialize()
     }
     // The initialization of m_queue and m_mac has been completed.
     if(m_mode & 0x01) {
-        m_grouper = Create<MsduGrouper>(m_maxGroupSize, 4096, m_queue, m_mac, m_mode, m_period);
-        m_grouper->m_datarate_setting[0] = m_datarate0;
-        m_grouper->m_datarate_setting[1] = m_datarate1;
-        if(m_pertitle == 5){
-            m_grouper->SetAmpduLimitBoth(m_maxAmpduNum0, m_mac->GetMpduBufferSize() - m_maxAmpduNum0);
-        }
+        m_grouper = Create<MsduGrouper>(m_mac, m_mode);
+        m_grouper->m_datarate_setting[0] = m_datarate0 / 1e6;
+        m_grouper->m_datarate_setting[1] = m_datarate1 / 1e6;
+        m_grouper->m_datarate_setting[2] = m_datarate2 / 1e6;
         if(m_pertitle == 6){
-            m_grouper->SetAmpduLimitBoth(m_maxAmpduNum0, m_maxAmpduNum1);
+            m_grouper->SetAmpduLimit(m_maxAmpduNum0, m_maxAmpduNum1, m_maxAmpduNum2);
         }
-        if(m_reduandancyEnable) {
-            std::cout << "允许冗余模式开启" << std::endl;
-            m_grouper->EnableRedundancyMode();
-        }
-        m_grouper->SetLink1Pct(m_link1Pct);
-        if (m_gs_enable) m_grouper->EnableGridSearch(m_jsonFileName);
-        if (m_param_update) m_grouper->EnableParamUpdate();
     }
      
 }
@@ -943,16 +884,6 @@ Txop::IsQosTxop() const
     return false;
 }
 
-void Txop::SetMaxGroupSize(uint32_t maxGroupSize)
-{
-    m_maxGroupSize = maxGroupSize;
-}
-
-uint32_t Txop::GetMaxGroupSize() const
-{
-    return m_maxGroupSize;
-}
-
 uint32_t Txop::GetMode() const
 {
     return m_mode;
@@ -962,4 +893,35 @@ uint32_t Txop::GetPreTitle() const
 {
     return m_pertitle;
 }
+
+void
+Txop::SetFixedPER(const std::vector<double>& per)
+{
+    m_fixedPERs = per;
+    m_fixedPERs.resize(m_links.size(), 0.0); // 若 per 比链路数短，补 0.0；若更长则截断
+
+    for (uint8_t linkId = 0; linkId < m_links.size(); ++linkId)
+    {
+        auto phy = m_mac->GetWifiPhy(linkId);
+        if (!phy)
+        {
+            NS_LOG_WARN("SetFixedPER: no WifiPhy on link " << +linkId << ", skipping");
+            continue;
+        }
+        phy->SetFixedPerForPhyEntity(m_fixedPERs[linkId]);
+    }
+}
+
+std::vector<double>
+Txop::GetFixedPER() const
+{
+    return m_fixedPERs; 
+}
+
+bool
+Txop::IsPERAllZero() const
+{
+    return std::all_of(m_fixedPERs.cbegin(), m_fixedPERs.cend(), [](double per) { return per == 0.0; }); 
+}
+
 } // namespace ns3

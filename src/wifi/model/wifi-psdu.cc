@@ -318,21 +318,6 @@ WifiPsdu::GetNMpdus() const
     return m_mpduList.size();
 }
 
-std::size_t 
-WifiPsdu::GetNMsdus() const
-{
-    if (m_mpduList.empty()) {
-        return 0; 
-    }
-
-    auto maxMpdu = std::max_element(m_mpduList.begin(), m_mpduList.end(),
-        [](const auto& a, const auto& b) {
-            return a->GetNMsdus() < b->GetNMsdus();
-        });
-
-    return (*maxMpdu)->GetNMsdus();
-}
-
 std::vector<Ptr<WifiMpdu>>::const_iterator
 WifiPsdu::begin() const
 {

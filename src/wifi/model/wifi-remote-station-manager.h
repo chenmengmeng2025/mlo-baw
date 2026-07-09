@@ -1097,8 +1097,6 @@ class WifiRemoteStationManager : public Object
      * \return a pointer to the WifiMac
      */
     Ptr<WifiMac> GetMac() const;
-
-    std::vector<uint32_t> GetMaxSsrcAndMaxSlrcAndRtsCtsThreshold() const;
     
   protected:
     void DoDispose() override;

@@ -608,7 +608,6 @@ SpectrumWifiPhy::StartRx(Ptr<SpectrumSignalParameters> rxParams,
             return;
         }
     }
-    // std::cout << "senderId: " << senderNodeId << " " << WToDbm(Integral(*receivedSignalPsd)) << " dBm " << Simulator::Now() << " totalRxPower = " << totalRxPower <<  std::endl;
     NS_LOG_INFO("Received Wi-Fi signal");
     StartReceivePreamble(ppdu, rxPowers, rxDuration);
 }
@@ -656,7 +655,6 @@ SpectrumWifiPhy::Transmit(Ptr<WifiSpectrumSignalParameters> txParams)
 {
     NS_LOG_FUNCTION(this << txParams);
     NS_ABORT_IF(!m_currentSpectrumPhyInterface);
-    // std::cout << Simulator::Now().GetNanoSeconds() << "ns, start transmit " << txParams->ppdu->GetPsdu()->GetHeader(0).GetTypeString() << std::endl;
     m_currentSpectrumPhyInterface->StartTx(txParams);
 }
 

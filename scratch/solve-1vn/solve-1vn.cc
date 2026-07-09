@@ -3,20 +3,21 @@ using namespace std;
 
 // 扫描配置结构体
 struct ScanConfig {
-    vector<int> N1_values = {0};
-    vector<int> N2_values = {0};
+    vector<int> N1_values = {3};
+    vector<int> N2_values = {1};
     // vector<int> nmpdu_sld0_values = {32,64,96,128,160,192,224,256,288,320,352,384,416,448,480,512,
     //                              544,576,608,640,672,704,736,768,800,832,864,896,
     //                              928,960,992};
     // vector<int> nmpdu_sld0_values = {8,16,24,32,40,48,56,64,72,80,88,96,104,112,120,128,
     //                              136,144,152,160,168,176,184,192,200,208,216,224,
     //                              232,240,248};
-    vector<int> nmpdu_sld0_values = {0};
-    vector<int> nmpdu_sld1_values = {0};
-    vector<int> BAW_values = {256,1024};
+    vector<int> nmpdu_sld0_values = {96};
+    vector<int> nmpdu_sld1_values = {928};
+    vector<int> BAW_values = {1024};
     vector<double> R1_values = {206.470592,275.29412,309.705884,344.117648,412.94118, 458.823532,516.176472,573.529412,619.411768, 688.235296};
     // vector<double> R1_values = {};
     vector<double> R2_values = {2161.764708};
+    std::string csv_file = "/home/cmm/mlo_hw/scratch/solve-1vn/changer1r2-sld-re.csv";
 };
 
 // 结果记录结构体
@@ -110,7 +111,7 @@ pair<double, double> solve_p(int N, int K, const vector<double>& W,
 tuple<double, double, double> compute_lambda(int n, double pM, double pS,
                                              const vector<double>& tau_T, double tau_F, 
                                              const vector<double>& W, int K = 6) {
-    if (n == 0) return {0, tau_T[0] / ((W[0] - 1) / 2 + tau_T[0]), 1.0};
+    if (n == 0) return {0, tau_T[0] / ((W[0] + 1) / 2 + tau_T[0]), 1.0};
 
     double alpha = compute_alpha(pM, pS, tau_F, tau_T[0], tau_T[1], n);
     double lambdaS = n * (1 - pow(pM, 1.0 / n)) * alpha * pS * tau_T[1];
@@ -128,63 +129,21 @@ double get_throughput(const vector<double>& tau_T, double PL, double sigma, doub
 }
 
 // 计算payload持续时间
-// double calc_payload_duration(double nmpdu, double L_subf, double rate, bool is_link0) {
-//     if (nmpdu < 1e-9) return 0.0;
-//     if (is_link0) {
-//         return floor(ceil((16 + nmpdu * L_subf + 6) / (rate * 13.6)) * 13.6 + 6);
-//     } else {
-//         std::cout << "calc_payload_duration: nmpdu=" << nmpdu << ", L_subf=" << L_subf << ", rate=" << rate << ", payloadDuration =" << floor(ceil((16 + nmpdu * L_subf + 6) / (rate * 13.6)) * 13600) / 1000 << std::endl;
-//         return floor(ceil((16 + nmpdu * L_subf + 6) / (rate * 13.6)) * 13600) / 1000;
-//     }
-// }
-
-// // 计算payload持续时间
-// double calc_payload_duration(double nmpdu, double L_subf, double rate, bool is_link0) {
-//     if (nmpdu < 1e-9) return 0.0;
-    
-//     // 固定参数
-//     const uint8_t stbc = 1;              // 对应 STBC = 1 (非STBC模式)
-//     const uint8_t service = 16;          // service bits
-//     const uint8_t nes = 1;               // Number of BCC encoders
-//     const double symbolDuration = 13600; // 纳秒
-//     const double dataRate = rate * 1e6;  // 转换为 bps (bits per second)
-//     const double signalExtension = is_link0 ? 6 : 0; // 纳秒
-    
-//     // 计算每个符号的数据位数
-//     double numDataBitsPerSymbol = dataRate * symbolDuration / 1e9;
-    
-//     double numSymbols = 0;
-    
-//     if (nmpdu == 1) {
-//         // NORMAL_MPDU / SINGLE_MPDU
-//         double totalBits = service + 1570 * 8 + 6.0 * nes;
-//         numSymbols = lrint(stbc * ceil(totalBits / (stbc * numDataBitsPerSymbol)));
-//     } else {
-//         // A-MPDU 聚合情况
-//         // FIRST_MPDU_IN_AGGREGATE 的贡献
-//         double firstSymbols = (stbc * (service + L_subf + 6 * nes) / (stbc * numDataBitsPerSymbol));       
-//         // MIDDLE_MPDU_IN_AGGREGATE 的贡献 (nmpdu - 2 个中间帧)
-//         double middleSymbols = 0;
-//         if (nmpdu > 2) {
-//             middleSymbols = (nmpdu - 2) * (stbc * L_subf) / (stbc * numDataBitsPerSymbol);
-//         } 
-//         // LAST_MPDU_IN_AGGREGATE 的计算
-//         double totalSymbolsIncludingLast = lrint(stbc * ceil((service + (nmpdu - 1) * L_subf + 1570 * 8 + 6 * nes) / (stbc * numDataBitsPerSymbol)));
-//         double lastSymbols = totalSymbolsIncludingLast - firstSymbols - middleSymbols;
-//         numSymbols = firstSymbols + middleSymbols + lastSymbols;
-//     }
-    
-//     // 计算 payload duration（纳秒）
-//     double payloadDuration = numSymbols * symbolDuration;
-//     payloadDuration += signalExtension;
-//     return payloadDuration/1000.0; // 转换为微秒
-// }
-
 double calc_payload_duration(double nmpdu, double L_subf, double rate, bool is_link0) {
     if (nmpdu < 1e-9) return 0.0;
-    return (nmpdu * L_subf) / rate;
-    // return floor(ceil((16 + nmpdu * L_subf + 6) / (rate * 13.6)) * 13.6);
+    if (is_link0) {
+        return floor(ceil((16 + nmpdu * L_subf + 6) / (rate * 13.6)) * 13.6 + 6);
+    } else {
+        // std::cout << "calc_payload_duration: nmpdu=" << nmpdu << ", L_subf=" << L_subf << ", rate=" << rate << ", payloadDuration =" << floor(ceil((16 + nmpdu * L_subf + 6) / (rate * 13.6)) * 13600) / 1000 << std::endl;
+        return floor(ceil((16 + nmpdu * L_subf + 6) / (rate * 13.6)) * 13.6);
+    }
 }
+
+// double calc_payload_duration(double nmpdu, double L_subf, double rate, bool is_link0) {
+//     if (nmpdu < 1e-9) return 0.0;
+//     return (nmpdu * L_subf) / rate;
+//     // return floor(ceil((16 + nmpdu * L_subf + 6) / (rate * 13.6)) * 13.6);
+// }
 
 // 计算传输时间 (tau_T)
 double calc_tau_T(double nmpdu, double L_subf, double rate, double sigma, double T_OH, double T_PH, bool is_link0) {
@@ -462,8 +421,7 @@ int main() {
     // }
 
     // 创建总CSV文件
-    string summary_filename = "changer1r2-simple.csv";
-    std::string csv_file = "/home/cmm/mlo_hw/scratch/solve-1vn/" + summary_filename;
+    std::string csv_file = scan_cfg.csv_file;
     ofstream summary_csv(csv_file);
     summary_csv << "R1,R2,N1,N2,nmpdu_sld0,nmpdu_sld1,BAW,"
                    "Best_nmpdu_mld_0,Best_nmpdu_mld_1,"
