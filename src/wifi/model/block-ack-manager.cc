@@ -506,7 +506,7 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
     bool logfl = m_mode & (1 << 5);
     std::vector<uint32_t> recv_seqs;
     if (logfl && (m_mode & 0x01)) {
-        std::cout << Simulator::Now() << " Got Block Ack on Link " << (uint32_t)linkId << " " << recipient << " tid = " << (uint32_t)tid << " m_mode = " << m_mode << std::endl;
+        std::cout << Simulator::Now() << " Link" << +linkId << " got BlockAck:" << std::endl;
         blockAck.Print(std::cout << "\t");
     }
     for (auto queueIt = it->second.second.begin(); queueIt != it->second.second.end();)
@@ -574,12 +574,12 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
         queueIt = HandleInFlightMpdu(linkId, queueIt, STAY_INFLIGHT, it, now);
     }
     if (logfl) {
-        std::cout << "Received Mpdus: [";
+        std::cout << "\tReceived Mpdus: [";
         for (auto seq : recv_seqs) {
             std::cout << seq << ", ";
         }
         std::cout << "], nSuccessfulMpdus = " << nSuccessfulMpdus << std::endl;
-        // it->second.first.m_txWindow.Print(std::cout);
+        it->second.first.m_txWindow.Print(std::cout);
     }
 
     m_blockAckResultCallback(recipient, tid, linkId, nSuccessfulMpdus, nFailedMpdus);
@@ -993,20 +993,20 @@ BlockAckManager::SyncRptr(const Mac48Address& recipient, uint8_t tid, uint8_t li
     if (it != m_originatorAgreements.end())
     {
         uint32_t distance = it->second.first.GetDistance(it->second.first.m_linkRPtr[linkId]);
-        bool logfl = m_mode & (1 << 5);
-        if (logfl)
-            std::cout << Simulator::Now() << " Synchronize read pointer: recipient: " << recipient
-                    << " tid: " << (uint32_t)tid << " linkId: " << (uint32_t)linkId
-                    << " read pointer: " << it->second.first.m_linkRPtr[linkId] << " distance: " << distance << std::endl;
+        // bool logfl = m_mode & (1 << 5);
+        // if (logfl)
+        //     std::cout << Simulator::Now() << " Synchronize read pointer: recipient: " << recipient
+        //             << " tid: " << (uint32_t)tid << " linkId: " << (uint32_t)linkId
+        //             << " read pointer: " << it->second.first.m_linkRPtr[linkId] << " distance: " << distance << std::endl;
         std::vector<uint32_t> other_distance;
         for (size_t i = 0; i < it->second.first.m_linkRPtr.size(); i++) {
             auto d = it->second.first.GetDistance(it->second.first.m_linkRPtr[i]);
-            if (logfl) std::cout << "\t Link " << +i << ", read pointer: " << it->second.first.m_linkRPtr[i] << ", distance: " << d << " , TxStatus: " << !m_linkRPtrSyncEnabled[i] <<std::endl;
+            // if (logfl) std::cout << "\t Link " << +i << ", read pointer: " << it->second.first.m_linkRPtr[i] << ", distance: " << d << " , TxStatus: " << !m_linkRPtrSyncEnabled[i] <<std::endl;
             if (i!= linkId && m_linkRPtrSyncEnabled[i] && d > distance) {
-                if (logfl)
-                    std::cout << "\t Update: (Link " << uint32_t(i) << ") " << "From "
-                              << it->second.first.m_linkRPtr[i] << " to "
-                              << it->second.first.m_linkRPtr[linkId] << std::endl;
+                // if (logfl)
+                //     std::cout << "\t Update: (Link " << uint32_t(i) << ") " << "From "
+                //               << it->second.first.m_linkRPtr[i] << " to "
+                //               << it->second.first.m_linkRPtr[linkId] << std::endl;
                 it->second.first.m_linkRPtr[i] = it->second.first.m_linkRPtr[linkId];
             }
         }

@@ -10,7 +10,7 @@
 
 #include "channel-access-manager.h"
 #include "mac-tx-middle.h"
-#include "msdu-grouper.h"
+#include "ampdu-limit-controller.h"
 #include "wifi-mac-queue-scheduler.h"
 #include "wifi-mac-queue.h"
 #include "wifi-mac-trailer.h"
@@ -161,7 +161,7 @@ Txop::GetTypeId()
                 MakeUintegerAccessor(&Txop::m_mode),
                 MakeUintegerChecker<uint32_t>()
                 )
-            .AddAttribute("PreTitle",
+            .AddAttribute("Policy",
                 "pre title",
                 UintegerValue(0),
                 MakeUintegerAccessor(&Txop::m_pertitle),
@@ -223,7 +223,7 @@ Txop::Txop()
 {
     NS_LOG_FUNCTION(this);
     m_rng = m_shuffleLinkIdsGen.GetRv();
-    m_grouper = nullptr;
+    m_ampduLimitController = nullptr;
 }
 
 Txop::~Txop()
@@ -559,10 +559,10 @@ Txop::GetUserAccessParams() const
     return m_userAccessParams;
 }
 
-Ptr<MsduGrouper>
-Txop::GetMsduGrouper()
+Ptr<AmpduLimitController>
+Txop::GetAmpduLimitController()
 {
-    return m_grouper;
+    return m_ampduLimitController;
 }
 
 uint32_t
@@ -784,12 +784,10 @@ Txop::DoInitialize()
     }
     // The initialization of m_queue and m_mac has been completed.
     if(m_mode & 0x01) {
-        m_grouper = Create<MsduGrouper>(m_mac, m_mode);
-        m_grouper->m_datarate_setting[0] = m_datarate0 / 1e6;
-        m_grouper->m_datarate_setting[1] = m_datarate1 / 1e6;
-        m_grouper->m_datarate_setting[2] = m_datarate2 / 1e6;
+        m_ampduLimitController = Create<AmpduLimitController>(m_mac);
+        m_ampduLimitController->SetDatarateSetting(m_datarate0, m_datarate1, m_datarate2);
         if(m_pertitle == 6){
-            m_grouper->SetAmpduLimit(m_maxAmpduNum0, m_maxAmpduNum1, m_maxAmpduNum2);
+            m_ampduLimitController->SetAmpduLimit(m_maxAmpduNum0, m_maxAmpduNum1, m_maxAmpduNum2);
         }
     }
      
@@ -889,7 +887,7 @@ uint32_t Txop::GetMode() const
     return m_mode;
 }
 
-uint32_t Txop::GetPreTitle() const
+uint32_t Txop::GetPolicy() const
 {
     return m_pertitle;
 }

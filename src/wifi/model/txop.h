@@ -8,7 +8,7 @@
 
 #ifndef TXOP_H
 #define TXOP_H
-#include "msdu-grouper.h"
+#include "ampdu-limit-controller.h"
 #include "wifi-mac-header.h"
 
 #include "ns3/nstime.h"
@@ -440,16 +440,16 @@ class Txop : public Object
     const UserDefinedAccessParams& GetUserAccessParams() const;
 
     /**
-     * Get the msdu grouper.
+     * Get the ampduLimitController.
      */
-    Ptr<MsduGrouper> GetMsduGrouper();
+    Ptr<AmpduLimitController> GetAmpduLimitController();
 
     /**
      * Get mode
      */
     uint32_t GetMode() const; 
 
-    uint32_t GetPreTitle() const; 
+    uint32_t GetPolicy() const; 
 
     void SetFixedPER(const std::vector<double>& fixedPER);
     std::vector<double> GetFixedPER() const;
@@ -601,7 +601,7 @@ class Txop : public Object
 
     UserDefinedAccessParams m_userAccessParams; //!< user-defined DCF/EDCA access parameters
 
-    Ptr<MsduGrouper> m_grouper; ///< The MsduGrouper instance.
+    Ptr<AmpduLimitController> m_ampduLimitController; ///< The AmpduLimitController instance.
 };
 
 } // namespace ns3

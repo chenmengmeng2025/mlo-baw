@@ -149,22 +149,46 @@ ElementStateToStr(BlockAckWindow::ElementState s)
 void
 BlockAckWindow::Print(std::ostream& os) const
 {
-    os << "+--------+-----------+-------------+\n"
-       << "| SeqNo  | ACK Bitmap| State       |\n"
-       << "+--------+-----------+-------------+\n";
+    os << "+-----------+-----------+-------------+\n"
+       << "| SeqNo     | ACK Bitmap| State       |\n"
+       << "+-----------+-----------+-------------+\n";
 
-    for (std::size_t dist = 0; dist < m_window.size(); ++dist)
+    std::size_t runStart = 0;
+    while (runStart < m_window.size())
     {
-        uint16_t     seqNo = static_cast<uint16_t>((m_winStart + dist) % SEQNO_SPACE_SIZE);
-        bool         ack   = m_window.at((m_head + dist) % m_window.size());
-        ElementState st    = m_statesWindow.at((m_head + dist) % m_statesWindow.size());
+        bool ack = m_window.at((m_head + runStart) % m_window.size());
+        ElementState st = m_statesWindow.at((m_head + runStart) % m_statesWindow.size());
 
-        os << "| " << std::setw(6) << seqNo
+        // Extend the run while ack/state stay the same
+        std::size_t runEnd = runStart;
+        while (runEnd + 1 < m_window.size() &&
+               m_window.at((m_head + runEnd + 1) % m_window.size()) == ack &&
+               m_statesWindow.at((m_head + runEnd + 1) % m_statesWindow.size()) == st)
+        {
+            ++runEnd;
+        }
+
+        uint16_t seqNoStart = static_cast<uint16_t>((m_winStart + runStart) % SEQNO_SPACE_SIZE);
+        uint16_t seqNoEnd = static_cast<uint16_t>((m_winStart + runEnd) % SEQNO_SPACE_SIZE);
+
+        std::ostringstream seqNoStr;
+        if (runStart == runEnd)
+        {
+            seqNoStr << seqNoStart;
+        }
+        else
+        {
+            seqNoStr << seqNoStart << "-" << seqNoEnd;
+        }
+
+        os << "| " << std::setw(9) << seqNoStr.str()
            << " |     " << (ack ? '1' : '0')
            << "     | " << ElementStateToStr(st) << " |\n";
+
+        runStart = runEnd + 1;
     }
 
-    os << "+--------+-----------+-------------+\n";
+    os << "+-----------+-----------+-------------+\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -186,23 +210,47 @@ BlockAckWindow::Print(std::ostream& os, uint8_t linkId) const
         return '?';
     };
 
-    os << "+--------+-----------+-------------+------+\n"
-       << "| SeqNo  | ACK Bitmap| State       | Type |\n"
-       << "+--------+-----------+-------------+------+\n";
+    os << "+-----------+-----------+-------------+------+\n"
+       << "| SeqNo     | ACK Bitmap| State       | Type |\n"
+       << "+-----------+-----------+-------------+------+\n";
 
-    for (std::size_t dist = 0; dist < m_window.size(); ++dist)
+    std::size_t runStart = 0;
+    while (runStart < m_window.size())
     {
-        uint16_t     seqNo = static_cast<uint16_t>((m_winStart + dist) % SEQNO_SPACE_SIZE);
-        bool         ack   = m_window.at((m_head + dist) % m_window.size());
-        ElementState st    = m_statesWindow.at((m_head + dist) % m_statesWindow.size());
+        bool ack = m_window.at((m_head + runStart) % m_window.size());
+        ElementState st = m_statesWindow.at((m_head + runStart) % m_statesWindow.size());
 
-        os << "| " << std::setw(6) << seqNo
+        // Extend the run while ack/state stay the same (slotType follows from st)
+        std::size_t runEnd = runStart;
+        while (runEnd + 1 < m_window.size() &&
+               m_window.at((m_head + runEnd + 1) % m_window.size()) == ack &&
+               m_statesWindow.at((m_head + runEnd + 1) % m_statesWindow.size()) == st)
+        {
+            ++runEnd;
+        }
+
+        uint16_t seqNoStart = static_cast<uint16_t>((m_winStart + runStart) % SEQNO_SPACE_SIZE);
+        uint16_t seqNoEnd = static_cast<uint16_t>((m_winStart + runEnd) % SEQNO_SPACE_SIZE);
+
+        std::ostringstream seqNoStr;
+        if (runStart == runEnd)
+        {
+            seqNoStr << seqNoStart;
+        }
+        else
+        {
+            seqNoStr << seqNoStart << "-" << seqNoEnd;
+        }
+
+        os << "| " << std::setw(9) << seqNoStr.str()
            << " |     " << (ack ? '1' : '0')
            << "     | " << ElementStateToStr(st)
            << " |  " << slotType(st) << "   |\n";
+
+        runStart = runEnd + 1;
     }
 
-    os << "+--------+-----------+-------------+------+\n";
+    os << "+-----------+-----------+-------------+------+\n";
 }
 
 double

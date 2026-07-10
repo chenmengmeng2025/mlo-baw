@@ -83,7 +83,7 @@ double safe_stod(const std::string& s) {
       try { return std::stod(s); } catch (...) { return 0.0; }
 }
 
-void updateThroughputCSV(const std::string& scenario, const std::string& pretitle,
+void updateThroughputCSV(const std::string& scenario, const std::string& policy,
                          int bw1, int bw2, int bw3,
                          int mcs1, int mcs2, int mcs3,
                          int nss,
@@ -167,7 +167,7 @@ void updateThroughputCSV(const std::string& scenario, const std::string& pretitl
             if (tokens.size() < expectedHeader.size() || tokens[0] == "pertitle")
                 continue;
 
-            std::string f_pretitle         = tokens[0];
+            std::string f_policy         = tokens[0];
             int    f_bw1                = safe_stoi(tokens[1]);
             int    f_bw2                = safe_stoi(tokens[2]);
             int    f_bw3                = safe_stoi(tokens[3]);
@@ -190,7 +190,7 @@ void updateThroughputCSV(const std::string& scenario, const std::string& pretitl
             int    f_maxAmpduNum2       = safe_stoi(tokens[20]);
             int    f_seed               = safe_stoi(tokens[21]);
 
-            if (f_pretitle == pretitle &&
+            if (f_policy == policy &&
                 f_bw1 == bw1 && f_bw2 == bw2 && f_bw3 == bw3 &&
                 f_mcs1 == mcs1 && f_mcs2 == mcs2 && f_mcs3 == mcs3 &&
                 f_nss == nss &&
@@ -228,7 +228,7 @@ void updateThroughputCSV(const std::string& scenario, const std::string& pretitl
     if (!found)
     {
         rows.push_back({
-            pretitle,
+            policy,
             std::to_string(bw1),
             std::to_string(bw2),
             std::to_string(bw3),
@@ -554,7 +554,7 @@ main(int argc, char* argv[])
     bool logmode = false;
     Time simT_delayEnd = NanoSeconds(2);
     uint32_t maxGroupSize = 1;
-    uint32_t pretitleint = 1;
+    uint32_t policyint = 1;
     std::string scenario = "default";  // 默认场景
     CommandLine cmd(__FILE__);
     std::filesystem::path filepath = __FILE__;
@@ -581,7 +581,7 @@ main(int argc, char* argv[])
     cmd.AddValue("nsld1", "interference setting 5G", nStaSlds2);
     cmd.AddValue("nsld2", "interference setting 6G", nStaSlds3);
 
-    cmd.AddValue("pretitle", "pre title", pretitleint);
+    cmd.AddValue("policy", "pre title", policyint);
     cmd.AddValue("maxampdunum0", "max mpdu number of 2.4G", maxAmpduNum0);
     cmd.AddValue("maxampdunum1", "max mpdu number of 5G", maxAmpduNum1);
     cmd.AddValue("maxampdunum2", "max mpdu number of 6G", maxAmpduNum2);
@@ -607,18 +607,18 @@ main(int argc, char* argv[])
     if (!(nStaSlds3)) r3 = 1e-9;
     Time tputInterval = period; // interval for detailed throughput measurement
 
-    std::string pretitle = "";
-    switch (pretitleint){
-        case 1: pretitle = "greedy";   break;
-        // case 2: pretitle = "damla";    break; //禁用
-        case 3: pretitle = "only2G";   break;
-        case 4: pretitle = "only5G";   break;
-        case 5: pretitle = "only6G";   break;
-        case 6: pretitle = "allset";  break;
-        default: pretitle = "unknown"; break;
+    std::string policy = "";
+    switch (policyint){
+        case 1: policy = "greedy";   break;
+        // case 2: policy = "damla";    break; //禁用
+        case 3: policy = "only2G";   break;
+        case 4: policy = "only5G";   break;
+        case 5: policy = "only6G";   break;
+        case 6: policy = "allset";  break;
+        default: policy = "unknown"; break;
     }
     std::ostringstream oss;
-    oss << pretitle
+    oss << policy
         << "_baw_" << mpduBufferSize
         << "_bw_" << bw1 << "_" << bw2 << "_" << bw3
         << "_mcs_" << mcs1 << "_" << mcs2 << "_" << mcs3
@@ -653,7 +653,7 @@ main(int argc, char* argv[])
     {
         oss << std::fixed << std::setprecision(2) << "_fixedPER2_" << fixedPER2;
     }
-    else if (pretitleint == 6)
+    else if (policyint == 6)
     {
         oss << "_maxAmpduNum0_" << maxAmpduNum0
             << "_maxAmpduNum1_" << maxAmpduNum1
@@ -1047,9 +1047,9 @@ main(int argc, char* argv[])
 
 
     std::string mldMappingStr = "0,1,2,3,4,5,6,7 0,1,2";
-    // if(pretitleint == 3) mldMappingStr = "0,1,2,3,4,5,6,7 1"; // only 5G
-    // if(pretitleint == 4) mldMappingStr = "0,1,2,3,4,5,6,7 0";   // only 2G
-    // if(pretitleint == 5) mldMappingStr = "0,1,2,3,4,5,6,7 2"; // only 6G
+    // if(policyint == 3) mldMappingStr = "0,1,2,3,4,5,6,7 1"; // only 5G
+    // if(policyint == 4) mldMappingStr = "0,1,2,3,4,5,6,7 0";   // only 2G
+    // if(policyint == 5) mldMappingStr = "0,1,2,3,4,5,6,7 2"; // only 6G
     std::string mldMappingStr1 = "0,1,2,3,4,5,6,7 0";   // SLD on 2.4G link
     std::string mldMappingStr2 = "0,1,2,3,4,5,6,7 1";   // SLD on 5G link
     std::string mldMappingStr3 = "0,1,2,3,4,5,6,7 2";   // SLD on 6G link
@@ -1079,7 +1079,7 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxGroupSize", UintegerValue(maxGroupSize));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Period", TimeValue(period));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode)); // mode = 1 表示 模式一(硬件仲裁)， mode = 2 表示 模式二(软件仲裁)
-    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/PreTitle", UintegerValue(pretitleint));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Policy", UintegerValue(policyint));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxAmpduNum0", UintegerValue(maxAmpduNum0));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxAmpduNum1", UintegerValue(maxAmpduNum1));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxAmpduNum2", UintegerValue(maxAmpduNum2));
@@ -1087,7 +1087,7 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/DataRate5", DoubleValue(maxLoad5));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/DataRate6", DoubleValue(maxLoad6));
 
-    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode_recv)); // 只负责接收，无msdu_grouper, mode只要非0, 接收端就是新架构，BA只包含各自链路所收到的包的接收信息，各自维护自己的bitmap
+    Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode_recv)); // 只负责接收，无msdu_ampduLimitController, mode只要非0, 接收端就是新架构，BA只包含各自链路所收到的包的接收信息，各自维护自己的bitmap
 
 
     /* OBSS EDCA */
@@ -1125,7 +1125,7 @@ main(int argc, char* argv[])
 
     double interval = (statsEndTime - statsBeginTime).GetMicroSeconds();
     updateThroughputCSV(scenario,
-                        pretitle,
+                        policy,
                         bw1,
                         bw2,
                         bw3,

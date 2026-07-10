@@ -131,10 +131,10 @@ RecipientBlockAckAgreement::NotifyReceivedMpdu(Ptr<const WifiMpdu> mpdu, uint8_t
     uint16_t distance = GetDistance(mpduSeqNumber, scoreboard.GetWinStart());
 
     if (asyncMode && (m_mode & 0b0100'0000)) { // log receiver only
-        std::cout << Simulator::Now() << " ReceivedMpdu: snn = " << mpduSeqNumber
-                  << " on Link " << +linkId << " distance = " << distance
+        std::cout <<Simulator::Now() << " Link" << +linkId << " received MPDU:"
+                  << " snn = " << mpduSeqNumber
+                  << " distance = " << distance
                   << " winStart = " << scoreboard.GetWinStart()
-                  << " mpduSize = " << mpdu->GetPacketSize() << " m_mode = " << m_mode
                   << std::endl;
     }
 

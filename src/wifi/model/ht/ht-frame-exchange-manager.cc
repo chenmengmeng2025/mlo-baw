@@ -357,7 +357,7 @@ HtFrameExchangeManager::StartFrameExchange(Ptr<QosTxop> edca, Time availableTime
     // expired and the queue might be empty.
     if (!peekedItem)
     {
-        // if (edca->GetMsduGrouper()) std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
+        // if (edca->GetAmpduLimitController()) std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
         NS_LOG_DEBUG("No frames available for transmission");
         return false;
     }
@@ -606,7 +606,7 @@ HtFrameExchangeManager::SendDataFrame(Ptr<WifiMpdu> peekedItem,
     std::vector<Ptr<WifiMpdu>> mpduList =
         m_mpduAggregator->GetNextAmpdu(mpdu, txParams, availableTime);
     NS_ASSERT(txParams.m_acknowledgment);
-    if (edca->GetMsduGrouper()) {
+    if (edca->GetAmpduLimitController()) {
         auto recipient = mpdu->GetHeader().GetAddr1();
         if (auto mldAddr = GetWifiRemoteStationManager()->GetMldAddress(recipient))
         {
@@ -622,15 +622,15 @@ HtFrameExchangeManager::SendDataFrame(Ptr<WifiMpdu> peekedItem,
             if(!m_dcf->IsPERAllZero()) agreement->GetTxWindow().SetElementState(agreement->GetDistance(mpdu->GetHeader().GetSequenceNumber()), agreement->GetTxWindow().InflightStateForLink(m_linkId));
         }
 
-        if (edca->GetMsduGrouper()->GetMode() & 1 << 5) // sender log
+        if (edca->GetMode() & 1 << 5) // sender log
         {
-            std::cout << Simulator::Now() << " SendDataFrame on Link " << (uint32_t)m_linkId << std::endl << "[";
+            std::cout <<Simulator::Now() << " Link" << (uint32_t)m_linkId << " send DataFrame: "<< "[";
             if (!mpduList.empty()) {
                 for (const auto & it : mpduList) {
                     std::cout << it->GetHeader().GetSequenceNumber() << ", ";
                 }
                 std::cout << "], 长度 = " << mpduList.size() << ", mpduSize = " << mpduList[0]->GetPacketSize() << std::endl;
-            } else std::cout << mpdu->GetHeader().GetSequenceNumber() <<  "], 长度 = 1" << std::endl;
+            } else std::cout << mpdu->GetHeader().GetSequenceNumber() <<  "], size = 1" << std::endl;
             // agreement->GetTxWindow().Print(std::cout);
         }
     }
@@ -1172,16 +1172,16 @@ HtFrameExchangeManager::ForwardPsduDown(Ptr<const WifiPsdu> psdu, WifiTxVector& 
     if (m_mac->GetNLinks() > 1) {
         if (psdu->GetTids().size() && m_mac->GetQosTxop(*psdu->GetTids().begin())->GetMode() & 0x01)
         {
-            bool logfl = m_mac->GetQosTxop(*psdu->GetTids().begin())->GetMode() & (1 << 5);
-            if (logfl) {
-                std::cout << Simulator::Now() << " ForwardPsduDown on Link " << +m_linkId << std::endl;
-                std::cout << "\t Before ForwardPsduDown, TxStatus: (" << m_mac->GetLinkTxStatus()[0] << ", "
-                          << m_mac->GetLinkTxStatus()[1] << ")" << std::endl;
-            }
+            // bool logfl = m_mac->GetQosTxop(*psdu->GetTids().begin())->GetMode() & (1 << 5);
+            // if (logfl) {
+            //     std::cout << Simulator::Now() << " ForwardPsduDown on Link " << +m_linkId << std::endl;
+            //     std::cout << "\t Before ForwardPsduDown, TxStatus: (" << m_mac->GetLinkTxStatus()[0] << ", "
+            //               << m_mac->GetLinkTxStatus()[1] << ")" << std::endl;
+            // }
             m_phy->Send(psdu, txVector, m_linkId, m_mac->GetLinkTxStatus());
-            if (logfl)
-                std::cout << "\t After ForwardPsduDown, TxStatus: (" << m_mac->GetLinkTxStatus()[0] << ", "
-                          << m_mac->GetLinkTxStatus()[1] << ")" << std::endl;
+            // if (logfl)
+            //     std::cout << "\t After ForwardPsduDown, TxStatus: (" << m_mac->GetLinkTxStatus()[0] << ", "
+            //               << m_mac->GetLinkTxStatus()[1] << ")" << std::endl;
         }
         else
             m_phy->Send(psdu, txVector);
@@ -1536,7 +1536,7 @@ HtFrameExchangeManager::SendBlockAck(const RecipientBlockAckAgreement& agreement
     agreement.FillBlockAckBitmap(&blockAck, m_linkId);
     if (m_mac->GetQosTxop(agreement.GetTid())->GetMode() & (1 << 6)) // log receiver
     {
-        std::cout << Simulator::Now() << " Link " << +m_linkId << ", Send Block Ack:" << std::endl;
+        std::cout << Simulator::Now() << " Link" << +m_linkId << " send BlockAck:" << std::endl;
         blockAck.Print(std::cout << "\t");
     }
     Ptr<Packet> packet = Create<Packet>();

@@ -171,7 +171,7 @@ QosTxop::DoInitialize()
     if(m_mode & 0x01){
         for(uint8_t i = 0; i < m_mac->GetNLinks(); i++)
         {
-            m_mac->GetDevice()->GetPhy(i)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&MsduGrouper::NotifyPpduTxDuration, GetMsduGrouper()));
+            m_mac->GetDevice()->GetPhy(i)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&AmpduLimitController::NotifyPpduTxDuration, GetAmpduLimitController()));
         }
     }
 }

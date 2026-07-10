@@ -390,44 +390,36 @@ QosFrameExchangeManager::TryAddMpdu(Ptr<const WifiMpdu> mpdu,
 
     // Reproduce the effective BAW size calculation under DAMLA (Section III-C, III-D of the paper)
     std::vector<double> fixedPERs = m_dcf->GetFixedPER();
-    // Check if DAMLA aggregation optimization is enabled, MLO scenario with 2 links is active,
-    // and channel Packet Error Rate (PER) is non-zero.
-    // Per Section III-D (DAMLA step 1): "as some MPDUs within BAW may be lost because of
-    // transmission errors, it estimates the effective BAW size w ... as described in
-    // Section III-C." That is, the effective-BAW estimation (Eq. 6) is only needed when
-    // link errors can cause MPDU loss, which interleaves acknowledged/unacknowledged MPDUs
-    // in the BAW and creates uncertainty about in-flight delivery status (Section III-C).
-    // When PER = 0, no such loss can occur, so the nominal BAW size W can be used directly.
-    if ((m_edca->GetMode() & 0x01) && m_edca->GetPreTitle() == 2 && m_mac->GetNLinks() == 2 && !std::all_of(fixedPERs.begin(), fixedPERs.end(),[](double p) { return p == 0.0; })) {
+
+    if ((m_edca->GetMode() & 0x01)) {
         
         uint16_t BawSize = 0;
-        auto grouper = m_edca->GetMsduGrouper();
+        auto ampduLimitController = m_edca->GetAmpduLimitController();
         uint16_t mpduBufferSize = m_mac->GetMpduBufferSize();
         int T_BA;
         if (mpduBufferSize <= 256) T_BA = m_linkId ? 40 : 46;
         else if (mpduBufferSize <= 512) T_BA = m_linkId ? 52 : 58;
         else T_BA = m_linkId ? 72 : 78;
-
-        // Check if the current time falls within the overlapping transmission window of the
-        // other link (1 - m_linkId), extended by SIFS (10/16 us) and the BACK duration T_BA.
-        // Per Section III-D, DAMLA requires the MLD to know the ongoing cycle's end time M2
-        // on the other link in order to compute the observed shift T^s_{1->2} = M2 - M1.
-        // This is only possible while the other link's A-MPDU transmission is still
-        // outstanding (i.e., its BACK has not yet arrived at X0). If so, we proceed with
-        // the DAMLA procedure: estimate the effective BAW size w (Eq. 6), derive the
-        // required shift T^{s*}_{2->1} from it (Eq. 5 with W replaced by w), and compute
-        // the resulting aggregation size y*_1 (Eq. 7).
-        if(grouper->m_ppduTimeWindow[1 - m_linkId][0] < Simulator::Now().GetMicroSeconds() 
-            && Simulator::Now().GetMicroSeconds() < (grouper->m_ppduTimeWindow[1 - m_linkId][1] + (m_linkId ? 16 : 10) + T_BA)){
+        
+        // DAMLA enabled, 2-link MLO, PER != 0 (Sec III-D step 1): effective-BAW
+        // estimation (Eq. 6) is only needed when link errors can cause MPDU loss;
+        // with PER = 0 the nominal BAW size W can be used directly.
+        // Check if now falls within the other link's (1 - m_linkId) outstanding
+        // transmission window (+SIFS +T_BA). Only then is the other link's cycle
+        // end time M2 known, giving T^s_{1->2} = M2 - M1 (Sec III-D). If so, run
+        // DAMLA: estimate w (Eq. 6) -> required T^{s*}_{2->1} (Eq. 5, W->w) -> y*_1 (Eq. 7).
+        if(m_edca->GetPolicy() == 2 && m_mac->GetNLinks() == 2 
+            && !std::all_of(fixedPERs.begin(), fixedPERs.end(),[](double p) { return p == 0.0; }) 
+            && ampduLimitController->IsWithinOtherLinkPpduWindow(m_linkId, (m_linkId ? 16 : 10) + T_BA)){
                 auto recipient = mpdu->GetHeader().GetAddr1();
                 if (auto mldAddr = GetWifiRemoteStationManager()->GetMldAddress(recipient)) recipient = *mldAddr;
                 BawSize = m_edca->GetBaManager()->GetOriginatorBlockAckAgreement(recipient, mpdu->GetHeader().GetQosTid())
-                            ->GetTxWindow().ComputeEffectiveBawSize(m_linkId, m_dcf->GetFixedPER()[1 - m_linkId], grouper->GetMode() & 1 << 5);
+                            ->GetTxWindow().ComputeEffectiveBawSize(m_linkId, m_dcf->GetFixedPER()[1 - m_linkId], m_edca->GetMode() & 1 << 5);
         }else{
             BawSize = mpduBufferSize;
         }
         // Calculate the maximum number of MPDUs allowed in the A-MPDU based on the allocated Effective BAW Size.
-        maxNMpdus = grouper->GetAmpduLimit(m_linkId, m_edca->GetPreTitle(), BawSize);
+        maxNMpdus = ampduLimitController->GetAmpduLimit(m_linkId, m_edca->GetPolicy(), BawSize, m_edca->GetMode() & 1 << 5);
     }
     if (!IsWithinLimitsIfAddMpdu(mpdu, txParams, ppduDurationLimit) || txParams.GetCurrentMpduNumber(mpdu->GetHeader().GetAddr1()) > maxNMpdus)
     {

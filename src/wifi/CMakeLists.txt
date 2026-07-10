@@ -167,7 +167,7 @@ set(source_files
     model/yans-wifi-phy.cc
     model/wifi-spectrum-value-helper.cc
 
-    model/msdu-grouper.cc
+    model/ampdu-limit-controller.cc
 )
 
 set(header_files
@@ -341,7 +341,7 @@ set(header_files
     model/wifi-spectrum-value-helper.h
     test/wifi-mlo-test.h
 
-    model/msdu-grouper.h
+    model/ampdu-limit-controller.h
 )
 
 build_lib(
