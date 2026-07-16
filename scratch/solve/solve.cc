@@ -17,7 +17,10 @@ using namespace std;
 // ── 全局链路数 ────────────────────────────────────────
 static constexpr int NUM_LINKS = 2;   // ← 改为 3 即切换到三链路模式
 static bool SIMPLE = true; // ← true 使用简化的 payload duration 计算（nmpdu * L_subf / rate）
-static string csv_file = "/home/cmm/mlo_hw/scratch/solve-1vn/solve-" + to_string(NUM_LINKS) + "link-" + to_string(SIMPLE) + "simp" + ".csv";
+
+std::filesystem::path filepath = __FILE__;
+static string csv_name = "solve-" + to_string(NUM_LINKS) + "link-" + to_string(SIMPLE) + "simp" + ".csv";
+const std::string csvpath = (filepath.parent_path() / csv_name).string();
 // ── CSV 写入模式 ─────────────────────────────────────────────────────────────
 //   OVERWRITE : 每次运行清空文件，重新写表头 + 数据（默认）
 //   APPEND    : 文件已存在则验证表头后直接追加数据行；
@@ -61,7 +64,7 @@ struct Config {
     double L_subf         = 1572.0 * 8.0;
     double L_subf_single  = 1570.0 * 8.0;
     double L_P            = 1500.0 * 8.0;
-    double T_PH           = 72.0;
+    double T_PH_D           = 72.0;
     // 索引: 0=2.4G, 1=5G, 2=6G
 #if SIMPLE
     vector<double> T_RTS  = {24.0, 24.0, 24.0};
@@ -149,7 +152,7 @@ double denom_sum(double p, double W0, int K) {
 
 // 辅助函数：计算公式中括号内的发送概率项 tau
 // 对应公式中 4(2p-1) / [W * (2p - (2-2p)^(K+1))]
-double calc_tau(double p, double W, int K) {
+double calc_p_part(double p, double W, int K) {
     double numerator = 4.0 * (2.0 * p - 1.0);
     double denominator = W * (2.0 * p - pow(2.0 - 2.0 * p, K + 1));
     
@@ -171,8 +174,8 @@ pair<double, double> solve_p(int N, int K, const vector<double>& W,
 
     for (int iter = 0; iter < max_iter; ++iter) {
         // 1. 计算 tau_S 和 tau_M
-        double tau_S = calc_tau(pS, W[1], K);
-        double tau_M = calc_tau(pM, W[0], K);
+        double tau_S = calc_p_part(pS, W[1], K);
+        double tau_M = calc_p_part(pM, W[0], K);
 
         // 2. 根据公式 (8) 更新 pM
         // pM = (1 - tau_S)^N
@@ -234,13 +237,13 @@ double calc_payload_duration(double nmpdu, double L_subf, double rate, bool is0 
 }
 
 double calc_tau_T(double nmpdu, double L_subf, double rate,
-                  double sigma, double T_OH, double T_PH, bool is0) {
-    double ppdu = calc_payload_duration(nmpdu, L_subf, rate, is0) + T_PH;
+                  double sigma, double T_OH, double T_PH_D, bool is0) {
+    double ppdu = calc_payload_duration(nmpdu, L_subf, rate, is0) + T_PH_D;
     return ppdu / sigma + T_OH;
 }
 
 // link0 (2.4G) 的 BA 比其余链路多 6 µs
-double calc_T_BA(double nmpdu, int BAW, bool is_link0) {
+double get_T_BA(double nmpdu, int BAW, bool is_link0) {
     if (nmpdu < 1.5){
         if(SIMPLE) return 28.0;
         else return is_link0 ? 34.0 : 28.0;
@@ -284,8 +287,8 @@ LinkResult calc_link(int link_idx, int32_t n, int32_t nmpdu_sld_l,
     double Lm  = (n           == 1) ? cfg.L_subf_single : cfg.L_subf;
     double Ls  = (nmpdu_sld_l == 1) ? cfg.L_subf_single : cfg.L_subf;
 
-    double T_BA_mld = calc_T_BA(n,           BAW, is0);
-    double T_BA_sld = calc_T_BA(nmpdu_sld_l, BAW, is0);
+    double T_BA_mld = get_T_BA(n,           BAW, is0);
+    double T_BA_sld = get_T_BA(nmpdu_sld_l, BAW, is0);
 
     double T_OH_mld = (cfg.T_SIFS[link_idx]*3 + T_BA_mld + T_DIFS[link_idx]
                        + cfg.T_RTS[link_idx] + cfg.T_CTS[link_idx]) / cfg.sigma;
@@ -293,8 +296,8 @@ LinkResult calc_link(int link_idx, int32_t n, int32_t nmpdu_sld_l,
                        + cfg.T_RTS[link_idx] + cfg.T_CTS[link_idx]) / cfg.sigma;
 
     vector<double> tau_T = {
-        calc_tau_T(n, Lm, R[link_idx], cfg.sigma, T_OH_mld, cfg.T_PH, is0),
-        calc_tau_T(nmpdu_sld_l, Ls, R[link_idx], cfg.sigma, T_OH_sld, cfg.T_PH, is0)
+        calc_tau_T(n, Lm, R[link_idx], cfg.sigma, T_OH_mld, cfg.T_PH_D, is0),
+        calc_tau_T(nmpdu_sld_l, Ls, R[link_idx], cfg.sigma, T_OH_sld, cfg.T_PH_D, is0)
     };
 
     auto [lambdaS, lambdaM, alpha] = compute_lambda(N, pM, pS, tau_T,
@@ -584,7 +587,7 @@ int main() {
 
     ofstream summary_csv;
     try {
-        summary_csv = open_csv(csv_file, L, CSV_MODE);
+        summary_csv = open_csv(csvpath, L, CSV_MODE);
     } catch (const exception& e) {
         cerr << "[错误] " << e.what() << endl;
         return 1;
@@ -627,7 +630,7 @@ int main() {
                 int32_t mx = 1, lo = 1, hi = 10000;
                 while (lo <= hi) {
                     int32_t mid = (lo + hi) / 2;
-                    double ppdu = calc_payload_duration(mid, cfg.L_subf, R_cur[i], i == 0) + cfg.T_PH;
+                    double ppdu = calc_payload_duration(mid, cfg.L_subf, R_cur[i], i == 0) + cfg.T_PH_D;
                     if (ppdu < cfg.maxPpduDuration) { mx = mid; lo = mid + 1; }
                     else                            {           hi = mid - 1; }
                 }
@@ -681,6 +684,6 @@ int main() {
 
     summary_csv.close();
     cout << "========== 扫描完成 ==========" << endl;
-    cout << "结果保存至: " << csv_file << endl;
+    cout << "结果保存至: " << csvpath << endl;
     return 0;
 }

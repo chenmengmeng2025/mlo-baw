@@ -1999,6 +1999,12 @@ WifiPhy::DoSend(const WifiConstPsduMap& psdus, const WifiTxVector& txVector, uin
     
 
     const auto txDuration = CalculateTxDuration(psdus, txVector, GetPhyBand());
+    // if(psdus.begin()->second->GetNMpdus()>1){
+    //    std::cout<<"MLD PSDU "<<GetFrequency()<<"MHZ; "<<Simulator::Now().GetMicroSeconds()<<" us; ";
+    //     std::cout << "Number of MPDUs: " << psdus.begin()->second->GetNMpdus() << "; ";
+    //     std::cout<<"PhyPreambleAndHeaderDuration "<<CalculatePhyPreambleAndHeaderDuration(txVector).GetMicroSeconds()<<"us; ";
+    //     std::cout<<std::endl;
+    // }
     auto firstPsdu = psdus.cbegin()->second;
     auto noEndPreambleDetectionEvent = true;
     for (const auto& [mc, entity] : m_phyEntities)

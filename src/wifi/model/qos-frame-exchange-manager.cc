@@ -397,9 +397,9 @@ QosFrameExchangeManager::TryAddMpdu(Ptr<const WifiMpdu> mpdu,
         auto ampduLimitController = m_edca->GetAmpduLimitController();
         uint16_t mpduBufferSize = m_mac->GetMpduBufferSize();
         int T_BA;
-        if (mpduBufferSize <= 256) T_BA = m_linkId ? 40 : 46;
-        else if (mpduBufferSize <= 512) T_BA = m_linkId ? 52 : 58;
-        else T_BA = m_linkId ? 72 : 78;
+        if (mpduBufferSize <= 256) T_BA = 40;
+        else if (mpduBufferSize <= 512) T_BA = 52;
+        else T_BA = 72;
         
         // DAMLA enabled, 2-link MLO, PER != 0 (Sec III-D step 1): effective-BAW
         // estimation (Eq. 6) is only needed when link errors can cause MPDU loss;

@@ -124,9 +124,16 @@ AmpduLimitController::GetAmpduLimit(uint8_t linkId, uint32_t policy, uint32_t ba
                               m_datarateSetting[1] != 0,
                           "Data rate not available for both links.");
 
+            // // To ensure proper convergence, return bufSize/2 directly within the first 1.05 seconds 
+            // // to prevent computational anomalies caused by insufficient data in the initial phase.
+            // if(Simulator::Now().GetSeconds() < 1.05) {
+            //     std::cout << "Start period, m_ampduLimits" << (uint32_t)linkId << " = " << bawSize/2 << "; BAW = " << bawSize << std::endl;
+            //     ampduLimitRes = static_cast<int>(std::ceil(bawSize/2));
+            //     break;
+            // }
             // Average inter-PPDU gap per link, plus a fixed PHY overhead
-            // T_PH, used as the "service time" t_i in the DAMLA model.
-            double T_PH = 56.0;
+            // T_PH_D, used as the "service time" t_i in the DAMLA model.
+            double T_PH_D = 56.0;
             std::vector<double> t;
             for (const auto& gaps : m_interPpduGaps)
             {
@@ -141,7 +148,7 @@ AmpduLimitController::GetAmpduLimit(uint8_t linkId, uint32_t policy, uint32_t ba
                     {
                         sum += value;
                     }
-                    t.push_back(sum / gaps.size() + T_PH);
+                    t.push_back(sum / gaps.size() + T_PH_D);
                 }
             }
 
@@ -158,7 +165,7 @@ AmpduLimitController::GetAmpduLimit(uint8_t linkId, uint32_t policy, uint32_t ba
                 double L_subf = 1572 * 8;
                 for (double r : m_datarateSetting)
                 {
-                    R_f.push_back(r / L_subf);
+                    R_f.push_back(r / L_subf / 1e6);
                 }
 
                 double T_u2i = (bawSize * R_f[linkId] +
@@ -173,6 +180,7 @@ AmpduLimitController::GetAmpduLimit(uint8_t linkId, uint32_t policy, uint32_t ba
             {
                 ampduLimitRes = kUnlimited;
             }
+            // std::cout << "DAMLA period, m_ampduLimits" << (uint32_t)linkId << " = " << ampduLimitRes << "; BAW = " << bawSize << "\n----------------------------------------" << std::endl;
             break;
         }
 

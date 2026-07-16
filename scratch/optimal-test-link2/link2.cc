@@ -50,7 +50,6 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
-#include <map>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -122,15 +121,15 @@ Trim(const std::string& s)
  * Append (or update, if a matching row already exists) one row of
  * throughput results in "throughput_<scenario>.csv". Rows are matched on
  * every configuration column (policy, bandwidths, MCS, NSS, interference
- * setup, A-MPDU settings, PER, BAW size and seed); only the throughput and
- * pM (probe-to-MPDU) columns are overwritten on a match.
+ * setup, A-MPDU settings, PER, BAW size and seed); only the throughput 
+ * columns are overwritten on a match.
  *
- * \param scenario the simulation scenario name, used to build the CSV filename
+ * \param scenario the simulation scenario name
  * \param policy the human-readable A-MPDU control policy name
- * \param bw1 link-0 (2.4 GHz) channel width
- * \param bw2 link-1 (5 GHz) channel width
- * \param mcs1 link-0 MCS index
- * \param mcs2 link-1 MCS index
+ * \param bw0 link-0 (2.4 GHz) channel width
+ * \param bw1 link-1 (5 GHz) channel width
+ * \param mcs0 link-0 MCS index
+ * \param mcs1 link-1 MCS index
  * \param nss number of spatial streams
  * \param nsld1 number of interfering SLD STAs on link 0
  * \param nsld2 number of interfering SLD STAs on link 1
@@ -145,16 +144,14 @@ Trim(const std::string& s)
  * \param totalthroughput aggregate MLD throughput (Mbps)
  * \param totalthroughput1 MLD throughput on link 0 (Mbps)
  * \param totalthroughput2 MLD throughput on link 1 (Mbps)
- * \param pM1 probe-to-MPDU ratio on link 0
- * \param pM2 probe-to-MPDU ratio on link 1
  */
 void
 UpdateThroughputCsv(const std::string& scenario,
                      const std::string& policy,
+                     int bw0,
                      int bw1,
-                     int bw2,
+                     int mcs0,
                      int mcs1,
-                     int mcs2,
                      int nss,
                      int nsld1,
                      int nsld2,
@@ -168,9 +165,7 @@ UpdateThroughputCsv(const std::string& scenario,
                      int seedNumber,
                      double totalthroughput,
                      double totalthroughput1,
-                     double totalthroughput2,
-                     double pM1,
-                     double pM2)
+                     double totalthroughput2)
 {
     const std::string filename = "throughput_" + scenario + ".csv";
     std::vector<std::vector<std::string>> rows;
@@ -201,7 +196,7 @@ UpdateThroughputCsv(const std::string& scenario,
         // its throughput/pM columns in place.
         for (auto& tokens : rows)
         {
-            if (tokens.size() < 21 || tokens[0] == "policy")
+            if (tokens.size() < 19 || tokens[0] == "policy")
             {
                 continue;
             }
@@ -223,8 +218,8 @@ UpdateThroughputCsv(const std::string& scenario,
             const int fMaxAmpduNum1 = SafeStoi(tokens[14]);
             const int fSeed = SafeStoi(tokens[15]);
 
-            if (fPolicy == policy && fBw1 == bw1 && fBw2 == bw2 && fMcs1 == mcs1 &&
-                fMcs2 == mcs2 && fNss == nss && fNsld1 == nsld1 && fNsld2 == nsld2 &&
+            if (fPolicy == policy && fBw1 == bw0 && fBw2 == bw1 && fMcs1 == mcs0 &&
+                fMcs2 == mcs1 && fNss == nss && fNsld1 == nsld1 && fNsld2 == nsld2 &&
                 fMaxAmpduNumSld0 == maxAmpduNumSld0 && fMaxAmpduNumSld1 == maxAmpduNumSld1 &&
                 fPer0 == per0 && fPer1 == per1 && fBaw == baw && fMaxAmpduNum0 == maxAmpduNum0 &&
                 fMaxAmpduNum1 == maxAmpduNum1 && fSeed == seedNumber)
@@ -232,8 +227,6 @@ UpdateThroughputCsv(const std::string& scenario,
                 tokens[16] = std::to_string(totalthroughput);
                 tokens[17] = std::to_string(totalthroughput1);
                 tokens[18] = std::to_string(totalthroughput2);
-                tokens[19] = std::to_string(pM1);
-                tokens[20] = std::to_string(pM2);
                 found = true;
                 break;
             }
@@ -243,13 +236,13 @@ UpdateThroughputCsv(const std::string& scenario,
     {
         // File does not exist yet: write the header row first.
         rows.push_back({"policy",
+                         "bw0",
                          "bw1",
-                         "bw2",
+                         "mcs0",
                          "mcs1",
-                         "mcs2",
                          "nss",
+                         "nsld0",
                          "nsld1",
-                         "nsld2",
                          "maxAmpduNumSld0",
                          "maxAmpduNumSld1",
                          "per0",
@@ -259,19 +252,17 @@ UpdateThroughputCsv(const std::string& scenario,
                          "maxAmpduNum1",
                          "seed",
                          "Throughput(Mbps)",
-                         "Throughput1(Mbps)",
-                         "Throughput2(Mbps)",
-                         "pM1",
-                         "pM2"});
+                         "Throughput0(Mbps)",
+                         "Throughput1(Mbps)"});
     }
 
     if (!found)
     {
         rows.push_back({policy,
+                         std::to_string(bw0),
                          std::to_string(bw1),
-                         std::to_string(bw2),
+                         std::to_string(mcs0),
                          std::to_string(mcs1),
-                         std::to_string(mcs2),
                          std::to_string(nss),
                          std::to_string(nsld1),
                          std::to_string(nsld2),
@@ -285,9 +276,7 @@ UpdateThroughputCsv(const std::string& scenario,
                          std::to_string(seedNumber),
                          std::to_string(totalthroughput),
                          std::to_string(totalthroughput1),
-                         std::to_string(totalthroughput2),
-                         std::to_string(pM1),
-                         std::to_string(pM2)});
+                         std::to_string(totalthroughput2)});
     }
 
     std::ofstream outfile(filename, std::ios::out | std::ios::trunc);
@@ -393,13 +382,9 @@ PpduTxRecord(StaType staType, int32_t staIndex, Ptr<const WifiPpdu> ppdu, Time d
          << nMpdu << std::endl;
 }
 
-/// Per-link running statistics used to derive throughput, PER and the
-/// probe-to-MPDU ratio.
+/// Per-link running statistics used to derive throughput and PER.
 struct LinkStats
 {
-    double mpduNum = 0.0;          //!< total number of MPDUs seen in QoS-data PPDUs
-    double rtsCount = 0.0;         //!< number of RTS frames seen (used as a "probe" count)
-    double ppduCount = 0.0;        //!< number of QoS-data PPDUs seen
     uint32_t successfulMpdus = 0;  //!< MPDUs acknowledged as successful via BlockAck
     uint32_t failedMpdus = 0;      //!< MPDUs acknowledged as failed via BlockAck
 
@@ -410,15 +395,6 @@ struct LinkStats
     {
         const uint32_t total = successfulMpdus + failedMpdus;
         return total > 0 ? static_cast<double>(failedMpdus) / total : 0.0;
-    }
-
-    /**
-     * \return the ratio of transmitted QoS-data PPDUs to RTS frames sent, i.e.
-     *         an approximation of how often a TXOP acquisition led to a data PPDU
-     */
-    double PRatio() const
-    {
-        return rtsCount > 0 ? ppduCount / rtsCount : 0.0;
     }
 
     /**
@@ -456,60 +432,7 @@ struct NodeStats
     }
 };
 
-NodeStats statsMLD;                     //!< statistics for the single MLD STA under test
-std::map<uint32_t, NodeStats> statsSLD; //!< statistics for interfering SLD STAs, keyed by station index
-
-/**
- * PHY-level "PpduTxDuration" trace sink used to accumulate MPDU/RTS/PPDU
- * counts for throughput and probe-ratio statistics. Only PPDUs fully
- * contained within [statsBeginTime, statsEndTime] are counted.
- *
- * \param statsBeginTime start of the measurement window
- * \param statsEndTime end of the measurement window
- * \param staIndex index of the station within \c statsSLD (ignored if \p isMld is true)
- * \param isMld true if this trace belongs to the MLD STA under test, false for an SLD STA
- * \param ppdu the transmitted PPDU
- * \param duration the PPDU's transmission duration
- * \param linkid the link the PPDU was transmitted on
- */
-void
-NotifyPpduTxDuration(Time statsBeginTime,
-                      Time statsEndTime,
-                      uint32_t staIndex,
-                      bool isMld,
-                      Ptr<const WifiPpdu> ppdu,
-                      Time duration,
-                      uint8_t linkid)
-{
-    const Time now = Simulator::Now();
-    if (now < statsBeginTime || now + duration > statsEndTime)
-    {
-        return;
-    }
-
-    NodeStats& stats = isMld ? statsMLD : statsSLD[staIndex];
-
-    if (ppdu->GetPsdu()->GetHeader(0).IsRts())
-    {
-        stats.link[linkid].rtsCount++;
-        return;
-    }
-
-    if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
-    {
-        return;
-    }
-
-    Ptr<const WifiPsdu> psdu = ppdu->GetPsdu();
-    const uint32_t nMpdus = psdu->IsAggregate() ? psdu->GetNMpdus() : 1;
-    if (nMpdus == 0)
-    {
-        return;
-    }
-
-    stats.link[linkid].mpduNum += nMpdus;
-    stats.link[linkid].ppduCount++;
-}
+NodeStats statsMLD; //!< statistics for the single MLD STA under test
 
 /**
  * BlockAck-manager "BlockAckResult" trace sink: accumulates the MLD STA's
@@ -524,6 +447,7 @@ NotifyPpduTxDuration(Time statsBeginTime,
  */
 void
 NotifyBlockAckResult(Time statsBeginTime,
+                      bool logreceiver,
                       Mac48Address recipient,
                       uint8_t tid,
                       uint8_t linkId,
@@ -539,11 +463,13 @@ NotifyBlockAckResult(Time statsBeginTime,
     statsMLD.link[linkId].successfulMpdus += nSuccessfulMpdus;
     statsMLD.link[linkId].failedMpdus += nFailedMpdus;
 
-    std::cout << now.GetMicroSeconds() << " us: "
-              << " BlockAck from " << recipient << " tid=" << (uint32_t)tid
-              << " link=" << (uint32_t)linkId << " success=" << nSuccessfulMpdus
-              << " failed=" << nFailedMpdus << " total=" << (nSuccessfulMpdus + nFailedMpdus)
-              << std::endl;
+    if(logreceiver){
+        std::cout << now.GetMicroSeconds() << " us: "
+                << " BlockAck from " << recipient << " tid=" << (uint32_t)tid
+                << " link=" << (uint32_t)linkId << " success=" << nSuccessfulMpdus
+                << " failed=" << nFailedMpdus << " total=" << (nSuccessfulMpdus + nFailedMpdus)
+                << std::endl;
+    }
 }
 
 /**
@@ -564,8 +490,6 @@ PrintStats(Time statsBeginTime, Time statsEndTime, uint32_t payloadSize)
     std::cout << "MLD Throughput " << statsMLD.Tput(payloadSize, interval) << " Mbit/s "
               << statsMLD.link[0].Tput(payloadSize, interval) << " Mbit/s (2.4G) "
               << statsMLD.link[1].Tput(payloadSize, interval) << " Mbit/s (5G)\n"
-              << "pM: " << statsMLD.link[0].PRatio() << " (2.4G), " << statsMLD.link[1].PRatio()
-              << " (5G)\n"
               << "PER: 2.4G=" << statsMLD.link[0].LossRate() << "  5G=" << statsMLD.link[1].LossRate()
               << "\n"
               << "Successful/Failed MPDUs:"
@@ -573,59 +497,6 @@ PrintStats(Time statsBeginTime, Time statsEndTime, uint32_t payloadSize)
               << "  5G=" << statsMLD.link[1].successfulMpdus << "/" << statsMLD.link[1].failedMpdus
               << "  total=" << statsMLD.link[0].successfulMpdus + statsMLD.link[1].successfulMpdus
               << "/" << statsMLD.link[0].failedMpdus + statsMLD.link[1].failedMpdus << "\n";
-
-    // SLD summary.
-    std::cout << "\n------ SLD Statistics ------\n"
-              << "STA\tpS\t\tThroughput(Mbps)\tBand\n";
-
-    struct Avg
-    {
-        double sumPs = 0;
-        double sumTp = 0;
-        int count = 0;
-    };
-    Avg avg2G;
-    Avg avg5G;
-
-    auto printLink = [&](uint32_t staIndex, int linkId, const char* band, Avg& avg) {
-        const LinkStats& l = statsSLD[staIndex].link[linkId];
-        const double ps = l.PRatio();
-        const double tp = l.Tput(payloadSize, interval);
-        avg.sumPs += ps;
-        avg.sumTp += tp;
-        avg.count++;
-        std::cout << staIndex << "\t" << std::fixed << std::setprecision(6) << ps << "\t\t"
-                  << std::setprecision(3) << tp << "\t\t" << band << "\n";
-    };
-
-    for (auto& [idx, unused] : statsSLD)
-    {
-        if (statsSLD[idx].link[0].rtsCount > 0)
-        {
-            printLink(idx, 0, "2.4G", avg2G);
-        }
-        if (statsSLD[idx].link[1].rtsCount > 0)
-        {
-            printLink(idx, 1, "5G", avg5G);
-        }
-    }
-
-    std::cout << "\n------ Averages ------\n";
-    auto printAvg = [](const char* band, const Avg& avg) {
-        if (avg.count > 0)
-        {
-            std::cout << band << ": pS avg=" << std::fixed << std::setprecision(6)
-                      << avg.sumPs / avg.count << ", Tput avg=" << std::setprecision(3)
-                      << avg.sumTp / avg.count << " Mbps\n";
-        }
-        else
-        {
-            std::cout << band << ": No data\n";
-        }
-    };
-    printAvg("2.4G", avg2G);
-    printAvg("5G", avg5G);
-    std::cout << "---------------------\n";
 }
 
 int
@@ -633,10 +504,10 @@ main(int argc, char* argv[])
 {
     // ---------------- Command-line configurable parameters ----------------
     uint32_t seedNumber = 1;
-    uint32_t mcs1 = 13;
-    uint32_t mcs2 = 10;
-    uint32_t bw1 = 20;
-    uint32_t bw2 = 80;
+    uint32_t mcs0 = 13;
+    uint32_t mcs1 = 10;
+    uint32_t bw0 = 20;
+    uint32_t bw1 = 80;
 
     uint16_t mpduBufferSize{512};
     uint32_t maxAmpduNum0 = 10;
@@ -644,11 +515,10 @@ main(int argc, char* argv[])
     uint32_t maxAmpduNumSld0 = 1;
     uint32_t maxAmpduNumSld1 = 1;
 
-    uint8_t nStaSlds1 = 1; //!< number of interfering SLD STAs on link 0 (2.4 GHz)
-    uint8_t nStaSlds2 = 1; //!< number of interfering SLD STAs on link 1 (5 GHz)
+    uint8_t nStaSlds0 = 1; //!< number of interfering SLD STAs on link 0 (2.4 GHz)
+    uint8_t nStaSlds1 = 1; //!< number of interfering SLD STAs on link 1 (5 GHz)
     double period = 0.5;
-    uint32_t nss = 4;
-    uint8_t mode = 1;
+    uint32_t nss = 2;
     double fixedPER0 = 0.0;
     double fixedPER1 = 0.0;
 
@@ -662,17 +532,17 @@ main(int argc, char* argv[])
     CommandLine cmd(__FILE__);
     std::filesystem::path filepath = __FILE__;
     cmd.AddValue("seed", "seed number", seedNumber);
-    cmd.AddValue("mcs1", "MCS for 2.4 GHz", mcs1);
-    cmd.AddValue("mcs2", "MCS for 5 GHz", mcs2);
-    cmd.AddValue("bw1", "band width on 2.4 GHz", bw1);
-    cmd.AddValue("bw2", "band width on 5 GHz", bw2);
+    cmd.AddValue("mcs0", "MCS for 2.4 GHz", mcs0);
+    cmd.AddValue("mcs1", "MCS for 5 GHz", mcs1);
+    cmd.AddValue("bw0", "band width on 2.4 GHz", bw0);
+    cmd.AddValue("bw1", "band width on 5 GHz", bw1);
     cmd.AddValue("bawsize", "BA Window Size", mpduBufferSize);
     cmd.AddValue("simt", "simulation time", simT);
     cmd.AddValue("period", "throughput measurement bucket size", period);
     cmd.AddValue("nss", "number of spatial streams (MIMO)", nss);
-    cmd.AddValue("nsld0", "number of interfering SLD STAs on link 0", nStaSlds1);
-    cmd.AddValue("nsld1", "number of interfering SLD STAs on link 1", nStaSlds2);
-    cmd.AddValue("logsender", "enable transmitter-side (A-MPDU controller) logging", logsender);
+    cmd.AddValue("nsld0", "number of interfering SLD STAs on link 0", nStaSlds0);
+    cmd.AddValue("nsld1", "number of interfering SLD STAs on link 1", nStaSlds1);
+    cmd.AddValue("logsender", "enable transmitter-side logging", logsender);
     cmd.AddValue("logreceiver", "enable receiver-side logging", logreceiver);
     cmd.AddValue("policy", "A-MPDU limit control policy ID", policyint);
     cmd.AddValue("maxampdunum0", "max A-MPDU size (MPDUs) for the MLD on link 0", maxAmpduNum0);
@@ -714,14 +584,14 @@ main(int argc, char* argv[])
 
     // ---------------- Build the output file title / directory ----------------
     std::ostringstream oss;
-    oss << policy << "_baw_" << mpduBufferSize << "_bw_" << bw1 << "_" << bw2 << "_mcs_" << mcs1
-        << "_" << mcs2 << "_interference_" << static_cast<uint32_t>(nStaSlds1) << "_"
-        << static_cast<uint32_t>(nStaSlds2);
-    if (maxAmpduNumSld0 && nStaSlds1)
+    oss << policy << "_baw_" << mpduBufferSize << "_bw_" << bw0 << "_" << bw1 << "_mcs_" << mcs0
+        << "_" << mcs1 << "_interference_" << static_cast<uint32_t>(nStaSlds0) << "_"
+        << static_cast<uint32_t>(nStaSlds1);
+    if (maxAmpduNumSld0 && nStaSlds0)
     {
         oss << "_maxAmpduNumSld0_" << maxAmpduNumSld0;
     }
-    if (maxAmpduNumSld1 && nStaSlds2)
+    if (maxAmpduNumSld1 && nStaSlds1)
     {
         oss << "_maxAmpduNumSld1_" << maxAmpduNumSld1;
     }
@@ -754,14 +624,33 @@ main(int argc, char* argv[])
     baTxOutputFile = prepareFile(title + "_BA.csv");
     std::cout << "PPDU Tx csv: " << ppduTxOutputFile << std::endl;
 
+    // Sender-side mode flags for the MLD STA's EDCA/Txop, used to configure
+    // its AmpduLimitController. Bit 0 (value 1, the default here) enables
+    // AmpduLimitController-based A-MPDU limiting on the MLD STA (node 1) for
+    // its BE access category; if cleared, the nominal MpduBufferSize is used
+    // directly with no per-link limit control. Bit 5 additionally enables
+    // sender-side debug logging when requested via --logsender.
+    uint8_t modeSender = 1;
     if (logsender)
     {
-        mode = mode | (1 << 5);
+        modeSender = modeSender | (1 << 5);
     }
-    uint8_t mode_recv = 1 << 2;
+
+    // Receiver-side mode flags for the MLD STA's BlockAck agreement manager.
+    // Bit 2 selects the "independent scoreboard" BA mode (IEEE 802.11be
+    // Clause 35.3.8, Mode (i)): each affiliated STA maintains its own BA
+    // scoreboard and is not required to synchronize it with the other
+    // affiliated STAs, so a BA frame generated on one link only reflects the
+    // reception status of MPDUs delivered on that same link. This models a
+    // distributed multi-radio MLD architecture where cross-link scoreboard
+    // synchronization would incur non-negligible latency/overhead, as opposed
+    // to a single-chip/single-MAC design (Modes (ii)/(iii)) with a common,
+    // instantaneously-synchronized scoreboard. Bit 6 additionally enables
+    // receiver-side debug logging when requested via --logreceiver.
+    uint8_t modeReceiver = 1 << 2;
     if (logreceiver)
     {
-        mode_recv = mode_recv | (1 << 6);
+        modeReceiver = modeReceiver | (1 << 6);
     }
 
     // ---------------- Fixed simulation parameters ----------------
@@ -793,15 +682,15 @@ main(int argc, char* argv[])
     NodeContainer apNodes;
     NodeContainer mldNodes;
     apNodes.Create(1);
-    mldNodes.Create(nStaMlds + nStaSlds1 + nStaSlds2);
+    mldNodes.Create(nStaMlds + nStaSlds0 + nStaSlds1);
     NetDeviceContainer apDev;
     NetDeviceContainer mldDev;
 
     // ---------------- WiFi (EHT) configuration ----------------
     WifiHelper wifi;
     wifi.SetStandard(WIFI_STANDARD_80211be);
-    std::vector<uint32_t> mcs{mcs1, mcs2};
-    std::vector<uint32_t> bandwidth{bw1, bw2};
+    std::vector<uint32_t> mcs{mcs0, mcs1};
+    std::vector<uint32_t> bandwidth{bw0, bw1};
     std::vector<uint32_t> channelnum{0, 0};
 
     for (uint8_t i = 0; i < nLinks; ++i)
@@ -922,8 +811,7 @@ main(int argc, char* argv[])
     }
 
     // ---------------- Trace connections ----------------
-    // AP and the MLD STA under test: connect both PHY-level CSV logging
-    // (PpduTxRecord) and the throughput-statistics sink (NotifyPpduTxDuration).
+    // AP and the MLD STA under test: connect PHY-level CSV logging (PpduTxRecord).
     for (uint8_t linkId = 0; linkId < nLinks; ++linkId)
     {
         DynamicCast<WifiNetDevice>(apDev.Get(0))
@@ -934,21 +822,16 @@ main(int argc, char* argv[])
             ->GetPhy(linkId)
             ->TraceConnectWithoutContext("PpduTxDuration",
                                           MakeBoundCallback(&PpduTxRecord, StaType::MLD_STA, -1));
-        DynamicCast<WifiNetDevice>(mldDev.Get(0))
-            ->GetPhy(linkId)
-            ->TraceConnectWithoutContext(
-                "PpduTxDuration",
-                MakeBoundCallback(&NotifyPpduTxDuration, statsBeginTime, statsEndTime, 0, true));
     }
     DynamicCast<WifiNetDevice>(mldDev.Get(0))
         ->GetMac()
         ->GetQosTxop(0)
         ->GetBaManager()
         ->TraceConnectWithoutContext("BlockAckResult",
-                                      MakeBoundCallback(&NotifyBlockAckResult, statsBeginTime));
+                                      MakeBoundCallback(&NotifyBlockAckResult, statsBeginTime, logreceiver));
 
     // Interfering SLD STAs on link 0 (2.4 GHz).
-    for (std::size_t id = nStaMlds; id < nStaMlds + nStaSlds1; ++id)
+    for (std::size_t id = nStaMlds; id < nStaMlds + nStaSlds0; ++id)
     {
         Ptr<WifiMac> mac_mld = DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetMac();
         std::cout << "SLD_2.4G_" << id << " MAC: " << mldDev.Get(id)->GetAddress() << std::endl;
@@ -963,27 +846,18 @@ main(int argc, char* argv[])
                 ->TraceConnectWithoutContext(
                     "PpduTxDuration",
                     MakeBoundCallback(&PpduTxRecord, StaType::SLD_2G, staIndex));
-            DynamicCast<WifiNetDevice>(mldDev.Get(id))
-                ->GetPhy(linkId)
-                ->TraceConnectWithoutContext(
-                    "PpduTxDuration",
-                    MakeBoundCallback(&NotifyPpduTxDuration,
-                                       statsBeginTime,
-                                       statsEndTime,
-                                       staIndex,
-                                       false));
         }
     }
 
     // Interfering SLD STAs on link 1 (5 GHz).
-    for (std::size_t id = nStaMlds + nStaSlds1; id < nStaMlds + nStaSlds1 + nStaSlds2; ++id)
+    for (std::size_t id = nStaMlds + nStaSlds0; id < nStaMlds + nStaSlds0 + nStaSlds1; ++id)
     {
         Ptr<WifiMac> mac_mld = DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetMac();
         std::cout << "SLD_5G_" << id << " MAC: " << mldDev.Get(id)->GetAddress() << std::endl;
         auto fem = mac_mld->GetFrameExchangeManager(1);
         std::cout << "\t sldDevice linkId 1 mac address: " << fem->GetAddress() << std::endl;
 
-        const uint32_t staIndex = id - nStaMlds - nStaSlds1;
+        const uint32_t staIndex = id - nStaMlds - nStaSlds0;
         for (uint8_t linkId = 0; linkId < nLinks; ++linkId)
         {
             DynamicCast<WifiNetDevice>(mldDev.Get(id))
@@ -991,15 +865,6 @@ main(int argc, char* argv[])
                 ->TraceConnectWithoutContext(
                     "PpduTxDuration",
                     MakeBoundCallback(&PpduTxRecord, StaType::SLD_5G, staIndex));
-            DynamicCast<WifiNetDevice>(mldDev.Get(id))
-                ->GetPhy(linkId)
-                ->TraceConnectWithoutContext(
-                    "PpduTxDuration",
-                    MakeBoundCallback(&NotifyPpduTxDuration,
-                                       statsBeginTime,
-                                       statsEndTime,
-                                       staIndex,
-                                       false));
         }
     }
 
@@ -1015,7 +880,7 @@ main(int argc, char* argv[])
     NodeContainer allNodes(apNodes, mldNodes);
     for (uint32_t i = 0; i < allNodes.GetN(); ++i)
     {
-        if (i >= apNodes.GetN() + nStaMlds + nStaSlds1)
+        if (i >= apNodes.GetN() + nStaMlds + nStaSlds0)
         {
             Config::Set("/NodeList/" + std::to_string(i) +
                             "/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_MaxAmpduSize",
@@ -1044,8 +909,8 @@ main(int argc, char* argv[])
     std::cout << "AP position: (0.0, 2.0, 0.0)" << std::endl;
 
     const double bssRadius = 0.1;
-    const double step = 360.0 / (nStaMlds + nStaSlds1 + nStaSlds2);
-    for (uint32_t i = 0; i < nStaMlds + nStaSlds1 + nStaSlds2; i++)
+    const double step = 360.0 / (nStaMlds + nStaSlds0 + nStaSlds1);
+    for (uint32_t i = 0; i < nStaMlds + nStaSlds0 + nStaSlds1; i++)
     {
         const double ang = step * i * M_PI / 180.0;
         const double x = 0.0 + bssRadius * cos(ang);
@@ -1070,7 +935,7 @@ main(int argc, char* argv[])
     const Ipv4InterfaceContainer mldNodeInterface = address.Assign(mldDev);
 
     std::cout << "AP0 IP: " << apNodeInterface.GetAddress(0) << std::endl;
-    for (std::size_t i = 0; i < nStaMlds + nStaSlds1 + nStaSlds2; ++i)
+    for (std::size_t i = 0; i < nStaMlds + nStaSlds0 + nStaSlds1; ++i)
     {
         std::cout << "  STA-" << std::to_string(i) + ": " << mldNodeInterface.GetAddress(i)
                   << std::endl;
@@ -1107,7 +972,7 @@ main(int argc, char* argv[])
         {
             client.SetAttribute("Interval", TimeValue(Seconds(packetInterval)));
         }
-        else if (i < nStaMlds + nStaSlds1)
+        else if (i < nStaMlds + nStaSlds0)
         {
             client.SetAttribute("Interval", TimeValue(Seconds(packetInterval2)));
         }
@@ -1141,7 +1006,7 @@ main(int argc, char* argv[])
         wifiDev->GetMac()->SetAttribute("ActiveProbing", BooleanValue(true));
         const std::string mappingToUse =
             (index < nStaMlds) ? mldMappingStr
-                                : ((index < nStaMlds + nStaSlds1) ? mldMappingStr1 : mldMappingStr2);
+                                : ((index < nStaMlds + nStaSlds0) ? mldMappingStr1 : mldMappingStr2);
         wifiDev->GetMac()->GetEhtConfiguration()->SetAttribute("TidToLinkMappingDl",
                                                                  StringValue(mappingToUse));
         wifiDev->GetMac()->GetEhtConfiguration()->SetAttribute("TidToLinkMappingUl",
@@ -1163,7 +1028,7 @@ main(int argc, char* argv[])
                 BooleanValue(false));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/UseExplicitBarAfterMissedBlockAck",
                 BooleanValue(false));
-    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(mode));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(modeSender));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Policy",
                 UintegerValue(policyint));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxAmpduNum0",
@@ -1175,7 +1040,7 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/DataRate5",
                 DoubleValue(maxLoad5));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode",
-                UintegerValue(mode_recv));
+                UintegerValue(modeReceiver));
 
     // ---------------- OBSS/BSS EDCA parameters (equal AIFSN/CW for all nodes) ----------------
     for (uint32_t i = 0; i < allNodes.GetN(); ++i)
@@ -1200,34 +1065,27 @@ main(int argc, char* argv[])
     Simulator::Run();
     Simulator::Destroy();
 
-    if (mode == 0)
-    {
-        return 0;
-    }
-
     const double interval = (statsEndTime - statsBeginTime).GetMicroSeconds();
     UpdateThroughputCsv(scenario,
                          policy,
+                         bw0,
                          bw1,
-                         bw2,
+                         mcs0,
                          mcs1,
-                         mcs2,
                          nss,
+                         nStaSlds0,
                          nStaSlds1,
-                         nStaSlds2,
-                         maxAmpduNumSld0,
-                         maxAmpduNumSld1,
+                         nStaSlds0 == 0 ? 0 : maxAmpduNumSld0,
+                         nStaSlds1 == 0 ? 0 : maxAmpduNumSld1,
                          fixedPER0,
                          fixedPER1,
                          mpduBufferSize,
-                         maxAmpduNum0,
-                         maxAmpduNum1,
+                         policyint == 6 ? maxAmpduNum0 : 0,
+                         policyint == 6 ? maxAmpduNum1 : 0,
                          originalSeed,
                          statsMLD.Tput(payloadSize, interval),
                          statsMLD.link[0].Tput(payloadSize, interval),
-                         statsMLD.link[1].Tput(payloadSize, interval),
-                         statsMLD.link[0].PRatio(),
-                         statsMLD.link[1].PRatio());
+                         statsMLD.link[1].Tput(payloadSize, interval));
     PrintStats(statsBeginTime, statsEndTime, payloadSize);
 
     return 0;
