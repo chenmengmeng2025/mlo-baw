@@ -1018,9 +1018,9 @@ operator<<(std::ostream& os, const Packet& packet)
     return os;
 }
 
-uint32_t 
-Packet::GetAdjustment() const {
-    return  m_byteTagList.GetAdjustment();
-}
+// uint32_t 
+// Packet::GetAdjustment() const {
+//     return  m_byteTagList.GetAdjustment();
+// }
 
 } // namespace ns3

@@ -521,6 +521,8 @@ class PhyEntity : public SimpleRefCount<PhyEntity>
      */
     virtual Time GetMaxDelayPpduSameUid(const WifiTxVector& txVector);
 
+    double m_fixedPER = 0.0; //!< A fixed PER value used for testing purposes when the error model is not used
+
   protected:
     /**
      * A map of PPDU field elements per preamble type.
@@ -962,6 +964,7 @@ class PhyEntity : public SimpleRefCount<PhyEntity>
                           //!< includes the noise figure)
 
     static uint64_t m_globalPpduUid; //!< Global counter of the PPDU UID
+
 };                                   // class PhyEntity
 
 /**

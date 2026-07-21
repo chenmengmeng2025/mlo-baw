@@ -167,8 +167,7 @@ set(source_files
     model/yans-wifi-phy.cc
     model/wifi-spectrum-value-helper.cc
 
-    helper/wifi-tx-stats-helper.cc
-    model/msdu-grouper.cc
+    model/ampdu-limit-controller.cc
 )
 
 set(header_files
@@ -342,8 +341,7 @@ set(header_files
     model/wifi-spectrum-value-helper.h
     test/wifi-mlo-test.h
 
-    helper/wifi-tx-stats-helper.h
-    model/msdu-grouper.h
+    model/ampdu-limit-controller.h
 )
 
 build_lib(
@@ -355,7 +353,6 @@ build_lib(
     ${libspectrum}
     ${gsl_libraries}
   TEST_SOURCES
-    test/block-ack-test-suite.cc
     test/channel-access-manager-test.cc
     test/inter-bss-test-suite.cc
     test/power-rate-adaptation-test.cc

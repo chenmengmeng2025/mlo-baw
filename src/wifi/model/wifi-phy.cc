@@ -300,7 +300,7 @@ WifiPhy::GetTypeId()
                           "the reception of the MAC header of every MPDU.",
                           BooleanValue(false),
                           MakeBooleanAccessor(&WifiPhy::m_notifyRxMacHeaderEnd),
-                          MakeBooleanChecker())
+                          MakeBooleanChecker())  
             .AddTraceSource("PhyTxBegin",
                             "Trace source indicating a packet "
                             "has begun transmitting over the channel medium",
@@ -395,8 +395,7 @@ WifiPhy::WifiPhy()
       m_txSpatialStreams(1),
       m_rxSpatialStreams(1),
       m_wifiRadioEnergyModel(nullptr),
-      m_timeLastPreambleDetected(Seconds(0)),
-      m_transmissionDelay(Seconds(0))
+      m_timeLastPreambleDetected(Seconds(0))
 {
     NS_LOG_FUNCTION(this);
     m_random = CreateObject<UniformRandomVariable>();
@@ -1604,25 +1603,6 @@ WifiPhy::CalculateTxDuration(const WifiConstPsduMap& psduMap,
         ->CalculateTxDuration(psduMap, txVector, band);
 }
 
-Time WifiPhy::CalculateTransmissionDelay(bool IsAggregation, size_t maxMpduCount, size_t maxMsduCount, Ptr<const WifiPsdu> psdu) {
-    Time transmissionDelay = NanoSeconds(0); 
-    if (!(psdu->GetHeader(0).GetAddr1() == "00:00:00:00:00:05" || psdu->GetHeader(0).GetAddr1() == "00:00:00:00:00:06") || !psdu->GetHeader(0).IsData())
-        return transmissionDelay;
-    if (IsAggregation && m_transmissionDelay.IsPositive()) {
-        return m_transmissionDelay; // constant delay
-    }
-    // calculate transmission delay based on the number of MPDUs and MSDUs
-    if (IsAggregation && psdu->GetHeader(0).GetAddr1() == "00:00:00:00:00:05") {
-        double delayInMicroseconds = 2 + (maxMpduCount * maxMsduCount * 32.0) / 3000.0 + maxMpduCount / 320.0 + 1.5;
-        transmissionDelay = NanoSeconds(static_cast<int64_t>(delayInMicroseconds * 1000));  
-    }
-    if (IsAggregation && psdu->GetHeader(0).GetAddr1() == "00:00:00:00:00:06") {
-        double delayInMicroseconds = 2 + (maxMpduCount * maxMsduCount * 32.0) / 3000.0 + (maxMpduCount / 320.0 + 1.5) * 2;
-        transmissionDelay = NanoSeconds(static_cast<int64_t>(delayInMicroseconds * 1000));  
-    }
-    return transmissionDelay;
-}
-
 uint32_t
 WifiPhy::GetMaxPsduSize(WifiModulationClass modulation)
 {
@@ -1730,6 +1710,7 @@ WifiPhy::NotifyMonitorSniffRx(Ptr<const WifiPsdu> psdu,
                       "TxVector with aggregate flag expected here according to PSDU");
         aMpdu.mpduRefNumber = ++m_rxMpduReferenceNumber;
         size_t nMpdus = psdu->GetNMpdus();
+        // std::cout << Simulator::Now().GetMicroSeconds() << "us, nMpdus: " << nMpdus << std::endl;
         NS_ASSERT_MSG(statusPerMpdu.size() == nMpdus, "Should have one reception status per MPDU");
         if (!m_phyMonitorSniffRxTrace.IsEmpty())
         {
@@ -1878,31 +1859,9 @@ WifiPhy::Send(const WifiConstPsduMap& psdus, const WifiTxVector& txVector)
         }
         return;
     }
-
-    const auto& it = psdus.begin();
-    // if(it->second->GetSize() == 1570){
-    //     std::cout<<"SLD PPDU size "<<it->second->GetSize()<<" bytes; ";
-    // }
+    
     const auto txDuration = CalculateTxDuration(psdus, txVector, GetPhyBand());
 
-    // if(it->second->GetHeader(0).GetType() == WIFI_MAC_CTL_RTS){
-    //     std::cout<<"RTS txDuration "<<txDuration.GetMicroSeconds()<<"us; ";
-    //     std::cout<<"Header:" << it->second->GetHeader(0).GetSize()<<" bytes; ";
-    //     std::cout<<"Size "<<it->second->GetSize()<<" bytes; ";
-    //     std::cout<<"PhyPreambleAndHeaderDuration "<<CalculatePhyPreambleAndHeaderDuration(txVector).GetMicroSeconds()<<"us"<<std::endl;
-    // }
-    // if(it->second->GetHeader(0).GetType() == WIFI_MAC_CTL_CTS){
-    //     std::cout<<"CTS txDuration "<<txDuration.GetMicroSeconds()<<"us; ";
-    //     std::cout<<"Header:" << it->second->GetHeader(0).GetSize()<<" bytes; ";
-    //     std::cout<<"Size "<<it->second->GetSize()<<" bytes; ";
-    //     std::cout<<"PhyPreambleAndHeaderDuration "<<CalculatePhyPreambleAndHeaderDuration(txVector).GetMicroSeconds()<<"us"<<std::endl;
-    // }
-    // if(it->second->GetHeader(0).GetType() == WIFI_MAC_QOSDATA){
-    //     std::cout<<"SLD PPDU txDuration "<<txDuration.GetMicroSeconds()<<"us; ";
-    //     std::cout<<"Header:" << it->second->GetHeader(0).GetSize()<<" bytes; ";
-    //     std::cout<<"Size "<<it->second->GetSize()<<" bytes; ";
-    //     std::cout<<"PhyPreambleAndHeaderDuration "<<CalculatePhyPreambleAndHeaderDuration(txVector).GetMicroSeconds()<<"us"<<std::endl;
-    // }
     auto noEndPreambleDetectionEvent = true;
     for (const auto& [mc, entity] : m_phyEntities)
     {
@@ -1962,7 +1921,21 @@ WifiPhy::Send(const WifiConstPsduMap& psdus, const WifiTxVector& txVector)
         Simulator::Schedule(txDuration, &WifiPhy::TxDone, this, psdus);
     if(!PpduTxDuration.IsEmpty())
     {
-        uint8_t linkId = m_band == WifiPhyBand::WIFI_PHY_BAND_2_4GHZ ? 0 : 1;
+        uint8_t linkId;
+        switch (m_band)
+        {
+            case WIFI_PHY_BAND_2_4GHZ:
+                linkId = 0;
+                break;
+            case WIFI_PHY_BAND_5GHZ:
+                linkId = 1;
+                break;
+            case WIFI_PHY_BAND_6GHZ:
+                linkId = 2;
+                break;
+            default:
+                NS_FATAL_ERROR("Unsupported PHY band: " << m_band);
+        }
         PpduTxDuration(ppdu, txDuration, linkId);
     }
 
@@ -2025,28 +1998,14 @@ WifiPhy::DoSend(const WifiConstPsduMap& psdus, const WifiTxVector& txVector, uin
     }
     
 
-    const auto& it = psdus.begin();
     const auto txDuration = CalculateTxDuration(psdus, txVector, GetPhyBand());
-    if(it->second->GetNMpdus()>1){
-        std::cout<<"MLD PSDU "<<GetFrequency()<<"MHZ; "<<Simulator::Now().GetMicroSeconds()<<" us; ";
-        // std::cout<<"Header:" << it->second->GetHeader(0).GetSize()<<" bytes; ";
-        // std::cout<<"Size "<<it->second->GetSize()<<" bytes; ";
-        // std::cout << "A-MPDU Subframe Size: " << it->second->GetAmpduSubframeSize(1) << "; ";
-        std::cout << "Number of MPDUs: " << it->second->GetNMpdus() << "; ";
-        // std::cout<<"PhyPreambleAndHeaderDuration "<<CalculatePhyPreambleAndHeaderDuration(txVector).GetMicroSeconds()<<"us; ";
-        // std::cout<<"txDuration "<<txDuration.GetMicroSeconds()<<"us; ";
-        std::cout<<std::endl;
-    }
-    size_t maxMpduCount = 0;
-    size_t maxMsduCount = 0;
-    // 遍历 WifiConstPsduMap，获得最大的聚合数量
-    // size_t npsdu = psdus.size(); // 1
+    // if(psdus.begin()->second->GetNMpdus()>1){
+    //    std::cout<<"MLD PSDU "<<GetFrequency()<<"MHZ; "<<Simulator::Now().GetMicroSeconds()<<" us; ";
+    //     std::cout << "Number of MPDUs: " << psdus.begin()->second->GetNMpdus() << "; ";
+    //     std::cout<<"PhyPreambleAndHeaderDuration "<<CalculatePhyPreambleAndHeaderDuration(txVector).GetMicroSeconds()<<"us; ";
+    //     std::cout<<std::endl;
+    // }
     auto firstPsdu = psdus.cbegin()->second;
-    maxMpduCount = firstPsdu->GetNMpdus();
-    maxMsduCount = firstPsdu->GetNMsdus();
-
-    Time transmissionDelay = CalculateTransmissionDelay(firstPsdu->IsAggregate(), maxMpduCount, maxMsduCount, firstPsdu);
-    
     auto noEndPreambleDetectionEvent = true;
     for (const auto& [mc, entity] : m_phyEntities)
     {
@@ -2095,32 +2054,23 @@ WifiPhy::DoSend(const WifiConstPsduMap& psdus, const WifiTxVector& txVector, uin
         NotifyMonitorSniffTx(psdu.second, GetFrequency(), txVector, psdu.first);
     }
 
-    m_state->SwitchToTx(txDuration, psdus, GetPower(txVector.GetTxPowerLevel()), txVector, transmissionDelay); // 切换PHY层状态为TX状态
-    // m_state->SwitchToTx(txDuration, psdus, GetPower(txVector.GetTxPowerLevel()), txVector, transmissionDelay);
+    m_state->SwitchToTx(txDuration, psdus, GetPower(txVector.GetTxPowerLevel()), txVector); // 切换PHY层状态为TX状态
     if (m_wifiRadioEnergyModel &&
         m_wifiRadioEnergyModel->GetMaximumTimeInState(WifiPhyState::TX) < txDuration)
     {
         ppdu->SetTruncatedTx();
     }
 
-    // 改变时间，加上发送延迟后才完成传输
     m_endTxEvent =
-        Simulator::Schedule(txDuration + transmissionDelay, &WifiPhy::TxDone, this, psdus);
+        Simulator::Schedule(txDuration, &WifiPhy::TxDone, this, psdus);
 
-    Simulator::Schedule(txDuration + transmissionDelay, &WifiPhy::TxDoneUpdateLinkTxStatus, this, linkId, std::ref(linkStatus));
+    Simulator::Schedule(txDuration, &WifiPhy::TxDoneUpdateLinkTxStatus, this, linkId, std::ref(linkStatus));
 
     if(!PpduTxDuration.IsEmpty())
     {
-        uint8_t linkId = m_band == WifiPhyBand::WIFI_PHY_BAND_2_4GHZ ? 0 : 1;
-        Simulator::Schedule(transmissionDelay, [this, ppdu, txDuration, linkId]() {
-            PpduTxDuration(ppdu, txDuration, linkId);
-        });
-        // PpduTxDuration(ppdu, txDuration, linkId);
+        PpduTxDuration(ppdu, txDuration, linkId);
     }
-    // Schedule the StartTx call after the transmission delay
-    // std::cout << "To StartTx after transmission delay = " << transmissionDelay << std::endl;
-    Simulator::Schedule(transmissionDelay, &WifiPhy::StartTx, this, ppdu);
-    // StartTx(ppdu);
+    StartTx(ppdu);
     ppdu->ResetTxVector();
 
     m_channelAccessRequested = false;
@@ -2611,9 +2561,13 @@ WifiPhy::GetSubcarrierSpacing() const
     return subcarrierSpacing;
 }
 
-void 
-WifiPhy::SetTransmissionDelay(Time delay) {
-    m_transmissionDelay = delay;
+void
+WifiPhy::SetFixedPerForPhyEntity(double fixedPer)
+{
+    NS_LOG_FUNCTION(this << fixedPer);
+    for (const auto& phyEntity : m_phyEntities)
+    {
+        phyEntity.second->m_fixedPER = fixedPer;
+    }
 }
-
 } // namespace ns3

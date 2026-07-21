@@ -24,9 +24,7 @@
  NS_LOG_COMPONENT_DEFINE("WifiMpdu");
  
  WifiMpdu::WifiMpdu(Ptr<const Packet> p, const WifiMacHeader& header, Time stamp)
-     : m_header(header),
-     m_groupNumber(0),// Initialize group number to 0
-     m_allocatedLink(0)
+     : m_header(header)
  {
      auto& original = std::get<OriginalInfo>(m_instanceInfo);
      original.m_packet = p;
@@ -71,8 +69,6 @@
  
      alias->m_header = m_header; // copy the MAC header
      alias->m_instanceInfo = Ptr(const_cast<WifiMpdu*>(this));
-     alias->m_groupNumber = m_groupNumber;
-     alias->m_allocatedLink = m_allocatedLink;
      NS_ASSERT(alias->m_instanceInfo.index() == ALIAS);
  
      return alias;
@@ -381,41 +377,6 @@
             << ", inflight=" << IsInFlight();
      }
      os << ", packet=" << GetPacket();
- }
- 
- void
- WifiMpdu::SetGroupNumber (uint32_t groupNumber)
- {
-     NS_LOG_FUNCTION (this << groupNumber);
-     m_groupNumber = groupNumber;
-     NS_LOG_INFO ("Group number set to " << m_groupNumber);
- }
- 
- uint32_t
- WifiMpdu::GetGroupNumber () const
- {
-     NS_LOG_FUNCTION (this);
-     return m_groupNumber;
- }
- 
- void
- WifiMpdu::SetAllocatedLink (uint8_t AllocatedLink)
- {
-   NS_ASSERT_MSG(AllocatedLink <= 3, "Invalid link allocation strategy");
-   m_allocatedLink = AllocatedLink;
- }
- 
- uint8_t
- WifiMpdu::GetAllocatedLink () const
- {
-   return m_allocatedLink;
- }
- 
- 
- size_t
- WifiMpdu::GetNMsdus() const
- {
-     return GetOriginalInfo().m_msduList.size();
  }
  
  std::ostream&

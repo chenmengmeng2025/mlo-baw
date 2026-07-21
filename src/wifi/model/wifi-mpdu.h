@@ -245,30 +245,6 @@
       */
      virtual void Print(std::ostream& os) const;
  
-      /**
-      * \brief Set the group number for this MPDU.
-      * \param groupNumber The group number to set.
-      */
-     void SetGroupNumber (uint32_t groupNumber);
- 
-     /**
-      * \brief Get the group number of this MPDU.
-      * \return The group number.
-      */
-     uint32_t GetGroupNumber () const;
- 
-     /**
-      * Set the link to which the mpdu is assigned.
-      */
-     void SetAllocatedLink (uint8_t);
- 
-     /**
-      * Get the link to which the mpdu is assigned.
-      */
-     uint8_t GetAllocatedLink () const;
- 
-     size_t GetNMsdus() const;
- 
    private:
      /**
       * \brief Aggregate the MSDU contained in the given MPDU to this MPDU (thus
@@ -321,8 +297,6 @@
      static constexpr std::size_t ORIGINAL =
          0;                                  //!< index of original copy in the InstanceInfo variant
      static constexpr std::size_t ALIAS = 1; //!< index of an alias in the InstanceInfo variant
-     uint32_t m_groupNumber; ///< The group number for this MPDU.
-     uint8_t m_allocatedLink;//!< link allocation strategy.00表示默认，未被分配状态（模式1中均为00）；01表示分配给Link 0; 10表示分配给Link 1；11表示全分配
  };
  
  /**

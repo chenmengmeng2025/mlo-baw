@@ -21,7 +21,7 @@ NS_LOG_COMPONENT_DEFINE("OriginatorBlockAckAgreement");
 
 OriginatorBlockAckAgreement::OriginatorBlockAckAgreement(Mac48Address recipient, uint8_t tid)
     : BlockAckAgreement(recipient, tid),
-      m_linkRPtr({0, 0}),
+      m_linkRPtr({0, 0, 0}),
       m_state(PENDING)
 {
     std::cout << "CreateOriginatorBlockAckAgreement: recipient: " << recipient << " tid: " << (uint32_t)tid << std::endl;
@@ -92,7 +92,7 @@ OriginatorBlockAckAgreement::InitTxWindow()
 
 bool
 OriginatorBlockAckAgreement::AllAckedMpdusInTxWindow(const std::set<uint16_t>& seqNumbers) const
-{ 
+{
     std::set<std::size_t> distances;
     for (const auto seqN : seqNumbers)
     {
@@ -120,9 +120,7 @@ OriginatorBlockAckAgreement::AdvanceTxWindow()
     while (m_txWindow.At(0))
     {
         m_txWindow.Advance(1); // reset the current head -- ensures loop termination
-        // std::cout << "winStart: " << m_txWindow.GetWinStart() << std::endl;
     }
-    // std::cout << "winStart: " << m_txWindow.GetWinStart() << std::endl;
 }
 
 void
@@ -166,6 +164,9 @@ OriginatorBlockAckAgreement::NotifyAckedMpdu(Ptr<const WifiMpdu> mpdu)
     // transmitted MPDU is in the window, hence we cannot be notified of the
     // acknowledgment of an MPDU which is beyond the transmit window
     m_txWindow.At(distance) = true;
+    if (m_mode & 0x01){
+        m_txWindow.SetElementState(distance, BlockAckWindow::ElementState::ACKED);
+    }
 
     // the starting sequence number can be advanced to the sequence number of
     // the nearest unacknowledged MPDU
@@ -189,6 +190,18 @@ OriginatorBlockAckAgreement::NotifyDiscardedMpdu(Ptr<const WifiMpdu> mpdu)
     AdvanceTxWindow();
     NS_LOG_DEBUG("Discarded MPDU within current transmit window. New starting sequence number: "
                  << m_txWindow.GetWinStart());
+}
+
+BlockAckWindow&
+OriginatorBlockAckAgreement::GetTxWindow()
+{
+    return m_txWindow;      
+}
+
+void
+OriginatorBlockAckAgreement::SetMode(uint32_t mode)
+{
+    m_mode = mode;
 }
 
 } // namespace ns3

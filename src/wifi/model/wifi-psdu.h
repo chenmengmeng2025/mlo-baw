@@ -205,8 +205,6 @@
       */
      std::size_t GetNMpdus() const;
  
-     std::size_t GetNMsdus() const;
- 
      /**
       * \brief Return a const iterator to the first MPDU
       *

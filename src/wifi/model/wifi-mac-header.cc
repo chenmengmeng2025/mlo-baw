@@ -984,7 +984,7 @@ WifiMacHeader::GetSize() const
         case SUBTYPE_CTL_TRIGGER:
         case SUBTYPE_CTL_END:
         case SUBTYPE_CTL_END_ACK:
-            size = 2 + 2 + 6 + 6;   //here block ack
+            size = 2 + 2 + 6 + 6;
             break;
         case SUBTYPE_CTL_CTS:
         case SUBTYPE_CTL_ACK:

@@ -343,11 +343,11 @@ class BlockAckManager : public Object
      * typedef for a callback to invoke when an MPDU is dropped.
      */
     typedef Callback<void, Ptr<const WifiMpdu>> DroppedOldMpdu;
-    /**
-     * typedef for a callback to invoke when an MPDU that was successfully acknowledged via Block Ack.
-     * 
-     */
-    typedef TracedCallback<Ptr<const WifiMpdu>, uint8_t> MpduAndLinkIdTracedCallback;
+    // /**
+    //  * typedef for a callback to invoke when an MPDU that was successfully acknowledged via Block Ack.
+    //  * 
+    //  */
+    // typedef TracedCallback<Ptr<const WifiMpdu>, uint8_t> MpduAndLinkIdTracedCallback;
     /**
      * \param callback the callback to invoke when a
      * packet transmission was completed successfully.
@@ -432,7 +432,7 @@ class BlockAckManager : public Object
      * \param recipient the recipient
      * \param tid the TID
      */
-    void RemoveFromSendBarIfDataQueuedList(const Mac48Address& recipient, uint8_t tid);\
+    void RemoveFromSendBarIfDataQueuedList(const Mac48Address& recipient, uint8_t tid);
     
     /**
      * Get the minimum read pointer value among all links.
@@ -467,16 +467,16 @@ class BlockAckManager : public Object
      */
     void UpdateLinkRPtrSyncEnabled(uint8_t linkId, bool txStatus);
 
-    /**
-     * Get read pointer values for both links.
-     *
-     * \param recipient the recipient MAC address
-     * \param tid Traffic ID
-     * \return vector containing read pointer values and window start
-     */
-    std::vector<uint16_t> GetRptr(const Mac48Address& recipient, uint8_t tid);
-
     void SetMode(uint32_t mode);
+    void SetPERAllZero(bool isAllZero);
+
+    OriginatorBlockAckAgreement* GetOriginatorBlockAckAgreement(const Mac48Address& recipient, uint8_t tid);
+
+    typedef void (*BlockAckResultTracedCallback)(Mac48Address recipient,
+                                             uint8_t tid,
+                                             uint8_t linkId,
+                                             uint16_t nSuccessfulMpdus,
+                                             uint16_t nFailedMpdus);
 
   protected:
     void DoDispose() override;
@@ -549,14 +549,16 @@ class BlockAckManager : public Object
     TxOk m_txOkCallback;                                    ///< transmit OK callback
     TxFailed m_txFailedCallback;                            ///< transmit failed callback
     DroppedOldMpdu m_droppedOldMpduCallback;                ///< the dropped MPDU callback
-    MpduAndLinkIdTracedCallback m_ackMpduCallback;  
+    // MpduAndLinkIdTracedCallback m_ackMpduCallback;  
     /**
      * The trace source fired when a state transition occurred.
      */
     TracedCallback<Time, Mac48Address, uint8_t, OriginatorBlockAckAgreement::State>
         m_originatorAgreementState;
-    std::vector<bool> m_linkRPtrSyncEnabled{true, true}; //!< Per-link ACK mode enabled flags
+    std::vector<bool> m_linkRPtrSyncEnabled{true, true, true}; //!< Per-link ACK mode enabled flags
     uint32_t m_mode;
+    bool m_isPERAllZero;
+    TracedCallback<Mac48Address, uint8_t, uint8_t, uint16_t, uint16_t> m_blockAckResultCallback;
 };
 
 } // namespace ns3

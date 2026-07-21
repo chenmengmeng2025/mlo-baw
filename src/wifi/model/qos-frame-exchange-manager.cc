@@ -252,10 +252,6 @@ QosFrameExchangeManager::StartTransmission(Ptr<QosTxop> edca, Time txopDuration)
     {
         m_edca->NotifyChannelAccessed(m_linkId, Seconds(0));
         return true;
-    } 
-    else {
-        // std::cout << "Link " << std::to_string(m_linkId) << "卡窗 " << std::endl;
-        // std::cout << m_edca->GetWifiMacQueue()->GetNPackets() << " " << std::endl;
     }
 
     NS_LOG_DEBUG("No frame transmitted");
@@ -287,7 +283,6 @@ QosFrameExchangeManager::StartFrameExchange(Ptr<QosTxop> edca,
     txParams.m_txVector =
         GetWifiRemoteStationManager()->GetDataTxVector(mpdu->GetHeader(), m_allowedWidth);
 
-    // std::cout << std::to_string(availableTime.GetSeconds()) << std::endl;
     Ptr<WifiMpdu> item = edca->GetNextMpdu(m_linkId, mpdu, txParams, availableTime, initialFrame);
 
     if (!item)
@@ -390,22 +385,46 @@ QosFrameExchangeManager::TryAddMpdu(Ptr<const WifiMpdu> mpdu,
     {
         ppduDurationLimit = availableTime - *protectionTime - *acknowledgmentTime;
     }
+   
     uint32_t maxNMpdus = std::numeric_limits<uint32_t>::max();
-    if (m_edca->GetMode() & 0x03) {
-        uint8_t linkId = m_phy->GetPhyBand() == WIFI_PHY_BAND_2_4GHZ ? 0 : 1;
-        if(m_edca->GetPreTitle() == 0 || m_edca->GetPreTitle() == 5 || m_edca->GetPreTitle() == 6)  maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit0(linkId);
-        if(m_edca->GetPreTitle() == 1 || m_edca->GetPreTitle() == 3 || m_edca->GetPreTitle() == 4) maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit1(linkId, m_edca->GetPreTitle());
-        if(m_edca->GetPreTitle() == 2){
-            maxNMpdus = m_edca->GetMsduGrouper()->GetAmpduLimit2(linkId, m_mac->GetMpduBufferSize());
+
+    // Reproduce the effective BAW size calculation under DAMLA (Section III-C, III-D of the paper)
+    std::vector<double> fixedPERs = m_dcf->GetFixedPER();
+
+    if ((m_edca->GetMode() & 0x01)) {
+        
+        uint16_t BawSize = 0;
+        auto ampduLimitController = m_edca->GetAmpduLimitController();
+        uint16_t mpduBufferSize = m_mac->GetMpduBufferSize();
+        int T_BA;
+        if (mpduBufferSize <= 256) T_BA = 40;
+        else if (mpduBufferSize <= 512) T_BA = 52;
+        else T_BA = 72;
+        
+        // DAMLA enabled, 2-link MLO, PER != 0 (Sec III-D step 1): effective-BAW
+        // estimation (Eq. 6) is only needed when link errors can cause MPDU loss;
+        // with PER = 0 the nominal BAW size W can be used directly.
+        // Check if now falls within the other link's (1 - m_linkId) outstanding
+        // transmission window (+SIFS +T_BA). Only then is the other link's cycle
+        // end time M2 known, giving T^s_{1->2} = M2 - M1 (Sec III-D). If so, run
+        // DAMLA: estimate w (Eq. 6) -> required T^{s*}_{2->1} (Eq. 5, W->w) -> y*_1 (Eq. 7).
+        if(m_edca->GetPolicy() == 2 && m_mac->GetNLinks() == 2 
+            && !std::all_of(fixedPERs.begin(), fixedPERs.end(),[](double p) { return p == 0.0; }) 
+            && ampduLimitController->IsWithinOtherLinkPpduWindow(m_linkId, (m_linkId ? 16 : 10) + T_BA)){
+                auto recipient = mpdu->GetHeader().GetAddr1();
+                if (auto mldAddr = GetWifiRemoteStationManager()->GetMldAddress(recipient)) recipient = *mldAddr;
+                BawSize = m_edca->GetBaManager()->GetOriginatorBlockAckAgreement(recipient, mpdu->GetHeader().GetQosTid())
+                            ->GetTxWindow().ComputeEffectiveBawSize(m_linkId, m_dcf->GetFixedPER()[1 - m_linkId], m_edca->GetMode() & 1 << 5);
+        }else{
+            BawSize = mpduBufferSize;
         }
+        // Calculate the maximum number of MPDUs allowed in the A-MPDU based on the allocated Effective BAW Size.
+        maxNMpdus = ampduLimitController->GetAmpduLimit(m_linkId, m_edca->GetPolicy(), BawSize, m_edca->GetMode() & 1 << 5);
     }
     if (!IsWithinLimitsIfAddMpdu(mpdu, txParams, ppduDurationLimit) || txParams.GetCurrentMpduNumber(mpdu->GetHeader().GetAddr1()) > maxNMpdus)
     {
         // adding MPDU failed, undo the addition of the MPDU and restore protection and
         // acknowledgment methods if they were swapped
-        // if(m_phy->GetPhyBand() == WIFI_PHY_BAND_2_4GHZ){
-        //     maxNMpdus = maxNMpdus + 1;
-        // }
         txParams.UndoAddMpdu();
         txParams.m_txDuration = prevTxDuration;
         if (protectionSwapped)
@@ -464,7 +483,7 @@ QosFrameExchangeManager::IsWithinSizeAndTimeLimits(uint32_t ppduPayloadSize,
     NS_ASSERT_MSG(txParams.m_txDuration, "TX duration not yet computed");
     auto txTime = txParams.m_txDuration.value();
     NS_LOG_DEBUG("PPDU duration: " << txTime.As(Time::MS));
-    
+
     if ((ppduDurationLimit.IsStrictlyPositive() && txTime > ppduDurationLimit) ||
         (maxPpduDuration.IsStrictlyPositive() && txTime > maxPpduDuration))
     {

@@ -755,10 +755,10 @@ class Packet : public SimpleRefCount<Packet>
      */
     typedef void (*SinrTracedCallback)(Ptr<const Packet> packet, double sinr);
 
-    /*
-      获得包的m_byteTagList
-    */
-    uint32_t GetAdjustment() const; 
+    // /*
+    //   获得包的m_byteTagList
+    // */
+    // uint32_t GetAdjustment() const; 
 
   private:
     /**

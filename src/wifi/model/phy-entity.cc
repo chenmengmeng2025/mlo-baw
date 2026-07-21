@@ -599,10 +599,8 @@ PhyEntity::ScheduleEndOfMpdus(Ptr<Event> event)
     uint32_t totalAmpduSize = 0;
     double totalAmpduNumSymbols = 0.0;
     auto mpdu = psdu->begin();
-    
     for (size_t i = 0; i < nMpdus && mpdu != psdu->end(); ++mpdu)
     {
-
         if (m_wifiPhy->m_notifyRxMacHeaderEnd)
         {
             // calculate MAC header size (including A-MPDU subframe header, if present)
@@ -688,9 +686,7 @@ PhyEntity::EndOfMpdu(Ptr<Event> event,
     NS_LOG_DEBUG("Extracted MPDU #" << mpduIndex << ": duration: " << mpduDuration.As(Time::NS)
                                     << ", correct reception: " << rxInfo.first << ", Signal/Noise: "
                                     << rxInfo.second.signal << "/" << rxInfo.second.noise << "dBm");
-    // if (mpdu->GetDestinationAddress() == "00:00:00:00:00:02" && !rxInfo.first) std::cout << "Signal/Noise: "
-    //                                 << rxInfo.second.signal << "/" << rxInfo.second.noise << "dBm" << " 是否成功: " << rxInfo.first << " MPDUSize:" << mpdu->GetPacketSize() << std::endl;
-    // std::cout << mpdu->GetHeader().GetAddr1() << " " << mpdu->GetHeader().GetAddr2() << " " << mpdu->IsInFlight() << " " << mpdu->GetHeader().IsToDs() << " " << mpdu->GetPacketSize() << std::endl; // zy
+
     auto signalNoiseIt = m_signalNoiseMap.find({ppdu->GetUid(), staId});
     NS_ASSERT(signalNoiseIt != m_signalNoiseMap.end());
     signalNoiseIt->second = rxInfo.second;
@@ -817,18 +813,14 @@ PhyEntity::GetReceptionStatus(Ptr<WifiMpdu> mpdu,
         channelWidthAndBand.second,
         staId,
         {relativeMpduStart, relativeMpduStart + mpduDuration});
-    // std::cout << "SNR.PER: " << snrPer.per << " on Link " << std::endl;
-    // snrPer.per = 1;
-    // if (mpdu->GetAllocatedLink() == 1) snrPer.per = 0.8;
-    // else snrPer.per = 0.8;
-    // if (channelWidthAndBand.first == 20) snrPer.per = 0.8;
+
+    if(m_fixedPER && mpdu->GetHeader().IsQosData()) snrPer.per = m_fixedPER; //重新赋值为固定的PER值
     WifiMode mode = event->GetPpdu()->GetTxVector().GetMode(staId);
     NS_LOG_DEBUG("rate=" << (mode.GetDataRate(event->GetPpdu()->GetTxVector(), staId))
                          << ", SNR(dB)=" << RatioToDb(snrPer.snr) << ", PER=" << snrPer.per
                          << ", size=" << mpdu->GetSize()
                          << ", relativeStart = " << relativeMpduStart.As(Time::NS)
                          << ", duration = " << mpduDuration.As(Time::NS));
-
     // There are two error checks: PER and receive error model check.
     // PER check models is typical for Wi-Fi and is based on signal modulation;
     // Receive error model is optional, if we have an error model and
@@ -841,11 +833,13 @@ PhyEntity::GetReceptionStatus(Ptr<WifiMpdu> mpdu,
           m_wifiPhy->m_postReceptionErrorModel->IsCorrupt(mpdu->GetPacket()->Copy())))
     {
         NS_LOG_DEBUG("Reception succeeded: " << *mpdu);
+        // if(m_fixedPER && mpdu->GetHeader().IsQosData()) std::cout << mpdu->GetHeader().GetSequenceNumber() <<": PER=" << snrPer.per << ", Reception succeeded" << std::endl;
         return {true, signalNoise};
     }
     else
     {
         NS_LOG_DEBUG("Reception failed: " << *mpdu);
+        // if(m_fixedPER && mpdu->GetHeader().IsQosData()) std::cout << mpdu->GetHeader().GetSequenceNumber() <<": PER=" << snrPer.per << ", Reception failed" << std::endl;
         return {false, signalNoise};
     }
 }

@@ -130,7 +130,7 @@ int
 main(int argc, char* argv[])
 {
     uint32_t packetSize = 1000; // bytes
-    uint32_t numPackets = 10000;
+    uint32_t numPackets = 1;
     double distance = 1;        // meters
     bool enableTwoBss = false;  // whether to enable a second (non-traced) BSS
     double distanceTwoBss = 10; // meters (distance between APs if enableTwoBss is true)

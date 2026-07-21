@@ -8,7 +8,7 @@
 
 #ifndef TXOP_H
 #define TXOP_H
-#include "msdu-grouper.h"
+#include "ampdu-limit-controller.h"
 #include "wifi-mac-header.h"
 
 #include "ns3/nstime.h"
@@ -440,31 +440,20 @@ class Txop : public Object
     const UserDefinedAccessParams& GetUserAccessParams() const;
 
     /**
-     * Get the msdu grouper.
+     * Get the ampduLimitController.
      */
-    Ptr<MsduGrouper> GetMsduGrouper();
-
-        /**
-     * @brief Set the maximum group size.
-     * @param maxGroupSize The maximum number of MSDUs allowed in each group.
-     */
-    void SetMaxGroupSize(uint32_t maxGroupSize);
+    Ptr<AmpduLimitController> GetAmpduLimitController();
 
     /**
      * Get mode
      */
     uint32_t GetMode() const; 
 
-    uint32_t GetPreTitle() const; 
+    uint32_t GetPolicy() const; 
 
-    /**
-     * @brief Get the maximum group size.
-     * @return The maximum number of MSDUs allowed in each group.
-     */
-    uint32_t GetMaxGroupSize() const;
-
-    Time m_ctstimeout = MicroSeconds(0); //!< CTS timeout flag
-    bool m_afterctstimeout = false;
+    void SetFixedPER(const std::vector<double>& fixedPER);
+    std::vector<double> GetFixedPER() const;
+    bool IsPERAllZero() const;
 
   protected:
     ///< ChannelAccessManager associated class
@@ -589,26 +578,16 @@ class Txop : public Object
 
     BackoffValueTracedCallback m_backoffTrace; //!< backoff trace value
     CwValueTracedCallback m_cwTrace;           //!< CW trace value
-
-    /**
-     * TracedCallback signature for backoff slots update.
-     *
-     * \param linkId the link ID
-     * \param slotsDecreased 本次减少的退避时隙数
-     * \param remainingSlots 剩余的退避时隙数
-     */
-    typedef TracedCallback<uint8_t /* linkId */, Time /*beginBackoffTime*/,uint32_t /* slotsDecreased */, uint32_t /* remainingSlots */> BackoffSlotsTraceCallback;
-    BackoffSlotsTraceCallback m_backoffSlotsTrace;
     
     uint32_t m_mode;
     uint32_t m_pertitle;
     uint32_t m_datarate0;
     uint32_t m_datarate1;
+    uint32_t m_datarate2;
     uint32_t m_maxAmpduNum0;
     uint32_t m_maxAmpduNum1;
-    double m_link1Pct;
-    bool m_gs_enable;
-    bool m_param_update;
+    uint32_t m_maxAmpduNum2;
+    std::vector<double> m_fixedPERs = {0.0, 0.0, 0.0}; //!< fixed PER for each link (sorted in increasing order of link ID). A value of 0.0 means no fixed PER.
   private:
     /**
      * Create a LinkEntity object.
@@ -622,11 +601,7 @@ class Txop : public Object
 
     UserDefinedAccessParams m_userAccessParams; //!< user-defined DCF/EDCA access parameters
 
-    Ptr<MsduGrouper> m_grouper; ///< The MsduGrouper instance.
-    uint32_t m_maxGroupSize; ///< Maximum size of each group.
-    Time m_period;
-    std::string m_jsonFileName;
-    bool m_reduandancyEnable;
+    Ptr<AmpduLimitController> m_ampduLimitController; ///< The AmpduLimitController instance.
 };
 
 } // namespace ns3

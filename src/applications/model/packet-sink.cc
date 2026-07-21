@@ -199,7 +199,7 @@ PacketSink::HandleRead(Ptr<Socket> socket)
         {
             NS_LOG_INFO("At time " << Simulator::Now().As(Time::S) << " packet sink received "
                                    << packet->GetSize() << " bytes from "
-                                   << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
+                                   << InetSocketAddress::ConvertFrom(from).GetPort() << " port "
                                    << InetSocketAddress::ConvertFrom(from).GetIpv4() << " total Rx "
                                    << m_totalRx << " bytes");
         }

@@ -204,6 +204,9 @@ class OriginatorBlockAckAgreement : public BlockAckAgreement
 
     std::vector<uint16_t> m_linkRPtr;
 
+    BlockAckWindow& GetTxWindow();
+    void SetMode(uint32_t mode);
+
   private:
     /**
      * Advance the transmit window so that the starting sequence number is the
@@ -213,6 +216,7 @@ class OriginatorBlockAckAgreement : public BlockAckAgreement
 
     State m_state;             ///< state
     BlockAckWindow m_txWindow; ///< originator's transmit window
+    uint32_t m_mode = 0;
 };
 
 } // namespace ns3

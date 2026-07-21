@@ -96,7 +96,6 @@ class RecipientBlockAckAgreement : public BlockAckAgreement
      * MSDU or A-MSDU that was passed up to the next MAC process plus one.
      */
     void PassBufferedMpdusUntilFirstLost();
-    bool check_scoreboard_if_full_one();
     /**
      * Pass any complete MSDUs or A-MSDUs stored in the buffer with Sequence Number
      * subfield values that are lower than the new value of WinStartB up to the next

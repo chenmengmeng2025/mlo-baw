@@ -293,18 +293,92 @@ CtrlBAckResponseHeader::Print(std::ostream& os) const
 {
     if (m_baType.m_variant != BlockAckType::MULTI_STA)
     {
-        // os << "TID_INFO=" << m_tidInfo << ", StartingSeq=0x" << std::hex
-        //    << m_baInfo[0].m_startingSeq << std::dec;
+        const uint16_t startingSeq = m_baInfo[0].m_startingSeq;
 
-        os << "TID_INFO=" << m_tidInfo << ", StartingSeq=" << m_baInfo[0].m_startingSeq << std::dec;
+        os << "TID_INFO=" << m_tidInfo
+        << ", StartingSeq=" << startingSeq << std::dec;
+
+        // 原始 bitmap 输出（保留）
         os << std::endl << "\tbitmap = 0b";
-        for(const auto & b : m_baInfo[0].m_bitmap) {
-            for (int i = 0; i < 8; ++i) {
+        for (const auto& b : m_baInfo[0].m_bitmap)
+        {
+            for (int i = 0; i < 8; ++i)
+            {
                 os << ((b >> i) & 1);
             }
-            // os << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b) << " ";
             os << " ";
         }
+
+        // 解析 bitmap 中 bit=1 的连续区间，并映射到 StartingSeq 对应的序号
+        std::vector<std::pair<uint16_t, uint16_t>> ranges;
+
+        bool inRange = false;
+        uint16_t rangeStart = 0;
+        uint16_t rangeEnd = 0;
+
+        uint16_t bitIndex = 0;
+        for (const auto& b : m_baInfo[0].m_bitmap)
+        {
+            for (int i = 0; i < 8; ++i, ++bitIndex)
+            {
+                bool bitSet = ((b >> i) & 0x1);
+
+                if (bitSet)
+                {
+                    uint16_t seq = (startingSeq + bitIndex) % 4096; // 12-bit sequence number
+
+                    if (!inRange)
+                    {
+                        rangeStart = seq;
+                        rangeEnd = seq;
+                        inRange = true;
+                    }
+                    else
+                    {
+                        rangeEnd = seq;
+                    }
+                }
+                else
+                {
+                    if (inRange)
+                    {
+                        ranges.emplace_back(rangeStart, rangeEnd);
+                        inRange = false;
+                    }
+                }
+            }
+        }
+
+        if (inRange)
+        {
+            ranges.emplace_back(rangeStart, rangeEnd);
+        }
+
+        os << std::endl << "\tACKed ranges = ";
+        if (ranges.empty())
+        {
+            os << "(none)";
+        }
+        else
+        {
+            for (size_t i = 0; i < ranges.size(); ++i)
+            {
+                if (i > 0)
+                {
+                    os << " / ";
+                }
+
+                if (ranges[i].first == ranges[i].second)
+                {
+                    os << ranges[i].first;
+                }
+                else
+                {
+                    os << ranges[i].first << "-" << ranges[i].second;
+                }
+            }
+        }
+
         os << std::endl << std::dec;
     }
     else
@@ -329,7 +403,7 @@ CtrlBAckResponseHeader::GetSerializedSize() const
     case BlockAckType::BASIC:
     case BlockAckType::COMPRESSED:
     case BlockAckType::EXTENDED_COMPRESSED:
-        size += (2 + m_baType.m_bitmapLen[0]);  //here
+        size += (2 + m_baType.m_bitmapLen[0]);
         break;
     case BlockAckType::MULTI_TID:
         size += (2 + 2 + 8) * (m_tidInfo + 1); // Multi-TID block ack

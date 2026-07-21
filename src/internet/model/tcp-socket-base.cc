@@ -894,6 +894,7 @@ TcpSocketBase::Send(Ptr<Packet> p, uint32_t flags)
             m_errno = ERROR_SHUTDOWN;
             return -1;
         }
+
         m_rateOps->CalculateAppLimited(m_tcb->m_cWnd,
                                        m_tcb->m_bytesInFlight,
                                        m_tcb->m_segmentSize,
@@ -4200,7 +4201,6 @@ void
 TcpSocketBase::SetSegSize(uint32_t size)
 {
     NS_LOG_FUNCTION(this << size);
-    // std::cout << "TcpSocketBase::SetSegSize"  << std::to_string(size) << std::endl;
     m_tcb->m_segmentSize = size;
     m_txBuffer->SetSegmentSize(size);
 

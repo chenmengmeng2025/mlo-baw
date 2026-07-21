@@ -8,3 +8,11 @@ __pycache__
 run_cmds_tcp_gs
 /cmake-cache/
 .cache/clangd/index/
+comments.txt
+paper.txt
+outputs/scalability.tex
+!outputs/fixed-point-summary.txt
+!outputs/large-link-allocation.csv
+!outputs/scalability.csv
+!outputs/solve-2link.csv
+!outputs/solve-custom-2link.csv
