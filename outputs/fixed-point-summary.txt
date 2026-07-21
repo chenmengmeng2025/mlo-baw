@@ -1,0 +1,17 @@
+Fixed-point multi-start convergence experiment
+================================================
+Configurations: 5184
+W_mld values: (4.0, 8.0, 16.0)
+W_sld values: (4.0, 8.0, 16.0)
+K_mld values: (1, 3, 6)
+K_sld values: (1, 3, 6)
+Initial points per configuration: 25
+Total solver runs: 129600
+Accepted converged runs: 129600
+All runs converged in tested domain: True
+Maximum iteration count: 511
+Maximum fixed-point residual: 2.385314e-12
+Maximum multi-start solution spread: 4.365530e-11
+Tolerance: 1.000e-12
+Maximum allowed iterations: 2000
+Elapsed experiment time: 6.340 s
