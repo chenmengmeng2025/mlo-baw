@@ -1,18 +1,47 @@
 /build/
 .vscode/
 __pycache__
+/testpy-output/
+/.lock-ns3_linux_build
+**/.DS_Store
 *.pcap
 *.log
 *.png
 *.csv
+
+# Local manuscript and review-response sources are not part of the public
+# reproducibility repository.
+/Figures/
+/paper.tex
+/paper-overleaf.tex
+/paper-overleaf-noblue.tex
+/comments.tex
+/comments-before.tex
+/comments-overleaf.tex
+/bib_mlo.bib
+
 run_cmds_tcp_gs
 /cmake-cache/
 .cache/clangd/index/
 comments.txt
 paper.txt
-outputs/scalability.tex
+outputs/scalability--exhaustive.tex
+/outputs/scalability.tex
+/outputs/scalability-exhaustive.tex
+
+# Canonical numerical artifacts used for reproducibility.
+!outputs/fixed-point-convergence.csv
 !outputs/fixed-point-summary.txt
 !outputs/large-link-allocation.csv
 !outputs/scalability.csv
+!outputs/scalability-exhaustive.csv
 !outputs/solve-2link.csv
-!outputs/solve-custom-2link.csv
+!outputs/solve-3link.csv
+!outputs/solve-2link-exhaustive.csv
+!outputs/solve-3link-exhaustive.csv
+
+# Local exploratory inputs and one-off helper scripts.
+/damla.json
+/plot.py
+/regenerate_wifi_diff.sh
+/docs/coefficient-derivation.tex

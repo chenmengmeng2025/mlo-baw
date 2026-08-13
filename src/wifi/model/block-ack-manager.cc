@@ -19,6 +19,8 @@
 #include "ns3/log.h"
 #include "ns3/simulator.h"
 
+#include <iostream>
+#include <sstream>
 #include <algorithm>
 #include <optional>
 
@@ -74,9 +76,15 @@ BlockAckManager::SetMode(uint32_t mode) {
 }
 
 void
-BlockAckManager::SetPERAllZero(bool isAllZero) {
-    m_isPERAllZero = isAllZero;
+BlockAckManager::SetNLinks(uint8_t nLinks)
+{
+    NS_ABORT_MSG_IF(nLinks == 0, "A BlockAckManager must be configured with at least one link");
+    NS_ABORT_MSG_IF(!m_originatorAgreements.empty() || !m_recipientAgreements.empty(),
+                    "The number of links cannot be changed after creating a Block Ack agreement");
+    m_nLinks = nLinks;
+    m_linkRPtrSyncEnabled.assign(m_nLinks, true);
 }
+
 
 OriginatorBlockAckAgreement*
 BlockAckManager::GetOriginatorBlockAckAgreement(const Mac48Address& recipient, uint8_t tid)
@@ -84,16 +92,16 @@ BlockAckManager::GetOriginatorBlockAckAgreement(const Mac48Address& recipient, u
     NS_LOG_FUNCTION(this << recipient << +tid);
 
     auto it = m_originatorAgreements.find({recipient, tid});
-    
+
     if (it != m_originatorAgreements.end())
     {
-        return &(it->second.first); 
+        return &it->second.first;
     }
 
-    NS_FATAL_ERROR("OriginatorBlockAckAgreement not found for recipient " << recipient 
+    NS_FATAL_ERROR("OriginatorBlockAckAgreement not found for recipient " << recipient
                     << " and TID " << +tid << ". Ensure an agreement is established before access.");
-    
-    return nullptr; 
+
+    return nullptr;
 }
 
 BlockAckManager::OriginatorAgreementOptConstRef
@@ -129,13 +137,13 @@ BlockAckManager::CreateOriginatorAgreement(const MgtAddBaRequestHeader& reqHdr,
 
     OriginatorBlockAckAgreement agreement(recipient, tid);
     agreement.SetStartingSequence(reqHdr.GetStartingSequence());
+    agreement.m_linkRPtr.assign(m_nLinks, reqHdr.GetStartingSequence());
     /* For now we assume that originator doesn't use this field. Use of this field
        is mandatory only for recipient */
     agreement.SetBufferSize(reqHdr.GetBufferSize());
     agreement.SetTimeout(reqHdr.GetTimeout());
     agreement.SetAmsduSupport(reqHdr.IsAmsduSupported());
     agreement.SetHtSupported(true);
-    agreement.SetMode(m_mode);
     if (reqHdr.IsImmediateBlockAck())
     {
         agreement.SetImmediateBlockAck();
@@ -185,6 +193,7 @@ BlockAckManager::UpdateOriginatorAgreement(const MgtAddBaResponseHeader& respHdr
         agreement.SetTimeout(respHdr.GetTimeout());
         agreement.SetAmsduSupport(respHdr.IsAmsduSupported());
         agreement.SetStartingSequence(startingSeq);
+        agreement.m_linkRPtr.assign(m_nLinks, startingSeq);
         agreement.InitTxWindow();
         if (respHdr.IsImmediateBlockAck())
         {
@@ -231,6 +240,7 @@ BlockAckManager::CreateRecipientAgreement(const MgtAddBaResponseHeader& respHdr,
                                          respHdr.GetTimeout(),
                                          startingSeq,
                                          true,
+                                         m_nLinks,
                                          m_mode);
 
     agreement.SetMacRxMiddle(rxMiddle);
@@ -391,6 +401,78 @@ BlockAckManager::HandleInFlightMpdu(uint8_t linkId,
 }
 
 void
+BlockAckManager::UpdateBawStateAfterFailedTransmission(
+    OriginatorBlockAckAgreement& agreement,
+    Ptr<const WifiMpdu> mpdu,
+    uint8_t failedLinkId)
+{
+    auto remainingLinkIds = mpdu->GetInFlightLinkIds();
+    remainingLinkIds.erase(failedLinkId);
+
+    auto state = BlockAckWindow::ElementState::UNACKED;
+    if (!remainingLinkIds.empty())
+    {
+        NS_ASSERT_MSG(remainingLinkIds.size() == 1,
+                      "Effective BAW tracking supports at most two in-flight links");
+        state = BlockAckWindow::InflightStateForLink(*remainingLinkIds.begin());
+    }
+
+    agreement.GetTxWindow().SetElementState(
+        agreement.GetDistance(mpdu->GetHeader().GetSequenceNumber()), state);
+}
+
+void
+BlockAckManager::LogAckReception(AckResponseType responseType,
+                                 uint8_t linkId,
+                                 uint8_t tid,
+                                 uint16_t sequenceNumber,
+                                 uint16_t nSuccessfulMpdus,
+                                 uint16_t nFailedMpdus,
+                                 uint16_t txWinBefore,
+                                 std::optional<uint16_t> rptrBefore,
+                                 const OriginatorBlockAckAgreement& agreement) const
+{
+    const bool isBlockAck = responseType == AckResponseType::BLOCK_ACK;
+    const bool distributedSender = (m_mode & 0x01) != 0;
+
+    std::ostringstream rptrStream;
+    if (distributedSender)
+    {
+        rptrStream << "[";
+        for (std::size_t i = 0; i < agreement.m_linkRPtr.size(); ++i)
+        {
+            rptrStream << (i == 0 ? "" : ",") << i << ":" << agreement.m_linkRPtr[i];
+        }
+        rptrStream << "]";
+    }
+
+    std::cout << (isBlockAck ? "[BA_RX]" : "[ACK_RX]")
+              << " timeNs=" << Simulator::Now().GetNanoSeconds()
+              << " link=" << +linkId
+              << " tid=" << +tid
+              << (isBlockAck ? " ssn=" : " sn=") << sequenceNumber;
+    if (isBlockAck)
+    {
+        std::cout << " acked=" << nSuccessfulMpdus << " failed=" << nFailedMpdus;
+    }
+    std::cout << " txWin=" << txWinBefore << "->" << agreement.m_txWindow.GetWinStart();
+    if (distributedSender)
+    {
+        NS_ASSERT(rptrBefore.has_value());
+        std::cout << " localRptr=" << *rptrBefore << "->" << agreement.m_linkRPtr.at(linkId)
+                  << " rptrs=" << rptrStream.str();
+    }
+    std::cout << std::endl;
+
+    std::cout << "[BAW_STATE]"
+              << " event=" << (isBlockAck ? "BA_RX" : "ACK_RX")
+              << " timeNs=" << Simulator::Now().GetNanoSeconds()
+              << " link=" << +linkId
+              << " tid=" << +tid << std::endl;
+    agreement.m_txWindow.Print(std::cout);
+}
+
+void
 BlockAckManager::NotifyGotAck(uint8_t linkId, Ptr<const WifiMpdu> mpdu)
 {
     NS_LOG_FUNCTION(this << linkId << *mpdu);
@@ -403,16 +485,17 @@ BlockAckManager::NotifyGotAck(uint8_t linkId, Ptr<const WifiMpdu> mpdu)
     NS_ASSERT(it != m_originatorAgreements.end());
     NS_ASSERT(it->second.first.IsEstablished());
 
+    const auto txWinBefore = it->second.first.m_txWindow.GetWinStart();
     it->second.first.NotifyAckedMpdu(mpdu);
-    if (m_mode & 0x01) {
-        if (m_mode & (1 << 5)) {
-            std::cout << Simulator::Now() << " Got Normal Ack on Link " << (uint32_t)linkId << " " << recipient << " tid = " << (uint32_t)tid << " m_mode = " << m_mode << " snn = " << mpdu->GetHeader().GetSequenceNumber() << std::endl;
-        }
+    std::optional<uint16_t> rptrBefore;
+    if (m_mode & 0x01)
+    {
         NS_ASSERT(m_linkRPtrSyncEnabled[linkId]);
+        rptrBefore = it->second.first.m_linkRPtr.at(linkId);
         it->second.first.m_linkRPtr[linkId] = it->second.first.m_txWindow.GetWinStart();
         SyncRptr(recipient, tid, linkId);
     }
-    
+
     // remove the acknowledged frame from the queue of outstanding packets
     for (auto queueIt = it->second.second.begin(); queueIt != it->second.second.end(); ++queueIt)
     {
@@ -422,6 +505,18 @@ BlockAckManager::NotifyGotAck(uint8_t linkId, Ptr<const WifiMpdu> mpdu)
             HandleInFlightMpdu(linkId, queueIt, ACKNOWLEDGED, it, Simulator::Now());
             break;
         }
+    }
+    if (m_mode & (1 << 2))
+    {
+        LogAckReception(AckResponseType::ACK,
+                        linkId,
+                        tid,
+                        mpdu->GetHeader().GetSequenceNumber(),
+                        1,
+                        0,
+                        txWinBefore,
+                        rptrBefore,
+                        it->second.first);
     }
     m_blockAckResultCallback(recipient, tid, linkId, 1, 0);
 }
@@ -445,13 +540,20 @@ BlockAckManager::NotifyMissedAck(uint8_t linkId, Ptr<WifiMpdu> mpdu)
     {
         if ((*queueIt)->GetHeader().GetSequenceNumber() == mpdu->GetHeader().GetSequenceNumber())
         {
-            // It will be set to the retransmission state and removed from the queue only when it contains only its own link
-            if (auto linkIds = mpdu->GetInFlightLinkIds(); linkIds.size() == 1 && *linkIds.begin() == linkId)
+            // A failed MPDU becomes a retransmission only after it is no longer
+            // in flight on another link.
+            auto linkIds = mpdu->GetInFlightLinkIds();
+            NS_ASSERT(linkIds.contains(linkId));
+            UpdateBawStateAfterFailedTransmission(it->second.first, mpdu, linkId);
+            if (linkIds.size() == 1 && *linkIds.begin() == linkId)
+            {
                 HandleInFlightMpdu(linkId, queueIt, TO_RETRANSMIT, it, Simulator::Now());
-            // When multiple links are included, it indicates multi-link transmission and cannot be set to the retransmission state
-            else if (linkIds.size() > 1) {
+            }
+            // Keep a multi-link MPDU in flight until every link reports a result.
+            else if (linkIds.size() > 1)
+            {
                 mpdu->GetHeader().SetRetry();
-                mpdu->ResetInFlight(linkId); 
+                mpdu->ResetInFlight(linkId);
                 HandleInFlightMpdu(linkId, queueIt, STAY_INFLIGHT, it, Simulator::Now());
             }
             break;
@@ -503,12 +605,13 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
     NS_ASSERT(blockAck.IsCompressed() || blockAck.IsExtendedCompressed() || blockAck.IsMultiSta());
     Time now = Simulator::Now();
     std::list<Ptr<const WifiMpdu>> acked;
-    bool logfl = m_mode & (1 << 5);
-    std::vector<uint32_t> recv_seqs;
-    if (logfl && (m_mode & 0x01)) {
-        std::cout << Simulator::Now() << " Link" << +linkId << " got BlockAck:" << std::endl;
-        blockAck.Print(std::cout << "\t");
-    }
+    const bool logfl = m_mode & (1 << 2);
+    const bool distributedSender = m_mode & 0x01;
+    const auto txWinBefore = it->second.first.m_txWindow.GetWinStart();
+    const std::optional<uint16_t> rptrBefore =
+        distributedSender
+            ? std::optional<uint16_t>{it->second.first.m_linkRPtr.at(linkId)}
+            : std::nullopt;
     for (auto queueIt = it->second.second.begin(); queueIt != it->second.second.end();)
     {
         uint16_t currentSeq = (*queueIt)->GetHeader().GetSequenceNumber();
@@ -516,9 +619,9 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
         if (blockAck.IsPacketReceived(currentSeq, index))
         {
             it->second.first.NotifyAckedMpdu(*queueIt);
-            if (logfl) recv_seqs.push_back(currentSeq);
-            // 移动读指针到最新，与全局读指针保持一致
-            if(m_mode & 0x01) {
+            // Keep this link's read pointer aligned with the shared transmit window.
+            if (distributedSender)
+            {
                 NS_ASSERT(m_linkRPtrSyncEnabled[linkId]);
                 it->second.first.m_linkRPtr[linkId] = it->second.first.m_txWindow.GetWinStart();
             }
@@ -536,8 +639,9 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
         }
     }
 
-    // 同步linkId链路的信息到其他链路 , 无论是否传输成功，均要将自己的读指针和全局读指针进行同步
-    if (m_mode & 0x01) {
+    // Align the responding link with the shared window, then notify idle links.
+    if (distributedSender)
+    {
         NS_ASSERT(m_linkRPtrSyncEnabled[linkId]);
         it->second.first.m_linkRPtr[linkId] = it->second.first.m_txWindow.GetWinStart();
         SyncRptr(recipient, tid, linkId);
@@ -551,9 +655,13 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
         // transmission actually failed if the MPDU is inflight only on the same link on
         // which we received the BlockAck frame
         auto linkIds = (*queueIt)->GetInFlightLinkIds();
+        if (linkIds.contains(linkId))
+        {
+            UpdateBawStateAfterFailedTransmission(
+                it->second.first, *queueIt, linkId);
+        }
         if (linkIds.size() == 1 && *linkIds.begin() == linkId)
         {
-            if(!m_isPERAllZero) it->second.first.m_txWindow.SetElementState(it->second.first.GetDistance((*queueIt)->GetHeader().GetSequenceNumber()), BlockAckWindow::ElementState::UNACKED);
             nFailedMpdus++;
             if (!m_txFailedCallback.IsNull())
             {
@@ -573,13 +681,17 @@ BlockAckManager::NotifyGotBlockAck(uint8_t linkId,
 
         queueIt = HandleInFlightMpdu(linkId, queueIt, STAY_INFLIGHT, it, now);
     }
-    if (logfl) {
-        std::cout << "\tReceived Mpdus: [";
-        for (auto seq : recv_seqs) {
-            std::cout << seq << ", ";
-        }
-        std::cout << "], nSuccessfulMpdus = " << nSuccessfulMpdus << std::endl;
-        it->second.first.m_txWindow.Print(std::cout);
+    if (logfl)
+    {
+        LogAckReception(AckResponseType::BLOCK_ACK,
+                        linkId,
+                        tid,
+                        blockAck.GetStartingSequence(index),
+                        nSuccessfulMpdus,
+                        nFailedMpdus,
+                        txWinBefore,
+                        rptrBefore,
+                        it->second.first);
     }
 
     m_blockAckResultCallback(recipient, tid, linkId, nSuccessfulMpdus, nFailedMpdus);
@@ -610,12 +722,16 @@ BlockAckManager::NotifyMissedBlockAck(uint8_t linkId, const Mac48Address& recipi
             mpduIt = HandleInFlightMpdu(linkId, mpduIt, STAY_INFLIGHT, it, now);
             continue;
         }
-        else if (linkIds.size() == 1 && *linkIds.rbegin() == linkId) // 当且仅当只包含自己链路时才会将其置为待重传状态
+        else if (linkIds.size() == 1 && *linkIds.rbegin() == linkId)
         {
+            UpdateBawStateAfterFailedTransmission(
+                it->second.first, *mpduIt, linkId);
             mpduIt = HandleInFlightMpdu(linkId, mpduIt, TO_RETRANSMIT, it, now);
             continue;
         }
-        // 冗余传输时
+        UpdateBawStateAfterFailedTransmission(
+            it->second.first, *mpduIt, linkId);
+        // Another link still has this MPDU in flight.
         (*mpduIt)->GetHeader().SetRetry();
         (*mpduIt)->ResetInFlight(linkId);
         mpduIt = HandleInFlightMpdu(linkId, mpduIt, STAY_INFLIGHT, it, now);
@@ -820,7 +936,7 @@ BlockAckManager::NotifyOriginatorAgreementEstablished(const Mac48Address& recipi
     }
     it->second.first.SetState(OriginatorBlockAckAgreement::ESTABLISHED);
     it->second.first.SetStartingSequence(startingSeq);
-    it->second.first.m_linkRPtr = {startingSeq, startingSeq};
+    it->second.first.m_linkRPtr.assign(m_nLinks, startingSeq);
 }
 
 void
@@ -979,73 +1095,116 @@ BlockAckManager::GetOriginatorRptr(const Mac48Address& recipient, uint8_t tid, u
     auto it = m_originatorAgreements.find({recipient, tid});
     if (it != m_originatorAgreements.end())
     {
+        NS_ABORT_MSG_IF(linkId >= it->second.first.m_linkRPtr.size(),
+                        "Invalid link ID " << +linkId << " for originator read pointers");
         seqNum = it->second.first.m_linkRPtr[linkId];
     }
     return seqNum;
 }
 
-// 同步linkId链路的信息到其他链路
+// Propagate the responding link's read pointer to eligible idle links.
 void
 BlockAckManager::SyncRptr(const Mac48Address& recipient, uint8_t tid, uint8_t linkId)
 {
-    if (!(m_mode & 0x01)) return;
+    if (!(m_mode & 0x01))
+    {
+        return;
+    }
     auto it = m_originatorAgreements.find({recipient, tid});
     if (it != m_originatorAgreements.end())
     {
+        NS_ABORT_MSG_IF(linkId >= it->second.first.m_linkRPtr.size(),
+                        "Invalid source link ID " << +linkId);
         uint32_t distance = it->second.first.GetDistance(it->second.first.m_linkRPtr[linkId]);
-        // bool logfl = m_mode & (1 << 5);
-        // if (logfl)
-        //     std::cout << Simulator::Now() << " Synchronize read pointer: recipient: " << recipient
-        //             << " tid: " << (uint32_t)tid << " linkId: " << (uint32_t)linkId
-        //             << " read pointer: " << it->second.first.m_linkRPtr[linkId] << " distance: " << distance << std::endl;
-        std::vector<uint32_t> other_distance;
-        for (size_t i = 0; i < it->second.first.m_linkRPtr.size(); i++) {
+        const bool logfl = m_mode & (1 << 2);
+        for (size_t i = 0; i < it->second.first.m_linkRPtr.size(); i++)
+        {
             auto d = it->second.first.GetDistance(it->second.first.m_linkRPtr[i]);
-            // if (logfl) std::cout << "\t Link " << +i << ", read pointer: " << it->second.first.m_linkRPtr[i] << ", distance: " << d << " , TxStatus: " << !m_linkRPtrSyncEnabled[i] <<std::endl;
-            if (i!= linkId && m_linkRPtrSyncEnabled[i] && d > distance) {
-                // if (logfl)
-                //     std::cout << "\t Update: (Link " << uint32_t(i) << ") " << "From "
-                //               << it->second.first.m_linkRPtr[i] << " to "
-                //               << it->second.first.m_linkRPtr[linkId] << std::endl;
+            if (i != linkId && m_linkRPtrSyncEnabled[i] && d > distance)
+            {
+                const auto previousRptr = it->second.first.m_linkRPtr[i];
                 it->second.first.m_linkRPtr[i] = it->second.first.m_linkRPtr[linkId];
+                if (logfl)
+                {
+                    std::cout << "[RPTR_NOTIFY]"
+                              << " timeNs=" << Simulator::Now().GetNanoSeconds()
+                              << " sourceLink=" << +linkId
+                              << " targetLink=" << i
+                              << " tid=" << +tid
+                              << " rptr=" << previousRptr << "->"
+                              << it->second.first.m_linkRPtr[i]
+                              << " globalWin="
+                              << it->second.first.m_txWindow.GetWinStart() << std::endl;
+                }
             }
         }
     }
 }
 
 bool
-BlockAckManager::UpdateRptr(const Mac48Address& recipient, uint8_t tid, uint8_t linkId) {
-    if (!(m_mode & 0x01)) return false;
-    auto it = m_originatorAgreements.find({recipient, tid});
-    auto prev = it->second.first.m_linkRPtr[linkId];
-    if (it != m_originatorAgreements.end())
+BlockAckManager::UpdateRptr(const Mac48Address& recipient, uint8_t tid, uint8_t linkId)
+{
+    if (!(m_mode & 0x01))
     {
-        uint32_t distance = it->second.first.GetDistance(it->second.first.m_linkRPtr[linkId]);
-        std::vector<uint32_t> other_distance;
-        for (size_t i = 0; i < it->second.first.m_linkRPtr.size(); i++) {
-            auto d = it->second.first.GetDistance(it->second.first.m_linkRPtr[i]);
-            if (i != linkId && d < distance) {
-                it->second.first.m_linkRPtr[linkId] = it->second.first.m_linkRPtr[i];
-            }
+        return false;
+    }
+    auto it = m_originatorAgreements.find({recipient, tid});
+    if (it == m_originatorAgreements.end())
+    {
+        return false;
+    }
+
+    auto& linkRPtrs = it->second.first.m_linkRPtr;
+    NS_ABORT_MSG_IF(linkId >= linkRPtrs.size(),
+                    "Invalid link ID " << +linkId << " for " << linkRPtrs.size()
+                                       << " originator read pointers");
+
+    const auto prev = linkRPtrs[linkId];
+    auto latestRptr = prev;
+    uint32_t minimumDistance = it->second.first.GetDistance(prev);
+    std::size_t latestSourceLink = linkId;
+
+    for (size_t i = 0; i < linkRPtrs.size(); i++)
+    {
+        if (i == linkId)
+        {
+            continue;
+        }
+
+        const auto distance = it->second.first.GetDistance(linkRPtrs[i]);
+        if (distance < minimumDistance)
+        {
+            latestRptr = linkRPtrs[i];
+            minimumDistance = distance;
+            latestSourceLink = i;
         }
     }
-    auto now = it->second.first.m_linkRPtr[linkId];
-    bool logfl = m_mode & (1 << 5);
-    if (logfl && now != prev) {
-        std::cout << Simulator::Now() << " Update read pointer before sending: " << std::endl;
-        std::cout << "\t recipient: " << recipient
-                << " tid: " << (uint32_t)tid << " linkId: " << (uint32_t)linkId
-                << " read pointer: " << prev << " -> " << now << std::endl;
-        std::cout << "\t global starting pointer: " << GetOriginatorStartingSequence(recipient, tid) << std::endl;
-        return true;
+
+    linkRPtrs[linkId] = latestRptr;
+    const auto now = linkRPtrs[linkId];
+    const bool logfl = m_mode & (1 << 2);
+    if (logfl && now != prev)
+    {
+        std::cout << "[RPTR_BEFORE_TX]"
+                  << " timeNs=" << Simulator::Now().GetNanoSeconds()
+                  << " link=" << +linkId
+                  << " sourceLink=" << latestSourceLink
+                  << " tid=" << +tid
+                  << " rptr=" << prev << "->" << now
+                  << " globalWin=" << GetOriginatorStartingSequence(recipient, tid)
+                  << std::endl;
     }
-    return false;
+    return now != prev;
 }
 void
 BlockAckManager::UpdateLinkRPtrSyncEnabled(uint8_t linkId, bool txStatus)
 {
-    if(m_mode & 0x01)
+    if (m_mode & 0x01)
+    {
+        NS_ABORT_MSG_IF(linkId >= m_linkRPtrSyncEnabled.size(),
+                        "Invalid link ID " << +linkId << " for read-pointer synchronization");
         m_linkRPtrSyncEnabled[linkId] = !txStatus;
+    }
 }
 
 } // namespace ns3

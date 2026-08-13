@@ -37,6 +37,7 @@ RecipientBlockAckAgreement::RecipientBlockAckAgreement(Mac48Address originator,
                                                        uint16_t timeout,
                                                        uint16_t startingSeq,
                                                        bool htSupported,
+                                                       uint8_t nLinks,
                                                        uint32_t mode)
     : BlockAckAgreement(originator, tid)
 {
@@ -49,10 +50,10 @@ RecipientBlockAckAgreement::RecipientBlockAckAgreement(Mac48Address originator,
     m_startingSeq = startingSeq;
     m_htSupported = htSupported;
     m_mode = mode;
-    std::cout << "CreateRecipientBlockAckAgreement: " << std::to_string(m_startingSeq) << " originator:" << originator << " m_bufferSize: " << std::to_string(m_bufferSize) << " mode: " << m_mode << std::endl;
     m_scoreboard.Init(startingSeq, bufferSize);
-    m_scoreboard_asyn.resize(3);
-    for (auto & board : m_scoreboard_asyn) {
+    m_linkScoreboards.resize(nLinks);
+    for (auto& board : m_linkScoreboards)
+    {
         board.Init(startingSeq, bufferSize);
     }
     m_winStartB = startingSeq;
@@ -80,8 +81,9 @@ RecipientBlockAckAgreement::PassBufferedMpdusUntilFirstLost()
 
     // There cannot be old MPDUs in the buffer (we just check the MPDU with the
     // highest sequence number)
-    NS_ASSERT(m_bufferedMpdus.empty() || GetDistance(m_bufferedMpdus.rbegin()->first.first,
-                                                     m_winStartB) < SEQNO_SPACE_HALF_SIZE);
+    NS_ASSERT((m_mode & (1 << 1)) || m_bufferedMpdus.empty() ||
+              GetDistance(m_bufferedMpdus.rbegin()->first.first, m_winStartB) <
+                  SEQNO_SPACE_HALF_SIZE);
 
     auto it = m_bufferedMpdus.begin();
 
@@ -101,8 +103,9 @@ RecipientBlockAckAgreement::PassBufferedMpdusWithSeqNumberLessThan(uint16_t newW
 
     // There cannot be old MPDUs in the buffer (we just check the MPDU with the
     // highest sequence number)
-    NS_ASSERT(m_bufferedMpdus.empty() || GetDistance(m_bufferedMpdus.rbegin()->first.first,
-                                                     m_winStartB) < SEQNO_SPACE_HALF_SIZE);
+    NS_ASSERT((m_mode & (1 << 1)) || m_bufferedMpdus.empty() ||
+              GetDistance(m_bufferedMpdus.rbegin()->first.first, m_winStartB) <
+                  SEQNO_SPACE_HALF_SIZE);
 
     auto it = m_bufferedMpdus.begin();
 
@@ -121,22 +124,24 @@ RecipientBlockAckAgreement::NotifyReceivedMpdu(Ptr<const WifiMpdu> mpdu, uint8_t
 {
     NS_LOG_FUNCTION(this << *mpdu);
 
-    bool asyncMode = (m_mode & 0b0111);
+    const bool distributedReceiver = (m_mode & (1 << 1));
     uint16_t mpduSeqNumber = mpdu->GetHeader().GetSequenceNumber();
 
-    // Select the scoreboard: per-link scoreboard in async (multi-link) mode,
+    // Select the scoreboard: per-link scoreboard in distributed receiver mode,
     // shared scoreboard otherwise.
-    auto& scoreboard = asyncMode ? m_scoreboard_asyn[linkId] : m_scoreboard;
+    NS_ABORT_MSG_IF(distributedReceiver && linkId >= m_linkScoreboards.size(),
+                    "Invalid link ID " << +linkId << " for " << m_linkScoreboards.size()
+                                       << " recipient scoreboards");
+
+    // The shared reordering window provides the common sequence-number reference
+    // used below to keep old or delayed duplicates out of the global reorder buffer.
+    // The local scoreboard is updated first so that this link can still acknowledge
+    // every MPDU it actually receives.
+    const uint16_t globalDistance = GetDistance(mpduSeqNumber, m_winStartB);
+
+    auto& scoreboard = distributedReceiver ? m_linkScoreboards[linkId] : m_scoreboard;
 
     uint16_t distance = GetDistance(mpduSeqNumber, scoreboard.GetWinStart());
-
-    if (asyncMode && (m_mode & 0b0100'0000)) { // log receiver only
-        std::cout <<Simulator::Now() << " Link" << +linkId << " received MPDU:"
-                  << " snn = " << mpduSeqNumber
-                  << " distance = " << distance
-                  << " winStart = " << scoreboard.GetWinStart()
-                  << std::endl;
-    }
 
     /* Update the scoreboard (see Section 10.24.7.3 of 802.11-2016) */
     if (distance < scoreboard.GetWinSize())
@@ -149,23 +154,45 @@ RecipientBlockAckAgreement::NotifyReceivedMpdu(Ptr<const WifiMpdu> mpdu, uint8_t
         scoreboard.Advance(distance - scoreboard.GetWinSize() + 1);
         scoreboard.At(scoreboard.GetWinSize() - 1) = true;
     }
-    else if (asyncMode)
+    else if (distributedReceiver && globalDistance < SEQNO_SPACE_HALF_SIZE &&
+             distance >= SEQNO_SPACE_HALF_SIZE)
     {
-        // Ignore the 2^11 distance limit imposed by the single-link BA protocol:
-        // in multi-link async mode, an overly old packet may otherwise stall the
-        // bitmap's starting pointer.
-        if (m_mode & 0b0010'0100)
-            std::cout << "distance > SEQNO_SPACE_HALF_SIZE, seqno = " << mpduSeqNumber
-                       << ", before WinStart = " << scoreboard.GetWinStart() << std::endl;
-
+        // The MPDU is current globally, so the upper-half local distance means that
+        // this link's independent scoreboard lags the shared receive state. Move the
+        // local window forward so that this link's BA can report the received MPDU.
+        const auto previousWinStart = scoreboard.GetWinStart();
         scoreboard.Advance(distance - scoreboard.GetWinSize() + 1);
         scoreboard.At(scoreboard.GetWinSize() - 1) = true;
 
-        if (m_mode & 0b0010'0100)
-            std::cout << "after WinStart = " << scoreboard.GetWinStart() << std::endl;
+        if (m_mode & (1 << 3))
+        {
+            std::cout << "[RX_SCOREBOARD_RESYNC]"
+                      << " timeNs=" << Simulator::Now().GetNanoSeconds()
+                      << " link=" << +linkId
+                      << " sn=" << mpduSeqNumber
+                      << " localWin=" << previousWinStart << "->" << scoreboard.GetWinStart()
+                      << " localDistance=" << distance
+                      << " globalWin=" << m_winStartB
+                      << " globalDistance=" << globalDistance << std::endl;
+        }
     }
 
-    distance = GetDistance(mpduSeqNumber, m_winStartB);
+    if (globalDistance >= SEQNO_SPACE_HALF_SIZE)
+    {
+        if (distributedReceiver && (m_mode & (1 << 3)))
+        {
+            std::cout << "[RX_GLOBAL_OLD_DROP]"
+                      << " timeNs=" << Simulator::Now().GetNanoSeconds()
+                      << " link=" << +linkId
+                      << " sn=" << mpduSeqNumber
+                      << " localWin=" << scoreboard.GetWinStart()
+                      << " globalWin=" << m_winStartB
+                      << " globalDistance=" << globalDistance << std::endl;
+        }
+        return;
+    }
+
+    distance = globalDistance;
 
     /* Update the receive reordering buffer (see Section 10.24.7.6.2 of 802.11-2016) */
     if (distance < m_winSizeB)
@@ -194,7 +221,9 @@ RecipientBlockAckAgreement::NotifyReceivedMpdu(Ptr<const WifiMpdu> mpdu, uint8_t
         // MAC process in order of increasing Sequence Number subfield value. Gaps may
         // exist in the Sequence Number subfield values of the MSDUs or A-MSDUs that are
         // passed up to the next MAC process.
-        PassBufferedMpdusWithSeqNumberLessThan(mpduSeqNumber - m_winSizeB + 1);
+        const auto newWinStart =
+            (mpduSeqNumber + SEQNO_SPACE_SIZE - m_winSizeB + 1) % SEQNO_SPACE_SIZE;
+        PassBufferedMpdusWithSeqNumberLessThan(newWinStart);
 
         // 5. Pass MSDUs or A-MSDUs stored in the buffer up to the next MAC process in
         // order of increasing value of the Sequence Number subfield starting with
@@ -208,6 +237,17 @@ void
 RecipientBlockAckAgreement::Flush()
 {
     NS_LOG_FUNCTION(this);
+
+    if (m_mode & (1 << 1))
+    {
+        for (const auto& [key, mpdu] : m_bufferedMpdus)
+        {
+            m_rxMiddle->Receive(mpdu, WIFI_LINKID_UNDEFINED);
+        }
+        m_bufferedMpdus.clear();
+        return;
+    }
+
     PassBufferedMpdusWithSeqNumberLessThan(m_scoreboard.GetWinStart());
     PassBufferedMpdusUntilFirstLost();
 }
@@ -217,15 +257,21 @@ RecipientBlockAckAgreement::NotifyReceivedBar(uint16_t startingSequenceNumber, u
 {
     NS_LOG_FUNCTION(this << startingSequenceNumber);
 
-    bool asyncMode = (m_mode & 0b0111);
+    const bool distributedReceiver = (m_mode & (1 << 1));
 
-    // Select the scoreboard: per-link scoreboard in async (multi-link) mode,
+    // Select the scoreboard: per-link scoreboard in distributed receiver mode,
     // shared scoreboard otherwise.
-    auto& scoreboard = asyncMode ? m_scoreboard_asyn[linkId] : m_scoreboard;
+    NS_ABORT_MSG_IF(distributedReceiver && linkId >= m_linkScoreboards.size(),
+                    "Invalid link ID " << +linkId << " for " << m_linkScoreboards.size()
+                                       << " recipient scoreboards");
+
+    const uint16_t globalDistance = GetDistance(startingSequenceNumber, m_winStartB);
+    auto& scoreboard = distributedReceiver ? m_linkScoreboards[linkId] : m_scoreboard;
 
     uint16_t distance = GetDistance(startingSequenceNumber, scoreboard.GetWinStart());
 
-    if (asyncMode && (m_mode & 0b0100'0000)) { // log receiver only
+    if (distributedReceiver && (m_mode & (1 << 3)))
+    {
         std::cout << Simulator::Now() << " ReceivedBar: startingSeqno = " << startingSequenceNumber
                   << " on Link " << +linkId << " distance = " << distance
                   << " winStart = " << scoreboard.GetWinStart() << std::endl;
@@ -243,23 +289,39 @@ RecipientBlockAckAgreement::NotifyReceivedBar(uint16_t startingSequenceNumber, u
         // reset the window and set WinStartR to SSN
         scoreboard.Reset(startingSequenceNumber);
     }
-    else if (asyncMode)
+    else if (distributedReceiver && globalDistance < SEQNO_SPACE_HALF_SIZE &&
+             distance >= SEQNO_SPACE_HALF_SIZE)
     {
-        // Ignore the 2^11 distance limit imposed by the single-link BA protocol:
-        // in multi-link async mode, an overly old packet may otherwise stall the
-        // bitmap's starting pointer. (Unconditional log, unlike NotifyReceivedMpdu.)
-        std::cout << "ReceivedBar: distance > SEQNO_SPACE_HALF_SIZE, startingseqno = "
-                  << startingSequenceNumber << ", before WinStart = " << scoreboard.GetWinStart()
-                  << " m_mode " << m_mode << std::endl;
+        if (m_mode & (1 << 3))
+        {
+            std::cout << "ReceivedBar: distance >= SEQNO_SPACE_HALF_SIZE, startingseqno = "
+                      << startingSequenceNumber
+                      << ", before WinStart = " << scoreboard.GetWinStart() << " m_mode "
+                      << m_mode << std::endl;
+        }
 
-        scoreboard.Advance(distance - scoreboard.GetWinSize() + 1);
-        scoreboard.At(scoreboard.GetWinSize() - 1) = true;
+        scoreboard.Reset(startingSequenceNumber);
 
-        std::cout << "after WinStart = " << scoreboard.GetWinStart() << std::endl;
+        if (m_mode & (1 << 3))
+        {
+            std::cout << "after WinStart = " << scoreboard.GetWinStart() << std::endl;
+        }
     }
     // else (sync mode, distance == 0 or distance >= SEQNO_SPACE_HALF_SIZE): ignore, as before.
 
-    distance = GetDistance(startingSequenceNumber, m_winStartB);
+    if (globalDistance >= SEQNO_SPACE_HALF_SIZE)
+    {
+        if (distributedReceiver && (m_mode & (1 << 3)))
+        {
+            std::cout << Simulator::Now() << " Link" << +linkId
+                      << " excluded globally old BAR from shared reorder state: SSN = "
+                      << startingSequenceNumber << " globalWinStart = " << m_winStartB
+                      << std::endl;
+        }
+        return;
+    }
+
+    distance = globalDistance;
 
     /* Update the receive reordering buffer (see Section 10.24.7.6.2 of 802.11-2016) */
     if (distance > 0 && distance < SEQNO_SPACE_HALF_SIZE)
@@ -294,9 +356,14 @@ RecipientBlockAckAgreement::FillBlockAckBitmap(CtrlBAckResponseHeader* blockAckH
     else if (blockAckHeader->IsCompressed() || blockAckHeader->IsExtendedCompressed() ||
              blockAckHeader->IsMultiSta())
     {
-        // Select the scoreboard: per-link scoreboard in async (multi-link) mode,
+        // Select the scoreboard: per-link scoreboard in distributed receiver mode,
         // shared scoreboard otherwise.
-        const auto& scoreboard = (m_mode & 0b0111) ? m_scoreboard_asyn[linkId] : m_scoreboard;
+        const bool distributedReceiver = (m_mode & (1 << 1));
+        NS_ABORT_MSG_IF(distributedReceiver && linkId >= m_linkScoreboards.size(),
+                        "Invalid link ID " << +linkId << " for " << m_linkScoreboards.size()
+                                           << " recipient scoreboards");
+        const auto& scoreboard =
+            distributedReceiver ? m_linkScoreboards[linkId] : m_scoreboard;
 
         // The Starting Sequence Number subfield of the Block Ack Starting Sequence
         // Control subfield of the BlockAck frame shall be set to any value in the

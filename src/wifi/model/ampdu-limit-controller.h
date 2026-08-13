@@ -1,23 +1,22 @@
 #ifndef AMPDU_LIMIT_CONTROLLER_H
 #define AMPDU_LIMIT_CONTROLLER_H
 
-#include "ns3/wifi-mpdu.h"
-#include "ns3/wifi-psdu.h"
-#include "ns3/wifi-ppdu.h"
-#include "ns3/wifi-mac-queue.h"
-#include "ns3/log.h"
-#include "ns3/random-variable-stream.h"
-#include "ns3/wifi-mac.h"
-#include "ns3/udp-client-server-helper.h"
+#include "ns3/nstime.h"
+#include "ns3/object.h"
+#include "ns3/ptr.h"
 
 #include <array>
-#include <deque>
-#include <fstream>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <string_view>
 #include <vector>
-#include <nlohmann/json.hpp>
 
 namespace ns3
 {
+
+class WifiMac;
+class WifiPpdu;
 
 /**
  * \ingroup wifi
@@ -46,11 +45,7 @@ class AmpduLimitController : public Object
      */
     AmpduLimitController(Ptr<WifiMac> mac);
 
-    /**
-     * Default constructor. Delegates to AmpduLimitController(nullptr); the
-     * instance must be reconstructed with a valid WifiMac before use.
-     */
-    AmpduLimitController();
+    AmpduLimitController() = delete;
 
     ~AmpduLimitController() override;
 
@@ -93,11 +88,25 @@ class AmpduLimitController : public Object
      *        - 6 (bothset/allset): use the fixed per-link limits set via SetAmpduLimit()
      * \param mpduBufferSize the (effective) block ack window size, used as
      *        the nominal A-MPDU limit
-     * \param logFlag if true, print the resulting A-MPDU limit to stdout
-     *        whenever the simulation time advances
+     * \param bawSource identifies the effective/nominal BAW input used by DAMLA
+     *        and the reason for any nominal fallback
+     * \param logFlag if true, print the resulting A-MPDU limit when it changes
+     *        on the selected link
      * \return the computed A-MPDU limit (number of MPDUs) for the given link
      */
-    uint32_t GetAmpduLimit(uint8_t linkId, uint32_t policy, uint32_t mpduBufferSize, bool logFlag = false);
+    uint32_t GetAmpduLimit(uint8_t linkId,
+                           uint32_t policy,
+                           double mpduBufferSize,
+                           std::string_view bawSource,
+                           bool logFlag = false);
+
+    /**
+     * Return the source of the most recent A-MPDU limit decision on a link.
+     *
+     * \param linkId the link ID
+     * \return a stable, log-friendly decision-source string
+     */
+    const std::string& GetLastDecisionSource(uint8_t linkId) const;
 
     /**
      * Set the fixed per-link A-MPDU limits used by the "bothset"/"allset" policy.
@@ -109,7 +118,7 @@ class AmpduLimitController : public Object
     void SetAmpduLimit(int limit0, int limit1, int limit2);
 
     /**
-     * Set the data rate (in Mbps) assumed for each link, used by the "damla" policy.
+     * Set the data rate (in bits per second) assumed for each link, used by the "damla" policy.
      *
      * \param datarate0 the data rate for link 0
      * \param datarate1 the data rate for link 1
@@ -120,11 +129,18 @@ class AmpduLimitController : public Object
   private:
     Ptr<WifiMac> m_mac; //!< the WifiMac whose links this controller manages
 
-    std::vector<int> m_ampduLimits; //!< per-link fixed A-MPDU limit, used by the "bothset"/"allset" policy
-    std::vector<uint32_t> m_datarateSetting; //!< per-link assumed data rate (Mbps), used by the "damla" policy
-    std::vector<std::vector<double>> m_interPpduGaps; //!< per-link sliding window (up to 10 samples) of inter-PPDU gaps, in microseconds
-    Time m_lastUpdateTime; //!< simulation time at which GetAmpduLimit() last printed a log line
-    std::vector<std::array<double, 2>> m_ppduTimeWindow; //!< per-link [start, end] time (microseconds) of the most recent PPDU transmission
+    static constexpr std::size_t GAP_HISTORY_SIZE = 300;
+
+    std::vector<int> m_ampduLimits; //!< per-link fixed A-MPDU limit
+    std::vector<double> m_frameRates; //!< precomputed per-link MPDU rates (MPDUs per microsecond)
+    std::vector<std::array<double, GAP_HISTORY_SIZE>> m_interPpduGaps; //!< gap ring buffers
+    std::vector<std::size_t> m_gapCounts; //!< number of valid samples in each gap ring
+    std::vector<std::size_t> m_nextGapIndices; //!< next insertion position in each gap ring
+    std::vector<double> m_gapSums; //!< running sum of each gap ring, in microseconds
+    std::vector<std::string> m_decisionSources; //!< most recent decision source per link
+    std::vector<int64_t> m_lastLoggedLimits; //!< last logged limit per link, or -1 if not logged
+    std::vector<std::string> m_lastLoggedDecisionSources; //!< last logged source per link
+    std::vector<std::array<double, 2>> m_ppduTimeWindow; //!< latest per-link [start, end], in microseconds
 };
 
 } // namespace ns3

@@ -344,7 +344,7 @@ WifiPhyStateHelper::SwitchToTx(Time txDuration,
         break;
     }
     m_stateLogger(now, txDuration, WifiPhyState::TX);
-    m_previousStateChangeTime = now; // 此时PHY已经是TX状态
+    m_previousStateChangeTime = now;
     m_endTx = now + txDuration;
     m_startTx = now;
     NotifyListeners(&WifiPhyListener::NotifyTxStart, txDuration, txPower);

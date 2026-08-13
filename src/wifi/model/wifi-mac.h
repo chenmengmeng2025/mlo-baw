@@ -780,11 +780,11 @@ class WifiMac : public Object
                          uint8_t linkId) const;
 
     /**
-     * Get the vector indicating whether each link is enabled for transmission
+     * Get the vector indicating whether each link is currently transmitting.
      *
-     * \return pointer to the vector of link transmission states
-     */  
-    std::vector<bool> & GetLinkTxStatus();
+     * \return reference to the vector of per-link transmission states
+     */
+    std::vector<bool>& GetLinkTxStatus();
 
   protected:
     void DoInitialize() override;
@@ -948,8 +948,8 @@ class WifiMac : public Object
     Callback<void> m_linkUp;   //!< Callback when a link is up
     Callback<void> m_linkDown; //!< Callback when a link is down
 
-    std::vector<bool> m_linkTxStatus; //!< Vector indicating whether each link is enabled for transmission
-    
+    std::vector<bool> m_linkTxStatus; //!< Whether each link is currently transmitting
+
   private:
     /**
      * Complete the configuration of the MAC layer components.

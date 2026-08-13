@@ -1,0 +1,5 @@
+L,BAW,tested_points,success_rate,max_fp_iterations,active_set_passes_max,execution_time_ms_p50,execution_time_ms_p95,exhaustive_tested_points,same_allocation_rate,normalized_variance_gap_mean,throughput_gap_pct_mean,exhaustive_time_ms_p95,exhaustive_time_ms_p99
+2,256,1000,1.0,119,2,0.111223,0.15929,1000,1.0,0.0,0.0,0.549189,0.614446
+2,1024,1000,1.0,119,2,0.103811,0.141432,1000,1.0,0.0,0.0,1.998521,2.142717
+3,256,1000,1.0,119,3,0.148377,0.207585,1000,0.99,3.7865e-08,0.000944215,62.737441,66.91555
+3,1024,1000,1.0,119,3,0.15476,0.213144,1000,0.947,2.8184e-08,0.001785916,1060.644859,1097.960912

@@ -279,7 +279,7 @@ WifiMacHeader::SetDuration(Time duration)
 {
     auto duration_us =
         static_cast<int64_t>(ceil(static_cast<double>(duration.GetNanoSeconds()) / 1000));
-    // NS_ASSERT(duration_us >= 0 && duration_us <= 0x7fff); // 解除maxppduduration限制
+    // Experimental extension: allow Duration/ID values produced by oversized PPDUs.
     m_duration = static_cast<uint16_t>(duration_us);
 }
 

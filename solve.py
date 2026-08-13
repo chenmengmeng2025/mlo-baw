@@ -29,6 +29,7 @@ from enum import Enum
 from typing import List
 import argparse
 import csv
+import itertools
 import json
 import math
 import time
@@ -44,38 +45,69 @@ class CsvMode(Enum):
 
 CSV_MODE = CsvMode.OVERWRITE
 
-# ---------------------------------------------------------------------------
-# Explicit operating points used for the two-link numerical evaluation.
-# ---------------------------------------------------------------------------
+# EHT MCS parameters used by ns-3.43 EhtPhy::GetDataRate. Each tuple is
+# (number of coded bits per subcarrier, coding rate).
+EHT_MCS_PARAMETERS = {
+    0: (1, 1 / 2),
+    1: (2, 1 / 2),
+    2: (2, 3 / 4),
+    3: (4, 1 / 2),
+    4: (4, 3 / 4),
+    5: (6, 2 / 3),
+    6: (6, 3 / 4),
+    7: (6, 5 / 6),
+    8: (8, 3 / 4),
+    9: (8, 5 / 6),
+    10: (10, 3 / 4),
+    11: (10, 5 / 6),
+    12: (12, 3 / 4),
+    13: (12, 5 / 6),
+}
+
+# Matches HePhy::GetUsableSubcarriers, which EhtPhy::GetDataRate uses in
+# this ns-3 version. Values 2/4/8 MHz represent 26/52/106-tone RUs.
+EHT_USABLE_SUBCARRIERS = {
+    2: 24,
+    4: 48,
+    8: 102,
+    20: 234,
+    40: 468,
+    80: 980,
+    160: 1960,
+}
+
+
+# The simulations use an EHT guard interval of 800 ns on every link.
+# Keep it fixed here so analytical rates always match the ns-3 configuration;
+# guardInterval is intentionally not a scenario-file parameter.
+EHT_GUARD_INTERVAL_NS = 800
+
+
+def eht_data_rate_mbps(mcs_value, channel_width, nss=2):
+    """Return EhtPhy::GetDataRate(...) in Mbit/s, rounded to 6 decimals."""
+    if mcs_value not in EHT_MCS_PARAMETERS:
+        raise ValueError("mcsValue must be an integer in [0,13]")
+    if channel_width not in EHT_USABLE_SUBCARRIERS:
+        allowed = ", ".join(map(str, EHT_USABLE_SUBCARRIERS))
+        raise ValueError(f"channelWidth must be one of: {allowed} MHz")
+    if not 1 <= nss <= 8:
+        raise ValueError("nss must be an integer in [1,8]")
+
+    bits_per_subcarrier, coding_rate = EHT_MCS_PARAMETERS[mcs_value]
+    symbol_duration_ns = 12800 + EHT_GUARD_INTERVAL_NS
+    per_stream_bps = math.ceil(
+        (1e9 / symbol_duration_ns)
+        * EHT_USABLE_SUBCARRIERS[channel_width]
+        * bits_per_subcarrier
+        * coding_rate
+    )
+    return round(nss * per_stream_bps / 1e6, 6)
+
 @dataclass
 class ScanConfig:
-    """Complete two-link scenarios; no Cartesian-product expansion is used."""
+    """Validated scenarios loaded from an explicit JSON input file."""
 
     scenarios: List[dict] = field(default_factory=list)
-
-    def __post_init__(self):
-        link1_rates = [
-            206.470592,
-            229.411766,
-            258.088236,
-            275.294120,
-            286.764706,
-            309.705884,
-            344.117648,
-            412.941180,
-            458.823532,
-            516.176472,
-        ]
-        self.scenarios = [
-            {
-                "R": [rate, 1080.882354],
-                "N": [4, 1],
-                "nmpdu_sld": [24, 232],
-                "per": [0.0, 0.0],
-                "BAW": 256,
-            }
-            for rate in link1_rates
-        ]
 
 # ---------------------------------------------------------------------------
 # IEEE 802.11be/model parameters corresponding to Table I of the paper.
@@ -108,6 +140,27 @@ class Config:
 
     def __post_init__(self):
 
+        # The frame airtimes used below correspond to the current ns-3.43
+        # simulation configuration. They can be checked directly from the
+        # generated timing traces:
+        #
+        #   ppduTxOutputFile   = prepareFile(title + "_PPDU.csv");
+        #   rtsctsTxOutputFile = prepareFile(title + "_RTSCTS.csv");
+        #   baTxOutputFile     = prepareFile(title + "_BA.csv");
+        #
+        # These traces show that each 2.4 GHz ERP-OFDM RTS, CTS, DATA PPDU,
+        # and BA is 6 us longer than its 5/6 GHz counterpart. This is the
+        # 6-us signal extension specified for 2.4 GHz ERP-OFDM by IEEE 802.11
+        # and implemented by ns-3.43 in OfdmPhy::GetSignalExtension().
+        # IEEE 802.11 and ns-3.43 also use a 10-us SIFS at 2.4 GHz, rather
+        # than the 16-us SIFS at 5/6 GHz. Consequently, for a successful
+        # RTS/CTS/DATA/BA exchange, the four 6-us signal extensions are
+        # exactly offset by the three 6-us SIFS differences and the 6-us
+        # DIFS difference. For an RTS collision, the RTS signal extension
+        # is exactly offset by the DIFS difference. Thus the common
+        # no-signal-extension durations below, together with the normalized
+        # 16-us SIFS, reproduce the same successful-transmission and
+        # collision holding times as ns-3.43 on every link.
         self.T_RTS = [24.0] * self.L
         self.T_CTS = [28.0] * self.L
 
@@ -127,6 +180,9 @@ class Result:
 
     L: int
 
+    bw: List[int] = field(default_factory=list)
+    mcs: List[int] = field(default_factory=list)
+    nss: int = 2
     R: List[float] = field(default_factory=list)
     N: List[int] = field(default_factory=list)
 
@@ -179,6 +235,33 @@ class Result:
     full_algorithm_cpu_us: float = 0.0
     empirical_work_units: int = 0
 
+    # Optional exact-enumeration comparison over the active links selected by
+    # the proposed continuous active-set method.
+    exhaustive_nmpdu: List[int] = field(default_factory=list)
+    exhaustive_same_allocation: int = 0
+    exhaustive_variance_gap: float = 0.0
+    exhaustive_normalized_variance_gap: float = 0.0
+    exhaustive_throughput_gap_mbps: float = 0.0
+
+
+@dataclass(frozen=True)
+class ExhaustiveComparison:
+    """Exact integer optimum and its comparison with a proposed allocation."""
+
+    allocation: List[int]
+    same_allocation: int
+    variance: float
+    throughput_mbps: float
+    variance_gap: float
+    normalized_variance_gap: float
+    throughput_gap_mbps: float
+    relative_throughput_gap: float
+    combinations: int
+
+
+class ExhaustiveLimitError(RuntimeError):
+    """Raised when exact enumeration exceeds its configured safety limit."""
+
 
 # ============================================================================
 # Steady-state probability alpha^(l) that link l is idle (paper Eq. (7)).
@@ -206,22 +289,27 @@ def compute_alpha(
     return 1.0 / denom
 
 # ============================================================================
-# Attempt-probability term shared by the fixed-point Eqs. (9)-(10).
+# [MODIFIED for Comment 2.1] Exact attempt-probability term for Eqs. (9)-(10).
 # ============================================================================
 def calc_p_part(
     p: float,
     W: float,
     K: int,
 ) -> float:
-    """Return 4(2p-1) / {W[2p-(2-2p)^(K+1)]}."""
+    """Return the exact window-BEB attempt probability.
+
+    This is obtained from q Q(k) = 2 / (1 + W 2^k) in Dai's
+    all-saturated fixed-point equation.
+    """
 
     if abs(p - 0.5) < 1e-12:
-        return 4.0 / (W * (K + 2.0))
+        return 4.0 / (2.0 + W * (K + 2.0))
 
     numerator = 4.0 * (2.0 * p - 1.0)
 
     denominator = (
-        W *
+        2.0 * (2.0 * p - 1.0)
+        + W *
         (
             2.0 * p
             - (2.0 - 2.0 * p) ** (K + 1)
@@ -391,7 +479,9 @@ def calc_tau_T(
     return ((nmpdu * L_subf) / rate) / sigma + T_OH
 
 # ============================================================================
-# Complete compressed-BA duration.  Its size changes with W_BA (Table I).
+# Complete compressed-BA duration without the 2.4 GHz signal extension.
+# Its size changes with W_BA (Table I); the equivalent-timing normalization
+# described in Config.__post_init__ accounts for the extension.
 # ============================================================================
 def get_T_BA(BAW: int) -> float:
     if BAW <= 256:
@@ -654,6 +744,204 @@ def calc_AB(
         B=B_l,
     )
 
+
+def exhaustive_combination_count(BAW, proposed_allocation):
+    """Return the number of positive integer allocations to be enumerated."""
+
+    active_count = sum(value > 0 for value in proposed_allocation)
+    if active_count == 0 or BAW < active_count:
+        return 0
+    return math.comb(BAW - 1, active_count - 1)
+
+
+def _positive_compositions(total, parts):
+    """Yield all ordered positive compositions of total."""
+
+    if parts == 1:
+        yield (total,)
+        return
+
+    for cuts in itertools.combinations(range(1, total), parts - 1):
+        boundaries = (0, *cuts, total)
+        yield tuple(
+            boundaries[index + 1] - boundaries[index]
+            for index in range(parts)
+        )
+
+
+def _allocation_metrics(
+    allocation,
+    active_indices,
+    coef,
+    sigma,
+    payload_bits,
+    per_vec,
+):
+    """Return variance, normalized variance, throughput, and active times."""
+
+    times = [
+        sigma
+        * (coef[index].A + coef[index].B * allocation[index])
+        / (1.0 - per_vec[index])
+        for index in active_indices
+    ]
+    variance = calc_variance(times)
+    mean_time = sum(times) / len(times)
+    normalized_variance = (
+        variance / (mean_time * mean_time)
+        if mean_time > 0.0
+        else 0.0
+    )
+    throughput = sum(
+        payload_bits * allocation[index] / time_value
+        for index, time_value in zip(active_indices, times)
+    )
+    return variance, normalized_variance, throughput, times
+
+
+def compare_with_exhaustive(
+    coef,
+    BAW,
+    proposed_allocation,
+    sigma,
+    payload_bits,
+    per_vec=None,
+    max_combinations=1_000_000,
+):
+    """Compare largest-remainder rounding with exact integer enumeration.
+
+    Enumeration is conditional on the active set represented by the positive
+    entries of proposed_allocation. Every positive integer composition of BAW
+    over that fixed set is considered. The primary criterion is the original
+    completion-time variance; aggregate throughput breaks numerical ties
+    deterministically. Reported gaps are defined as
+
+      variance_gap = V_proposed - V_exhaustive,
+      normalized_variance_gap = variance_gap / mean(T_exhaustive)^2,
+      throughput_gap_mbps = D_proposed - D_exhaustive.
+
+    The relative throughput gap used by the scalability experiment is the
+    absolute throughput difference divided by D_exhaustive.
+    """
+
+    L = len(coef)
+    proposed = list(proposed_allocation)
+    if len(proposed) != L or sum(proposed) != BAW:
+        raise ValueError("proposed allocation must have length L and sum to BAW")
+
+    active_indices = [index for index, value in enumerate(proposed) if value > 0]
+    if not active_indices:
+        raise ValueError("proposed allocation has no active link")
+
+    if per_vec is None:
+        per_vec = [0.0] * L
+    if len(per_vec) != L:
+        raise ValueError("per_vec must have length L")
+
+    combinations = exhaustive_combination_count(BAW, proposed)
+    if combinations > max_combinations:
+        raise ExhaustiveLimitError(
+            "exact enumeration requires "
+            f"{combinations:,} allocations, exceeding the configured limit "
+            f"of {max_combinations:,}; increase --exhaustive-max-combinations "
+            "only if this runtime is acceptable"
+        )
+
+    proposed_variance, _, proposed_throughput, _ = (
+        _allocation_metrics(
+            proposed, active_indices, coef, sigma, payload_bits, per_vec
+        )
+    )
+
+    best_allocation = None
+    best_variance = float("inf")
+    best_normalized_variance = float("inf")
+    best_throughput = float("-inf")
+
+    for composition in _positive_compositions(BAW, len(active_indices)):
+        candidate = [0] * L
+        for index, value in zip(active_indices, composition):
+            candidate[index] = value
+
+        variance, normalized_variance, throughput, _ = _allocation_metrics(
+            candidate, active_indices, coef, sigma, payload_bits, per_vec
+        )
+        if best_allocation is None:
+            best_allocation = candidate
+            best_variance = variance
+            best_normalized_variance = normalized_variance
+            best_throughput = throughput
+            continue
+
+        tolerance = 1e-12 * max(1.0, abs(best_variance), abs(variance))
+        better_variance = variance < best_variance - tolerance
+        tied_variance = abs(variance - best_variance) <= tolerance
+        better_tie_break = (
+            tied_variance
+            and (
+                throughput > best_throughput + 1e-12
+                or (
+                    abs(throughput - best_throughput) <= 1e-12
+                    and (
+                        best_allocation is None
+                        or tuple(candidate) < tuple(best_allocation)
+                    )
+                )
+            )
+        )
+        if better_variance or better_tie_break:
+            best_allocation = candidate
+            best_variance = variance
+            best_normalized_variance = normalized_variance
+            best_throughput = throughput
+
+    if best_allocation is None:
+        raise RuntimeError("exact enumeration produced no feasible allocation")
+
+    variance_gap = proposed_variance - best_variance
+    variance_tolerance = 1e-12 * max(
+        1.0, abs(proposed_variance), abs(best_variance)
+    )
+    if abs(variance_gap) <= variance_tolerance:
+        variance_gap = 0.0
+    elif variance_gap < 0.0:
+        raise RuntimeError("enumerated variance exceeds the proposed optimum")
+
+    best_mean_scale = (
+        math.sqrt(best_variance / best_normalized_variance)
+        if best_normalized_variance > 0.0
+        else sum(
+            sigma
+            * (coef[index].A + coef[index].B * best_allocation[index])
+            / (1.0 - per_vec[index])
+            for index in active_indices
+        ) / len(active_indices)
+    )
+    normalized_variance_gap = (
+        variance_gap / (best_mean_scale * best_mean_scale)
+        if best_mean_scale > 0.0
+        else 0.0
+    )
+    throughput_gap = proposed_throughput - best_throughput
+    relative_throughput_gap = (
+        abs(throughput_gap) / abs(best_throughput)
+        if best_throughput != 0.0
+        else 0.0
+    )
+
+    return ExhaustiveComparison(
+        allocation=best_allocation,
+        same_allocation=int(proposed == best_allocation),
+        variance=best_variance,
+        throughput_mbps=best_throughput,
+        variance_gap=variance_gap,
+        normalized_variance_gap=normalized_variance_gap,
+        throughput_gap_mbps=throughput_gap,
+        relative_throughput_gap=relative_throughput_gap,
+        combinations=combinations,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Closed-form active-set solution of Problem P1
 # ---------------------------------------------------------------------------
@@ -679,14 +967,15 @@ def calc_AB(
 #   3. Remove links with non-positive allocations and repeat Step 2. Removed
 #      links receive zero MPDUs, allowing an adaptive fallback to a useful
 #      subset of links (and ultimately SLO under extreme heterogeneity).
-#   4. Round positive allocations to integer MPDU counts. Assign the residual
-#      W_BA-sum_l M_A^(l,M) to l*=argmin_{l in A} B^(l), which has the
-#      smallest airtime increase per additional MPDU.
+#   4. Floor positive allocations and distribute the remaining MPDUs to the
+#      links with the largest fractional parts (largest-remainder method).
+#      This produces a nonnegative integer allocation summing exactly to W_BA.
 #
 # Fixed-point solution costs O(L*I), where I is the number of iterations in
 # solve_p(). Each active-set pass costs O(L), and every nonterminal pass
 # removes at least one link; allocation therefore costs O(L^2) in the worst
-# case. The complete method has complexity O(L*I + L^2).
+# case. Largest-remainder rounding costs O(L log L), so the complete method
+# has complexity O(L*I + L^2 + L log L) = O(L*I + L^2).
 # ---------------------------------------------------------------------------
 def solve_closed_form(coef, BAW):
     """Return integer ``M_A^(l,M),*`` values summing to ``BAW``.
@@ -754,36 +1043,28 @@ def solve_closed_form(coef, BAW):
         if any_negative:
             continue
 
-        # Every active allocation is positive; map the solution to MPDU counts.
+        # Floor each positive continuous allocation. Because the continuous
+        # allocations sum to BAW, the residual is nonnegative and smaller than
+        # the number of active links.
         total = 0
         for l in range(L):
             if active[l]:
-                n_alloc[l] = round(real_alloc[l])
-                if n_alloc[l] < 1:
-                    n_alloc[l] = 1
+                n_alloc[l] = math.floor(real_alloc[l])
                 total += n_alloc[l]
             else:
                 n_alloc[l] = 0
 
-        # Restore the exact shared-window constraint after rounding.  Following
-        # Algorithm 1, assign the residual to the link with minimum B^(l).
-        diff = BAW - total
-        if diff != 0:
-            adjust_idx = -1
-            best_B = float("inf")
-
-            for l in range(L):
-
-                if active[l] and coef[l].B < best_B:
-
-                    best_B = coef[l].B
-                    adjust_idx = l
-
-            if adjust_idx >= 0:
-                n_alloc[adjust_idx] += diff
-                if n_alloc[adjust_idx] < 1:
-                    n_alloc[adjust_idx] = 1
-
+        # Largest-remainder rounding restores the exact shared-window
+        # constraint without risking a negative allocation.
+        residual = BAW - total
+        ranked = sorted(
+            (l for l in range(L) if active[l]),
+            key=lambda l: (-(real_alloc[l] - n_alloc[l]), l),
+        )
+        if not 0 <= residual <= len(ranked):
+            raise RuntimeError("invalid largest-remainder residual")
+        for l in ranked[:residual]:
+            n_alloc[l] += 1
         break
 
     return n_alloc, active_set_passes
@@ -805,11 +1086,15 @@ def process_BAW(
     fp_converged,
     fp_wall_us,
     fp_cpu_us,
+    exhaustive=False,
+    exhaustive_max_combinations=1_000_000,
 ):
     """Evaluate one combination of BAW, PHY rates, SLD loads, and PERs."""
 
     point_wall_start = time.perf_counter_ns()
     point_cpu_start = time.process_time_ns()
+    exhaustive_wall_us = 0.0
+    exhaustive_cpu_us = 0.0
 
     # Per-link solutions of the contention fixed points (9)-(10).
     pM = [x[0] for x in p_vec]
@@ -944,6 +1229,34 @@ def process_BAW(
     # Aggregate MLO throughput
     res.D_mlo = sum(best_D)
 
+    if exhaustive:
+        exhaustive_wall_start = time.perf_counter_ns()
+        exhaustive_cpu_start = time.process_time_ns()
+        comparison = compare_with_exhaustive(
+            coef=coef,
+            BAW=BAW,
+            proposed_allocation=best_n,
+            sigma=cfg.sigma,
+            payload_bits=cfg.L_P,
+            per_vec=per_vec,
+            max_combinations=exhaustive_max_combinations,
+        )
+        res.exhaustive_nmpdu = list(comparison.allocation)
+        res.exhaustive_same_allocation = comparison.same_allocation
+        res.exhaustive_variance_gap = comparison.variance_gap
+        res.exhaustive_normalized_variance_gap = (
+            comparison.normalized_variance_gap
+        )
+        res.exhaustive_throughput_gap_mbps = (
+            comparison.throughput_gap_mbps
+        )
+        exhaustive_wall_us = (
+            time.perf_counter_ns() - exhaustive_wall_start
+        ) / 1000.0
+        exhaustive_cpu_us = (
+            time.process_time_ns() - exhaustive_cpu_start
+        ) / 1000.0
+
     # Best SLO throughput
     res.D_slo = D_slo_vec[best_slo_idx]
 
@@ -962,8 +1275,14 @@ def process_BAW(
     res.active_set_passes = active_set_passes
     res.allocation_wall_us = allocation_wall_us
     res.optimization_wall_us = optimization_wall_us
-    res.point_wall_us = (time.perf_counter_ns() - point_wall_start) / 1000.0
-    res.point_cpu_us = (time.process_time_ns() - point_cpu_start) / 1000.0
+    res.point_wall_us = (
+        (time.perf_counter_ns() - point_wall_start) / 1000.0
+        - exhaustive_wall_us
+    )
+    res.point_cpu_us = (
+        (time.process_time_ns() - point_cpu_start) / 1000.0
+        - exhaustive_cpu_us
+    )
     res.full_algorithm_wall_us = sum(fp_wall_us) + res.point_wall_us
     res.full_algorithm_cpu_us = sum(fp_cpu_us) + res.point_cpu_us
 
@@ -979,12 +1298,20 @@ def process_BAW(
 # CSV serialization helpers.
 # ============================================================================
 
-def make_csv_header(L: int):
+def make_csv_header(L: int, exhaustive=False):
     """
     Generate CSV header.
     """
 
     header = []
+
+    for l in range(L):
+        header.append(f"bw{l}")
+
+    for l in range(L):
+        header.append(f"mcs{l}")
+
+    header.append("nss")
 
     for l in range(L):
         header.append(f"R{l}")
@@ -1025,11 +1352,18 @@ def make_csv_header(L: int):
     header.append("D_slo")
     header.append("lambda_slo")
 
+    if exhaustive:
+        for l in range(L):
+            header.append(f"exhaustive_maxampdunum{l}")
+        header.append("exhaustive_same_allocation")
+        header.append("exhaustive_variance_gap")
+        header.append("exhaustive_normalized_variance_gap")
+        header.append("exhaustive_throughput_gap_Mbps")
 
     return header
 
 # ============================================================================
-def open_csv(path, L, mode=CSV_MODE):
+def open_csv(path, L, mode=CSV_MODE, exhaustive=False):
     """
     Open csv file.
 
@@ -1039,7 +1373,7 @@ def open_csv(path, L, mode=CSV_MODE):
     csv.writer
     """
 
-    expected = make_csv_header(L)
+    expected = make_csv_header(L, exhaustive=exhaustive)
 
     path = Path(path)
 
@@ -1082,46 +1416,70 @@ def open_csv(path, L, mode=CSV_MODE):
     return fout, writer
 
 # ============================================================================
-def _result_to_row(r: Result) -> list:
-    """
-    Convert one Result into a flat CSV row.
-    """
+def _format_decimal(value) -> str:
+    """Format a floating-point CSV value with exactly six decimals."""
+    return f"{value:.6f}"
 
+
+def _format_comparison_metric(value) -> str:
+    """Preserve small exhaustive-comparison gaps in CSV output."""
+    return f"{value:.12g}"
+
+
+def _result_to_row(r: Result, exhaustive=False) -> list:
+    """Convert one Result into a flat, consistently formatted CSV row."""
     row = []
 
-    row.extend(r.R)
+    row.extend(r.bw)
+    row.extend(r.mcs)
+    row.append(r.nss)
+    row.extend(_format_decimal(value) for value in r.R)
     row.extend(r.N)
     row.extend(r.nmpdu_sld)
-    row.extend(r.per)
+    row.extend(_format_decimal(value) for value in r.per)
     row.append(r.BAW)
     row.extend(r.best_nmpdu)
-    row.extend(r.D)
-    row.append(r.D_mlo)
-    row.extend(r.T)
-    row.append(r.variance)
-    row.extend(r.p)
-    row.extend(r.alpha)
-    row.extend(r.lambda_out)
-    row.append(r.D_slo)
-    row.append(r.lambda_slo)
+    row.extend(_format_decimal(value) for value in r.D)
+    row.append(_format_decimal(r.D_mlo))
+    row.extend(_format_decimal(value) for value in r.T)
+    row.append(_format_decimal(r.variance))
+    row.extend(_format_decimal(value) for value in r.p)
+    row.extend(_format_decimal(value) for value in r.alpha)
+    row.extend(_format_decimal(value) for value in r.lambda_out)
+    row.append(_format_decimal(r.D_slo))
+    row.append(_format_decimal(r.lambda_slo))
+
+    if exhaustive:
+        if len(r.exhaustive_nmpdu) != r.L:
+            raise ValueError("missing exhaustive comparison in Result")
+        row.extend(r.exhaustive_nmpdu)
+        row.append(r.exhaustive_same_allocation)
+        row.append(_format_comparison_metric(r.exhaustive_variance_gap))
+        row.append(
+            _format_comparison_metric(
+                r.exhaustive_normalized_variance_gap
+            )
+        )
+        row.append(
+            _format_comparison_metric(r.exhaustive_throughput_gap_mbps)
+        )
 
     return row
 
 
-def write_csv_row(writer, r: Result):
-    """
-    Write one Result into csv.
-    """
+def write_csv_row(writer, r: Result, exhaustive=False):
+    """Write one Result into CSV."""
 
-    writer.writerow(_result_to_row(r))
+    writer.writerow(_result_to_row(r, exhaustive=exhaustive))
 
 
-def write_csv_rows(writer, results: List[Result]):
-    """
-    Write a batch of Results.
-    """
+def write_csv_rows(writer, results: List[Result], exhaustive=False):
+    """Write a batch of Results into CSV."""
 
-    writer.writerows(_result_to_row(r) for r in results)
+    writer.writerows(
+        _result_to_row(r, exhaustive=exhaustive)
+        for r in results
+    )
 
 
 def run_large_link_allocation_experiment():
@@ -1189,7 +1547,7 @@ def run_large_link_allocation_experiment():
         rows.append({
             "L": L,
             "BAW": BAW,
-            "R_Mbps": "{" + ",".join(f"{r:g}" for r in R) + "}",
+            "R_Mbps": "{" + ",".join(_format_decimal(r) for r in R) + "}",
             "W_mld": 16, "W_sld": 16, "K_mld": 6, "K_sld": 6,
             "no_sld_N": 0, "no_sld_M_A_S": 0,
             "no_sld_M_A_M_star": (
@@ -1217,7 +1575,7 @@ def run_large_link_allocation_experiment():
 
 
 def load_custom_scenarios(path: Path):
-    """Load and validate user-defined operating points from a JSON file."""
+    """Load custom PHY settings and derive per-link EHT data rates."""
     with path.open(encoding="utf-8") as input_file:
         document = json.load(input_file)
 
@@ -1231,9 +1589,28 @@ def load_custom_scenarios(path: Path):
             "the scenario file must contain a non-empty 'scenarios' list"
         )
 
-    required = ("R", "N", "nmpdu_sld", "per", "BAW")
+    required = (
+        "mcsValue",
+        "channelWidth",
+        "N",
+        "nmpdu_sld",
+        "per",
+        "BAW",
+    )
     normalized = []
     number_of_links = None
+
+    def parse_integer(value, field_name, scenario_index, link_index=None):
+        location = f"scenario {scenario_index}"
+        if link_index is not None:
+            location += f", link {link_index}"
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not float(value).is_integer()
+        ):
+            raise ValueError(f"{location}: {field_name} must be an integer")
+        return int(value)
 
     for index, scenario in enumerate(scenarios, start=1):
         if not isinstance(scenario, dict):
@@ -1244,18 +1621,20 @@ def load_custom_scenarios(path: Path):
                 f"scenario {index} is missing: {', '.join(missing)}"
             )
 
-        lengths = {
-            key: len(scenario[key])
-            for key in ("R", "N", "nmpdu_sld", "per")
-            if isinstance(scenario[key], list)
-        }
-        if len(lengths) != 4 or len(set(lengths.values())) != 1:
+        list_fields = ("mcsValue", "channelWidth", "N", "nmpdu_sld", "per")
+        if any(not isinstance(scenario[key], list) for key in list_fields):
             raise ValueError(
-                f"scenario {index}: R, N, nmpdu_sld, and per "
-                "must be equal-length lists"
+                f"scenario {index}: mcsValue, channelWidth, N, "
+                "nmpdu_sld, and per must be lists"
+            )
+        lengths = {key: len(scenario[key]) for key in list_fields}
+        if len(set(lengths.values())) != 1:
+            raise ValueError(
+                f"scenario {index}: mcsValue, channelWidth, N, "
+                "nmpdu_sld, and per must be equal-length lists"
             )
 
-        current_links = lengths["R"]
+        current_links = lengths["mcsValue"]
         if current_links < 1:
             raise ValueError(f"scenario {index} contains no links")
         if number_of_links is None:
@@ -1263,14 +1642,28 @@ def load_custom_scenarios(path: Path):
         elif current_links != number_of_links:
             raise ValueError("all scenarios must use the same link count")
 
-        R = [float(value) for value in scenario["R"]]
+        mcs_values = [
+            parse_integer(value, "mcsValue", index, link_index)
+            for link_index, value in enumerate(scenario["mcsValue"])
+        ]
+        channel_widths = [
+            parse_integer(value, "channelWidth", index, link_index)
+            for link_index, value in enumerate(scenario["channelWidth"])
+        ]
+        nss = parse_integer(scenario.get("nss", 2), "nss", index)
         N = [int(value) for value in scenario["N"]]
         nmpdu_sld = [int(value) for value in scenario["nmpdu_sld"]]
         per = [float(value) for value in scenario["per"]]
         BAW = int(scenario["BAW"])
 
-        if any(value <= 0.0 for value in R):
-            raise ValueError(f"scenario {index}: every PHY rate must be positive")
+        try:
+            R = [
+                eht_data_rate_mbps(mcs, width, nss)
+                for mcs, width in zip(mcs_values, channel_widths)
+            ]
+        except ValueError as error:
+            raise ValueError(f"scenario {index}: {error}") from error
+
         if any(value < 0 for value in N):
             raise ValueError(f"scenario {index}: SLD counts cannot be negative")
         if any(value < 0 for value in nmpdu_sld):
@@ -1283,6 +1676,9 @@ def load_custom_scenarios(path: Path):
             raise ValueError(f"scenario {index}: BAW must be positive")
 
         normalized_scenario = {
+            "mcsValue": mcs_values,
+            "channelWidth": channel_widths,
+            "nss": nss,
             "R": R,
             "N": N,
             "nmpdu_sld": nmpdu_sld,
@@ -1307,7 +1703,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Airtime-aligned MPDU allocation"
     )
-    mode_group = parser.add_mutually_exclusive_group()
+    mode_group = parser.add_mutually_exclusive_group(required=True)
     mode_group.add_argument(
         "--large-link-allocation", action="store_true",
         help="run the deterministic L=2,...,8 allocation experiment",
@@ -1320,27 +1716,40 @@ def main():
         "--output", type=Path,
         help="CSV filename or relative path under the outputs directory",
     )
+    parser.add_argument(
+        "--exhaustive", action="store_true",
+        help=(
+            "enumerate all positive integer allocations on the selected "
+            "active-link set and append comparison columns"
+        ),
+    )
+    parser.add_argument(
+        "--exhaustive-max-combinations",
+        type=int,
+        default=1_000_000,
+        help="safety limit on allocations enumerated per scenario (default: 1000000)",
+    )
     args = parser.parse_args()
 
+    if args.exhaustive_max_combinations <= 0:
+        parser.error("--exhaustive-max-combinations must be positive")
+
     if args.large_link_allocation:
+        if args.exhaustive:
+            parser.error(
+                "--exhaustive is intended for custom small-link scenarios; "
+                "the L=2,...,8 experiment is combinatorially intractable"
+            )
         run_large_link_allocation_experiment()
         return
 
-    if args.scenario_file:
-        try:
-            L, scenarios = load_custom_scenarios(args.scenario_file)
-        except (OSError, ValueError, json.JSONDecodeError) as error:
-            parser.error(f"invalid scenario file: {error}")
-        scan_cfg = ScanConfig()
-        scan_cfg.scenarios = scenarios
-        default_csvpath = OUTPUT_DIR / f"solve-custom-{L}link.csv"
-        mode_description = "Custom scenario"
-    else:
-        # With no mode option, run the paper's two-link experiment directly.
-        L = 2
-        scan_cfg = ScanConfig()
-        default_csvpath = OUTPUT_DIR / "solve-2link.csv"
-        mode_description = "Paper two-link scenario"
+    try:
+        L, scenarios = load_custom_scenarios(args.scenario_file)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        parser.error(f"invalid scenario file: {error}")
+    scan_cfg = ScanConfig(scenarios=scenarios)
+    default_csvpath = OUTPUT_DIR / f"solve-{args.scenario_file.stem}.csv"
+    mode_description = "Custom scenario"
 
     if args.output:
         if args.output.is_absolute():
@@ -1351,6 +1760,11 @@ def main():
             parser.error("--output cannot refer to a path outside outputs/")
     else:
         csvpath = default_csvpath
+
+    if args.exhaustive and not csvpath.stem.endswith("-exhaustive"):
+        csvpath = csvpath.with_name(
+            f"{csvpath.stem}-exhaustive{csvpath.suffix}"
+        )
 
     csvpath.parent.mkdir(parents=True, exist_ok=True)
     cfg = Config(L)
@@ -1364,7 +1778,9 @@ def main():
         for l in range(L)
     ]
     try:
-        csv_file, csv_writer = open_csv(csvpath, L, CSV_MODE)
+        csv_file, csv_writer = open_csv(
+            csvpath, L, CSV_MODE, exhaustive=args.exhaustive
+        )
     except Exception as error:
         print("[Error]", error)
         return
@@ -1381,7 +1797,8 @@ def main():
         f"({L} Links / Closed-form Solution / P1)"
     )
     print(f"Scenarios: {len(scan_cfg.scenarios)}")
-    print("Theoretical time complexity per scenario: O(L*I + L^2)")
+    print("Theoretical time complexity per scenario: "
+          "O(L*I + L^2 + L*log(L)) = O(L*I + L^2)")
     print("Auxiliary-space complexity: O(L)")
     print("=" * 70)
 
@@ -1423,24 +1840,41 @@ def main():
                 fp_converged=[item[3] for item in p_vec],
                 fp_wall_us=fp_wall_us,
                 fp_cpu_us=fp_cpu_us,
+                exhaustive=args.exhaustive,
+                exhaustive_max_combinations=(
+                    args.exhaustive_max_combinations
+                ),
             )
+            result.bw = list(scenario["channelWidth"])
+            result.mcs = list(scenario["mcsValue"])
+            result.nss = scenario["nss"]
             results.append(result)
             timing_wall_us.append(result.point_wall_us)
             timing_cpu_us.append(result.point_cpu_us)
             timing_alloc_us.append(result.allocation_wall_us)
             timing_passes.append(result.active_set_passes)
+        except ExhaustiveLimitError as error:
+            csv_file.close()
+            parser.error(str(error))
         except Exception as error:
             print(f"[Error] scenario {index}:", error)
             continue
 
+        rate_text = ", ".join(f"{value:.6f}" for value in scenario["R"])
+        phy_text = ""
+        if "mcsValue" in scenario:
+            phy_text = (
+                f"MCS={scenario['mcsValue']} BW={scenario['channelWidth']}MHz "
+                f"GI={EHT_GUARD_INTERVAL_NS}ns NSS={scenario['nss']} "
+            )
         print(
             f"[{index}/{len(scan_cfg.scenarios)}] "
-            f"R={scenario['R']} N={scenario['N']} "
+            f"{phy_text}R=[{rate_text}] N={scenario['N']} "
             f"SLD_MPDU={scenario['nmpdu_sld']} "
             f"PER={scenario['per']} BAW={scenario['BAW']}"
         )
 
-    write_csv_rows(csv_writer, results)
+    write_csv_rows(csv_writer, results, exhaustive=args.exhaustive)
     csv_file.close()
 
     print("=" * 70)

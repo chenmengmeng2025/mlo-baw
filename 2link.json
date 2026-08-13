@@ -1,0 +1,328 @@
+{
+  "scenarios": [
+    {
+      "mcsValue": [4, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [24, 232],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [9, 10],
+      "channelWidth": [20, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [24, 232],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [5, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [24, 232],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [6, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [24, 232],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [7, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [24, 232],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [8, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [24, 232],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [9, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [24, 232],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [10, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [24, 232],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [11, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [24, 232],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [4, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [96, 928],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [9, 10],
+      "channelWidth": [20, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [96, 928],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [5, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [96, 928],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [6, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [96, 928],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [7, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [96, 928],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [8, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [96, 928],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [9, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [96, 928],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [10, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [96, 928],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [11, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [4, 1],
+      "nmpdu_sld": [96, 928],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [4, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [9, 10],
+      "channelWidth": [20, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [5, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [6, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [7, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [8, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [9, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [10, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [11, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 256
+    },
+    {
+      "mcsValue": [4, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [9, 10],
+      "channelWidth": [20, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [5, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [6, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [7, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [8, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [9, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [10, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    },
+    {
+      "mcsValue": [11, 10],
+      "channelWidth": [40, 80],
+      "nss": 2,
+      "N": [0, 0],
+      "nmpdu_sld": [0, 0],
+      "per": [0.0, 0.0],
+      "BAW": 1024
+    }
+  ]
+}

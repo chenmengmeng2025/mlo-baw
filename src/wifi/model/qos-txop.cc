@@ -90,8 +90,8 @@ QosTxop::GetTypeId()
             .AddTraceSource("TxopTrace",
                             "Trace source for TXOP start and duration times",
                             MakeTraceSourceAccessor(&QosTxop::m_txopTrace),
-                            "ns3::QosTxop::TxopTracedCallback");               
-            
+                            "ns3::QosTxop::TxopTracedCallback");
+
     return tid;
 }
 
@@ -166,12 +166,15 @@ QosTxop::DoInitialize()
 {
     NS_LOG_FUNCTION(this);
     Txop::DoInitialize();
+    m_baManager->SetNLinks(m_mac->GetNLinks());
     m_baManager->SetMode(m_mode);
-    m_baManager->SetPERAllZero(IsPERAllZero());
-    if(m_mode & 0x01){
+    if (auto controller = GetAmpduLimitController())
+    {
         for(uint8_t i = 0; i < m_mac->GetNLinks(); i++)
         {
-            m_mac->GetDevice()->GetPhy(i)->TraceConnectWithoutContext("PpduTxDuration",MakeCallback(&AmpduLimitController::NotifyPpduTxDuration, GetAmpduLimitController()));
+            m_mac->GetDevice()->GetPhy(i)->TraceConnectWithoutContext(
+                "PpduTxDuration",
+                MakeCallback(&AmpduLimitController::NotifyPpduTxDuration, controller));
         }
     }
 }
@@ -317,8 +320,8 @@ uint16_t
 QosTxop::GetBaStartingSequence(Mac48Address address, uint8_t tid, uint8_t linkId) const
 {
     if(m_mode & 0x01) {
-        // 发送前更新自己读指针到最新
-        m_baManager->UpdateRptr(address, tid, linkId); // 更新自己的读指针 max(2G, 5G)
+        // Refresh this link's read pointer before selecting the next MPDU.
+        m_baManager->UpdateRptr(address, tid, linkId);
         return m_baManager->GetOriginatorRptr(address, tid, linkId);
     }
     return m_baManager->GetOriginatorStartingSequence(address, tid);

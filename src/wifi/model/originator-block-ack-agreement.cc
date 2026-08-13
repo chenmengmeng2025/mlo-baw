@@ -21,10 +21,8 @@ NS_LOG_COMPONENT_DEFINE("OriginatorBlockAckAgreement");
 
 OriginatorBlockAckAgreement::OriginatorBlockAckAgreement(Mac48Address recipient, uint8_t tid)
     : BlockAckAgreement(recipient, tid),
-      m_linkRPtr({0, 0, 0}),
       m_state(PENDING)
 {
-    std::cout << "CreateOriginatorBlockAckAgreement: recipient: " << recipient << " tid: " << (uint32_t)tid << std::endl;
 }
 
 OriginatorBlockAckAgreement::~OriginatorBlockAckAgreement()
@@ -164,10 +162,7 @@ OriginatorBlockAckAgreement::NotifyAckedMpdu(Ptr<const WifiMpdu> mpdu)
     // transmitted MPDU is in the window, hence we cannot be notified of the
     // acknowledgment of an MPDU which is beyond the transmit window
     m_txWindow.At(distance) = true;
-    if (m_mode & 0x01){
-        m_txWindow.SetElementState(distance, BlockAckWindow::ElementState::ACKED);
-    }
-
+    m_txWindow.SetElementState(distance, BlockAckWindow::ElementState::ACKED);
     // the starting sequence number can be advanced to the sequence number of
     // the nearest unacknowledged MPDU
     AdvanceTxWindow();
@@ -195,13 +190,8 @@ OriginatorBlockAckAgreement::NotifyDiscardedMpdu(Ptr<const WifiMpdu> mpdu)
 BlockAckWindow&
 OriginatorBlockAckAgreement::GetTxWindow()
 {
-    return m_txWindow;      
+    return m_txWindow;
 }
 
-void
-OriginatorBlockAckAgreement::SetMode(uint32_t mode)
-{
-    m_mode = mode;
-}
 
 } // namespace ns3

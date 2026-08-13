@@ -101,33 +101,17 @@ void
 BlockAckWindow::SetElementState(std::size_t distance, ElementState state)
 {
     NS_LOG_FUNCTION(this << distance << static_cast<uint32_t>(state));
-    // NS_ASSERT(distance < m_statesWindow.size());
+    NS_ASSERT(distance < m_statesWindow.size());
     m_statesWindow.at((m_head + distance) % m_statesWindow.size()) = state;
 }
 
 BlockAckWindow::ElementState
 BlockAckWindow::GetElementState(std::size_t distance) const
 {
-    // NS_ASSERT(distance < m_statesWindow.size());
+    NS_ASSERT(distance < m_statesWindow.size());
     return m_statesWindow.at((m_head + distance) % m_statesWindow.size());
 }
 
-std::size_t
-BlockAckWindow::CountByState(ElementState state) const
-{
-    std::size_t count = 0;
-    for (std::size_t i = 0; i < m_statesWindow.size(); ++i)
-    {
-        if (m_statesWindow[i] == state)
-        {
-            ++count;
-        }
-    }
-    return count;
-}
-// ---------------------------------------------------------------------------
-// Shared helper: convert ElementState to a fixed-width display string
-// ---------------------------------------------------------------------------
 static std::string
 ElementStateToStr(BlockAckWindow::ElementState s)
 {
@@ -269,128 +253,131 @@ BlockAckWindow::ComputeEffectiveBawSize(uint8_t linkId, double otherPer, bool lo
     const std::size_t winSize = m_window.size();
     const double      q       = 1.0 - otherPer; // success prob of other link
 
-    // ------------------------------------------------------------------
-    // First pass: collect K_i values.
-    //
-    // Walk slots from distance 0 to winSize-1 (logical order from winStart).
-    // Whenever we see a type-b element we record the number of consecutive
-    // type-a elements that immediately follow it (up to the next non-a slot
-    // or the window end).  We do this in a single forward scan by keeping
-    // a pointer to the "pending b" slot and counting a-runs after it.
-    // ------------------------------------------------------------------
-
-    // K[i] = number of consecutive type-a slots after the i-th type-b slot
+    // K[i] is the number of consecutive type-a slots after the i-th type-b
+    // slot in the prefix before the first type-l or type-u slot. The paper's
+    // m is the number of type-b slots in this prefix, whereas Dother counts
+    // type-b slots across the complete BAW.
     std::vector<std::size_t> K;
-    std::size_t L = 0; // type-l count
-    std::size_t U = 0; // type-u count
-
-    // Index of the last seen type-b slot in the logical order (-1 = none yet)
-    // We will count the a-run after it as we scan forward.
-    bool        inARunAfterB = false;
-    std::size_t currentKIdx  = 0; // index into K[] we are currently filling
+    std::size_t Dother = 0; // all type-b slots in the window
+    std::size_t L = 0;      // type-l count
+    std::size_t U = 0;      // type-u count
+    bool prefixOpen = true;
+    bool inARunAfterB = false;
+    std::size_t currentKIdx = 0;
 
     for (std::size_t dist = 0; dist < winSize; ++dist)
     {
-        ElementState st = GetElementState(dist);
+        const ElementState st = GetElementState(dist);
 
         if (st == otherInflight)
         {
-            // New type-b element found.
-            // If we were counting a-run for a previous b, that run is now closed.
-            // Start a new K entry (initially 0; will be incremented by a-slots that follow).
-            K.push_back(0);
-            currentKIdx  = K.size() - 1;
-            inARunAfterB = true; // next a-slots go into K[currentKIdx]
+            ++Dother;
+            if (prefixOpen)
+            {
+                K.push_back(0);
+                currentKIdx = K.size() - 1;
+                inARunAfterB = true;
+            }
         }
         else if (st == ElementState::ACKED)
         {
-            if (inARunAfterB)
+            if (prefixOpen && inARunAfterB)
             {
-                // Still in the a-run immediately after a b-slot
                 ++K[currentKIdx];
             }
-            // type-a slots are neither L nor U; nothing else to do
         }
-        else
+        else if (st == thisInflight)
         {
-            // type-l or type-u: breaks the a-run after the last b
+            ++L;
+            prefixOpen = false;
             inARunAfterB = false;
-
-            if (st == thisInflight)
-            {
-                ++L;
-            }
-            else if (st == ElementState::UNACKED)
-            {
-                ++U;
-            }
+        }
+        else if (st == ElementState::UNACKED)
+        {
+            ++U;
+            prefixOpen = false;
+            inARunAfterB = false;
         }
     }
 
-    const std::size_t m = K.size(); // number of type-b elements
+    const std::size_t m = K.size();
 
     // ------------------------------------------------------------------
-    // Second pass: evaluate the summation.
+    // Evaluate the distributed-receiver specialization of Eq. (6).
     //
-    //   sum_{i=1}^{m} [ (K_i + 1) * (1-p)^i ]  +  m*p  +  L  +  U
+    //   sum_{i=1}^{m} [ (K_i + 1) * (1-p)^i ] + Dother*p + L + U
     //
-    // We accumulate q^i iteratively to avoid repeated pow() calls.
+    // Only the other link's local BA can report type-b MPDUs, hence the
+    // paper's D1*p1 + D2*p2 reduces to Dother*p here.
     // ------------------------------------------------------------------
-    double sum  = 0.0;
+    double prefixSum = 0.0;
     double qPow = q; // (1-p)^i, starts at i=1
 
     for (std::size_t i = 0; i < m; ++i)
     {
-        sum  += static_cast<double>(K[i] + 1) * qPow;
+        prefixSum += static_cast<double>(K[i] + 1) * qPow;
         qPow *= q;
     }
 
-    sum += static_cast<double>(m) * otherPer;
-    sum += static_cast<double>(L);
-    sum += static_cast<double>(U);
+    const double retransmissionTerm = static_cast<double>(Dother) * otherPer;
+    const double sum =
+        prefixSum + retransmissionTerm + static_cast<double>(L) + static_cast<double>(U);
 
-    if(m_lastUpdateTime != Simulator::Now() && log) {
+    if (m_lastEffectiveBawLogTimes[linkId] != Simulator::Now() && log)
+    {
+        std::cout << "[EFFECTIVE_BAW_STATE]"
+                  << " timeNs=" << Simulator::Now().GetNanoSeconds()
+                  << " link=" << +linkId << std::endl;
         Print(std::cout, linkId);
-        std::cout << "=== ComputeEffectiveBawSize ===\n";
-        std::cout << "  linkId=" << +linkId
-                << "  otherPer(p)=" << otherPer
-                << "  q=(1-p)=" << q
-                << "  winSize=" << winSize << "\n";
-        std::cout << "  Counts: m(type-b)=" << m
-                << "  L(type-l)=" << L
-                << "  U(type-u)=" << U << "\n";
 
-        std::cout << "  Summation terms: sum_{i=1}^{m} [ (K_i+1) * (1-p)^i ]\n";
+        double geometricBase = 0.0;
+        double gapContribution = 0.0;
+        double qPowLog = q;
+        for (std::size_t i = 0; i < m; ++i)
         {
-            double qPowDbg   = q;
-            double partialSum = 0.0;
-            for (std::size_t i = 0; i < m; ++i)
-            {
-                double term = static_cast<double>(K[i] + 1) * qPowDbg;
-                partialSum += term;
-                std::cout << "    i=" << (i + 1)
-                        << "  K_" << (i + 1) << "=" << K[i]
-                        << "  (K_i+1)=" << (K[i] + 1)
-                        << "  q^" << (i + 1) << "=" << qPowDbg
-                        << "  term=" << term
-                        << "  partial_sum=" << partialSum << "\n";
-                qPowDbg *= q;
-            }
-            std::cout << "  sum term total=" << partialSum << "\n";
+            geometricBase += qPowLog;
+            gapContribution += static_cast<double>(K[i]) * qPowLog;
+            qPowLog *= q;
         }
-        std::cout << "  m*p=" << static_cast<double>(m) * otherPer
-                << "  L=" << L
-                << "  U=" << U << "\n";
-        std::cout << "  Final EffBAW = " << sum
-                << " = (sum)" << (sum - static_cast<double>(m) * otherPer - static_cast<double>(L) - static_cast<double>(U))
-                << " + (m*p)" << static_cast<double>(m) * otherPer
-                << " + (L)" << L
-                << " + (U)" << U << "\n";
-        std::cout << "==============================\n";
+
+        std::cout << "[EFFECTIVE_BAW_PREFIX]"
+                  << " formula=sum((K_i+1)*q^i)"
+                  << " q=" << q
+                  << " m=" << m
+                  << " geometricBase=" << geometricBase
+                  << " gapContribution=" << gapContribution
+                  << " nonZeroK=[";
+        bool first = true;
+        for (std::size_t i = 0; i < m; ++i)
+        {
+            if (K[i] == 0)
+            {
+                continue;
+            }
+            if (!first)
+            {
+                std::cout << ",";
+            }
+            std::cout << (i + 1) << ":" << K[i];
+            first = false;
+        }
+        std::cout << "] prefixSum=" << prefixSum << std::endl;
+
+        std::cout << "[EFFECTIVE_BAW]"
+                  << " timeNs=" << Simulator::Now().GetNanoSeconds()
+                  << " link=" << +linkId
+                  << " winSize=" << winSize
+                  << " otherPer=" << otherPer
+                  << " m=" << m
+                  << " Dother=" << Dother
+                  << " L=" << L
+                  << " U=" << U
+                  << " prefixSum=" << prefixSum
+                  << " retransmissionTerm=" << retransmissionTerm
+                  << " value=" << sum << std::endl;
     }
 
-    
-    m_lastUpdateTime = Simulator::Now(); // for debugging/logging
+    m_lastEffectiveBawLogTimes[linkId] = Simulator::Now();
 
     return sum;
 }

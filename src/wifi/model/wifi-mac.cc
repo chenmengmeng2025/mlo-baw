@@ -52,7 +52,6 @@ WifiMac::WifiMac()
     m_rxMiddle->SetForwardCallback(MakeCallback(&WifiMac::Receive, this));
 
     m_txMiddle = Create<MacTxMiddle>();
-    m_linkTxStatus.resize(2, false);
 }
 
 WifiMac::~WifiMac()
@@ -404,6 +403,9 @@ void
 WifiMac::DoInitialize()
 {
     NS_LOG_FUNCTION(this);
+
+    // The number of links is known only after the MAC configuration is complete.
+    m_linkTxStatus.assign(GetNLinks(), false);
 
     if (m_txop)
     {
@@ -2499,8 +2501,9 @@ WifiMac::GetMaxAmsduSize(AcIndex ac) const
     return maxSize;
 }
 
-std::vector<bool> &
-WifiMac::GetLinkTxStatus() {
+std::vector<bool>&
+WifiMac::GetLinkTxStatus()
+{
     return m_linkTxStatus;
 }
 

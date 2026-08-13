@@ -300,7 +300,7 @@ WifiPhy::GetTypeId()
                           "the reception of the MAC header of every MPDU.",
                           BooleanValue(false),
                           MakeBooleanAccessor(&WifiPhy::m_notifyRxMacHeaderEnd),
-                          MakeBooleanChecker())  
+                          MakeBooleanChecker())
             .AddTraceSource("PhyTxBegin",
                             "Trace source indicating a packet "
                             "has begun transmitting over the channel medium",
@@ -1710,7 +1710,6 @@ WifiPhy::NotifyMonitorSniffRx(Ptr<const WifiPsdu> psdu,
                       "TxVector with aggregate flag expected here according to PSDU");
         aMpdu.mpduRefNumber = ++m_rxMpduReferenceNumber;
         size_t nMpdus = psdu->GetNMpdus();
-        // std::cout << Simulator::Now().GetMicroSeconds() << "us, nMpdus: " << nMpdus << std::endl;
         NS_ASSERT_MSG(statusPerMpdu.size() == nMpdus, "Should have one reception status per MPDU");
         if (!m_phyMonitorSniffRxTrace.IsEmpty())
         {
@@ -1803,151 +1802,27 @@ WifiPhy::Send(Ptr<const WifiPsdu> psdu, const WifiTxVector& txVector)
 }
 
 void
-WifiPhy::Send(Ptr<const WifiPsdu> psdu, const WifiTxVector& txVector, uint8_t linkId, std::vector<bool>& linkStatus)
+WifiPhy::Send(Ptr<const WifiPsdu> psdu,
+              const WifiTxVector& txVector,
+              uint8_t linkId,
+              std::vector<bool>& linkStatus)
 {
     NS_LOG_FUNCTION(this << *psdu << txVector);
-    DoSend(GetWifiConstPsduMap(psdu, txVector), std::ref(txVector), linkId, std::ref(linkStatus));
+    DoSend(GetWifiConstPsduMap(psdu, txVector), txVector, linkId, &linkStatus);
 }
 
 void
 WifiPhy::Send(const WifiConstPsduMap& psdus, const WifiTxVector& txVector)
 {
     NS_LOG_FUNCTION(this << psdus << txVector);
-    /* Transmission can happen if:
-     *  - we are syncing on a packet. It is the responsibility of the
-     *    MAC layer to avoid doing this but the PHY does nothing to
-     *    prevent it.
-     *  - we are idle
-     */
-    NS_ASSERT(!m_state->IsStateTx() && !m_state->IsStateSwitching());
-    NS_ASSERT(m_endTxEvent.IsExpired());
-
-    if (!txVector.IsValid(m_band))
-    {
-        NS_FATAL_ERROR("TX-VECTOR is invalid!");
-    }
-
-    uint8_t nss = 0;
-    if (txVector.IsMu())
-    {
-        // We do not support mixed OFDMA and MU-MIMO
-        if (txVector.IsDlMuMimo())
-        {
-            nss = txVector.GetNssTotal();
-        }
-        else
-        {
-            nss = txVector.GetNssMax();
-        }
-    }
-    else
-    {
-        nss = txVector.GetNss();
-    }
-
-    if (nss > GetMaxSupportedTxSpatialStreams())
-    {
-        NS_FATAL_ERROR("Unsupported number of spatial streams!");
-    }
-
-    if (m_state->IsStateSleep())
-    {
-        NS_LOG_DEBUG("Dropping packet because in sleep mode");
-        for (const auto& psdu : psdus)
-        {
-            NotifyTxDrop(psdu.second);
-        }
-        return;
-    }
-    
-    const auto txDuration = CalculateTxDuration(psdus, txVector, GetPhyBand());
-
-    auto noEndPreambleDetectionEvent = true;
-    for (const auto& [mc, entity] : m_phyEntities)
-    {
-        noEndPreambleDetectionEvent =
-            noEndPreambleDetectionEvent && entity->NoEndPreambleDetectionEvents();
-    }
-    if (!noEndPreambleDetectionEvent && !m_currentEvent)
-    {
-        // PHY is in the initial few microseconds during which the
-        // start of RX has occurred but the preamble detection period
-        // has not elapsed
-        AbortCurrentReception(SIGNAL_DETECTION_ABORTED_BY_TX);
-    }
-    else if (!noEndPreambleDetectionEvent || m_currentEvent)
-    {
-        AbortCurrentReception(RECEPTION_ABORTED_BY_TX);
-    }
-
-    if (m_powerRestricted)
-    {
-        NS_LOG_DEBUG("Transmitting with power restriction for " << txDuration.As(Time::NS));
-    }
-    else
-    {
-        NS_LOG_DEBUG("Transmitting without power restriction for " << txDuration.As(Time::NS));
-    }
-
-    if (m_state->GetState() == WifiPhyState::OFF)
-    {
-        NS_LOG_DEBUG("Transmission canceled because device is OFF");
-        return;
-    }
-
-    auto ppdu = GetPhyEntity(txVector.GetModulationClass())->BuildPpdu(psdus, txVector, txDuration);
-    m_previouslyRxPpduUid = UINT64_MAX; // reset (after creation of PPDU) to use it only once
-
-    const auto txPower = DbmToW(GetTxPowerForTransmission(ppdu) + GetTxGain());
-
-    NotifyTxBegin(psdus, txPower);
-    if (!m_phyTxPsduBeginTrace.IsEmpty())
-    {
-        m_phyTxPsduBeginTrace(psdus, txVector, txPower);
-    }
-    for (const auto& psdu : psdus)
-    {
-        NotifyMonitorSniffTx(psdu.second, GetFrequency(), txVector, psdu.first);
-    }
-    m_state->SwitchToTx(txDuration, psdus, GetPower(txVector.GetTxPowerLevel()), txVector);
-
-    if (m_wifiRadioEnergyModel &&
-        m_wifiRadioEnergyModel->GetMaximumTimeInState(WifiPhyState::TX) < txDuration)
-    {
-        ppdu->SetTruncatedTx();
-    }
-
-    m_endTxEvent =
-        Simulator::Schedule(txDuration, &WifiPhy::TxDone, this, psdus);
-    if(!PpduTxDuration.IsEmpty())
-    {
-        uint8_t linkId;
-        switch (m_band)
-        {
-            case WIFI_PHY_BAND_2_4GHZ:
-                linkId = 0;
-                break;
-            case WIFI_PHY_BAND_5GHZ:
-                linkId = 1;
-                break;
-            case WIFI_PHY_BAND_6GHZ:
-                linkId = 2;
-                break;
-            default:
-                NS_FATAL_ERROR("Unsupported PHY band: " << m_band);
-        }
-        PpduTxDuration(ppdu, txDuration, linkId);
-    }
-
-    StartTx(ppdu);
-    ppdu->ResetTxVector();
-
-    m_channelAccessRequested = false;
-    m_powerRestricted = false;
+    DoSend(psdus, txVector, 0, nullptr);
 }
 
 void
-WifiPhy::DoSend(const WifiConstPsduMap& psdus, const WifiTxVector& txVector, uint8_t linkId, std::vector<bool>& linkStatus)
+WifiPhy::DoSend(const WifiConstPsduMap& psdus,
+                const WifiTxVector& txVector,
+                uint8_t linkId,
+                std::vector<bool>* linkStatus)
 {
     NS_LOG_FUNCTION(this << psdus << txVector);
     /* Transmission can happen if:
@@ -1996,16 +1871,8 @@ WifiPhy::DoSend(const WifiConstPsduMap& psdus, const WifiTxVector& txVector, uin
         }
         return;
     }
-    
-
     const auto txDuration = CalculateTxDuration(psdus, txVector, GetPhyBand());
-    // if(psdus.begin()->second->GetNMpdus()>1){
-    //    std::cout<<"MLD PSDU "<<GetFrequency()<<"MHZ; "<<Simulator::Now().GetMicroSeconds()<<" us; ";
-    //     std::cout << "Number of MPDUs: " << psdus.begin()->second->GetNMpdus() << "; ";
-    //     std::cout<<"PhyPreambleAndHeaderDuration "<<CalculatePhyPreambleAndHeaderDuration(txVector).GetMicroSeconds()<<"us; ";
-    //     std::cout<<std::endl;
-    // }
-    auto firstPsdu = psdus.cbegin()->second;
+
     auto noEndPreambleDetectionEvent = true;
     for (const auto& [mc, entity] : m_phyEntities)
     {
@@ -2043,8 +1910,11 @@ WifiPhy::DoSend(const WifiConstPsduMap& psdus, const WifiTxVector& txVector, uin
     m_previouslyRxPpduUid = UINT64_MAX; // reset (after creation of PPDU) to use it only once
 
     const auto txPower = DbmToW(GetTxPowerForTransmission(ppdu) + GetTxGain());
-    NotifyTxBegin(psdus, txPower); // PHY TX开始
-    TxBeginUpdateLinkTxStatus(linkId, std::ref(linkStatus)); // 更新LinkTx状态
+    NotifyTxBegin(psdus, txPower);
+    if (linkStatus)
+    {
+        TxBeginUpdateLinkTxStatus(linkId, *linkStatus);
+    }
     if (!m_phyTxPsduBeginTrace.IsEmpty())
     {
         m_phyTxPsduBeginTrace(psdus, txVector, txPower);
@@ -2054,7 +1924,7 @@ WifiPhy::DoSend(const WifiConstPsduMap& psdus, const WifiTxVector& txVector, uin
         NotifyMonitorSniffTx(psdu.second, GetFrequency(), txVector, psdu.first);
     }
 
-    m_state->SwitchToTx(txDuration, psdus, GetPower(txVector.GetTxPowerLevel()), txVector); // 切换PHY层状态为TX状态
+    m_state->SwitchToTx(txDuration, psdus, GetPower(txVector.GetTxPowerLevel()), txVector);
     if (m_wifiRadioEnergyModel &&
         m_wifiRadioEnergyModel->GetMaximumTimeInState(WifiPhyState::TX) < txDuration)
     {
@@ -2064,11 +1934,36 @@ WifiPhy::DoSend(const WifiConstPsduMap& psdus, const WifiTxVector& txVector, uin
     m_endTxEvent =
         Simulator::Schedule(txDuration, &WifiPhy::TxDone, this, psdus);
 
-    Simulator::Schedule(txDuration, &WifiPhy::TxDoneUpdateLinkTxStatus, this, linkId, std::ref(linkStatus));
-
-    if(!PpduTxDuration.IsEmpty())
+    if (linkStatus)
     {
-        PpduTxDuration(ppdu, txDuration, linkId);
+        Simulator::Schedule(txDuration,
+                            &WifiPhy::TxDoneUpdateLinkTxStatus,
+                            this,
+                            linkId,
+                            std::ref(*linkStatus));
+    }
+
+    if (!PpduTxDuration.IsEmpty())
+    {
+        uint8_t traceLinkId = linkId;
+        if (!linkStatus)
+        {
+            switch (m_band)
+            {
+            case WIFI_PHY_BAND_2_4GHZ:
+                traceLinkId = 0;
+                break;
+            case WIFI_PHY_BAND_5GHZ:
+                traceLinkId = 1;
+                break;
+            case WIFI_PHY_BAND_6GHZ:
+                traceLinkId = 2;
+                break;
+            default:
+                NS_FATAL_ERROR("Unsupported PHY band: " << m_band);
+            }
+        }
+        PpduTxDuration(ppdu, txDuration, traceLinkId);
     }
     StartTx(ppdu);
     ppdu->ResetTxVector();
@@ -2080,12 +1975,18 @@ WifiPhy::DoSend(const WifiConstPsduMap& psdus, const WifiTxVector& txVector, uin
 void
 WifiPhy::TxBeginUpdateLinkTxStatus(uint8_t linkId, std::vector<bool>& linkStatus)
 {
-   linkStatus[linkId] = true;
+    NS_ASSERT_MSG(linkId < linkStatus.size(),
+                  "Link ID " << +linkId << " exceeds the link TX status vector (size "
+                             << linkStatus.size() << ")");
+    linkStatus[linkId] = true;
 }
 
 void
 WifiPhy::TxDoneUpdateLinkTxStatus(uint8_t linkId, std::vector<bool>& linkStatus)
-{   
+{
+    NS_ASSERT_MSG(linkId < linkStatus.size(),
+                  "Link ID " << +linkId << " exceeds the link TX status vector (size "
+                             << linkStatus.size() << ")");
     linkStatus[linkId] = false;
 }
 

@@ -447,13 +447,23 @@ class Txop : public Object
     /**
      * Get mode
      */
-    uint32_t GetMode() const; 
+    uint32_t GetMode() const;
 
-    uint32_t GetPolicy() const; 
+    uint32_t GetPolicy() const;
 
     void SetFixedPER(const std::vector<double>& fixedPER);
     std::vector<double> GetFixedPER() const;
     bool IsPERAllZero() const;
+
+    /**
+     * Return whether effective BAW state tracking is needed.
+     *
+     * Effective BAW estimation is used only by the distributed sender with the
+     * A-MPDU limit enabled, DAMLA policy, non-zero PER and exactly two links.
+     *
+     * \return true if effective BAW state tracking is enabled
+     */
+    bool IsEffectiveBawTrackingEnabled() const;
 
   protected:
     ///< ChannelAccessManager associated class
@@ -578,8 +588,9 @@ class Txop : public Object
 
     BackoffValueTracedCallback m_backoffTrace; //!< backoff trace value
     CwValueTracedCallback m_cwTrace;           //!< CW trace value
-    
+
     uint32_t m_mode;
+    bool m_ampduLimitEnabled{false};
     uint32_t m_pertitle;
     uint32_t m_datarate0;
     uint32_t m_datarate1;
@@ -587,7 +598,8 @@ class Txop : public Object
     uint32_t m_maxAmpduNum0;
     uint32_t m_maxAmpduNum1;
     uint32_t m_maxAmpduNum2;
-    std::vector<double> m_fixedPERs = {0.0, 0.0, 0.0}; //!< fixed PER for each link (sorted in increasing order of link ID). A value of 0.0 means no fixed PER.
+    std::vector<double> m_fixedPERs = {0.0, 0.0, 0.0}; //!< Fixed PER values in link-ID
+                                                         //!< order; zero disables fixed PER.
   private:
     /**
      * Create a LinkEntity object.

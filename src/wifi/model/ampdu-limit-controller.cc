@@ -1,15 +1,17 @@
 #include "ampdu-limit-controller.h"
 
-#include "ns3/ampdu-subframe-header.h"
-#include "ns3/frame-exchange-manager.h"
-#include "ns3/msdu-aggregator.h"
-#include "ns3/wifi-tx-vector.h"
+#include "ns3/abort.h"
+#include "ns3/assert.h"
+#include "ns3/log.h"
+#include "ns3/simulator.h"
+#include "ns3/wifi-mac.h"
+#include "ns3/wifi-ppdu.h"
+#include "ns3/wifi-psdu.h"
 
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
-#include <ostream>
 
 namespace ns3
 {
@@ -17,18 +19,21 @@ namespace ns3
 NS_LOG_COMPONENT_DEFINE("AmpduLimitController");
 NS_OBJECT_ENSURE_REGISTERED(AmpduLimitController);
 
-AmpduLimitController::AmpduLimitController()
-    : AmpduLimitController(nullptr)
-{
-}
-
 AmpduLimitController::AmpduLimitController(Ptr<WifiMac> mac)
     : m_mac(mac)
 {
-    m_ampduLimits.assign(m_mac->GetNLinks(), std::numeric_limits<uint32_t>::max());
-    m_datarateSetting.assign(m_mac->GetNLinks(), 0);
-    m_interPpduGaps.assign(m_mac->GetNLinks(), std::vector<double>());
-    m_ppduTimeWindow.assign(m_mac->GetNLinks(), {0.0, 0.0});
+    NS_ABORT_MSG_IF(!m_mac, "AmpduLimitController requires a valid WifiMac");
+    const auto nLinks = m_mac->GetNLinks();
+    m_ampduLimits.assign(nLinks, std::numeric_limits<uint32_t>::max());
+    m_frameRates.assign(nLinks, 0.0);
+    m_interPpduGaps.resize(nLinks);
+    m_lastLoggedLimits.assign(nLinks, -1);
+    m_gapCounts.assign(nLinks, 0);
+    m_nextGapIndices.assign(nLinks, 0);
+    m_gapSums.assign(nLinks, 0.0);
+    m_decisionSources.assign(nLinks, "uninitialized");
+    m_lastLoggedDecisionSources.resize(nLinks);
+    m_ppduTimeWindow.assign(nLinks, {0.0, 0.0});
 }
 
 AmpduLimitController::~AmpduLimitController()
@@ -38,25 +43,20 @@ AmpduLimitController::~AmpduLimitController()
 TypeId
 AmpduLimitController::GetTypeId()
 {
-    static TypeId tid = TypeId("ns3::AmpduLimitController")
-                             .SetParent<Object>()
-                             .SetGroupName("Wifi")
-                             .AddConstructor<AmpduLimitController>();
+    static TypeId tid =
+        TypeId("ns3::AmpduLimitController").SetParent<Object>().SetGroupName("Wifi");
     return tid;
 }
 
 void
 AmpduLimitController::NotifyPpduTxDuration(Ptr<const WifiPpdu> ppdu, Time duration, uint8_t linkId)
 {
-    // Only QoS-data PPDUs mark the start of a "real" transmission window;
-    // control/management frames (RTS/CTS/ACK/BlockAck) are ignored.
-    if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
-    {
-        return;
-    }
+    NS_ASSERT_MSG(linkId < m_ppduTimeWindow.size(),
+                  "Invalid link ID " << +linkId << " for " << m_ppduTimeWindow.size()
+                                     << " PPDU timing windows");
 
-    const auto& hdr = ppdu->GetPsdu()->GetHeader(0);
-    if (hdr.IsRts() || hdr.IsCts() || hdr.IsAck() || hdr.IsBlockAck())
+    // Only QoS-data PPDUs mark the start of a real transmission window.
+    if (!ppdu->GetPsdu()->GetHeader(0).IsQosData())
     {
         return;
     }
@@ -80,11 +80,23 @@ AmpduLimitController::NotifyPpduTxDuration(Ptr<const WifiPpdu> ppdu, Time durati
     double gap = currentTime - slot[1];
     if (gap > 0.0)
     {
-        if (m_interPpduGaps[linkId].size() >= 10)
+        auto& samples = m_interPpduGaps[linkId];
+        auto& count = m_gapCounts[linkId];
+        auto& next = m_nextGapIndices[linkId];
+        auto& sum = m_gapSums[linkId];
+
+        if (count == GAP_HISTORY_SIZE)
         {
-            m_interPpduGaps[linkId].erase(m_interPpduGaps[linkId].begin());
+            sum -= samples[next];
         }
-        m_interPpduGaps[linkId].push_back(gap);
+        else
+        {
+            ++count;
+        }
+
+        samples[next] = gap;
+        sum += gap;
+        next = (next + 1) % GAP_HISTORY_SIZE;
     }
 
     // Record this transmission's [start, end] window.
@@ -105,10 +117,15 @@ AmpduLimitController::IsWithinOtherLinkPpduWindow(uint8_t linkId, double extraTi
 }
 
 uint32_t
-AmpduLimitController::GetAmpduLimit(uint8_t linkId, uint32_t policy, uint32_t bawSize, bool logFlag)
+AmpduLimitController::GetAmpduLimit(uint8_t linkId,
+                                    uint32_t policy,
+                                    double bawSize,
+                                    std::string_view bawSource,
+                                    bool logFlag)
 {
     uint32_t ampduLimitRes = 0;
     const uint32_t kUnlimited = std::numeric_limits<uint32_t>::max();
+    std::string decisionSource;
 
     if (m_mac->GetNLinks() == 2)
     {
@@ -116,84 +133,85 @@ AmpduLimitController::GetAmpduLimit(uint8_t linkId, uint32_t policy, uint32_t ba
         {
         case 1: // greedy: both links unlimited
             ampduLimitRes = kUnlimited;
+            decisionSource = "greedy_unlimited";
             break;
 
         case 2: // damla: dynamically computed limit (2-link MLO only)
         {
-            NS_ASSERT_MSG(m_datarateSetting.size() >= 2 && m_datarateSetting[0] != 0 &&
-                              m_datarateSetting[1] != 0,
+            NS_ASSERT_MSG(m_frameRates.size() >= 2 && m_frameRates[0] > 0.0 &&
+                              m_frameRates[1] > 0.0,
                           "Data rate not available for both links.");
 
-            // // To ensure proper convergence, return bufSize/2 directly within the first 1.05 seconds 
-            // // to prevent computational anomalies caused by insufficient data in the initial phase.
-            // if(Simulator::Now().GetSeconds() < 1.05) {
-            //     std::cout << "Start period, m_ampduLimits" << (uint32_t)linkId << " = " << bawSize/2 << "; BAW = " << bawSize << std::endl;
-            //     ampduLimitRes = static_cast<int>(std::ceil(bawSize/2));
-            //     break;
-            // }
-            // Average inter-PPDU gap per link, plus a fixed PHY overhead
-            // T_PH_D, used as the "service time" t_i in the DAMLA model.
-            double T_PH_D = 56.0;
-            std::vector<double> t;
-            for (const auto& gaps : m_interPpduGaps)
+            // Timing observations are unreliable during startup. Use a balanced BAW split
+            // to avoid unstable DAMLA predictions until the initial phase has completed.
+            if (Simulator::Now().GetSeconds() < 1.1)
             {
-                if (gaps.empty())
-                {
-                    t.push_back(0);
-                }
-                else
-                {
-                    double sum = 0.0;
-                    for (double value : gaps)
-                    {
-                        sum += value;
-                    }
-                    t.push_back(sum / gaps.size() + T_PH_D);
-                }
+                ampduLimitRes = static_cast<uint32_t>(std::ceil(bawSize / 2.0));
+                decisionSource =
+                    "damla_" + std::string(bawSource) + "_balanced_bootstrap";
+                break;
             }
 
-            // Time remaining until the other link's current transmission
-            // (plus its estimated service time) is expected to finish.
-            double T_i2u = m_ppduTimeWindow[1 - linkId][1] + t[1 - linkId] -
-                           Simulator::Now().GetMicroSeconds();
+            const auto getMeanGap = [this](uint8_t id) {
+                return m_gapCounts[id] == 0
+                           ? 0.0
+                           : m_gapSums[id] / static_cast<double>(m_gapCounts[id]);
+            };
+            const auto getCycleOverhead = [this, &getMeanGap](uint8_t id) {
+                constexpr double PHY_OVERHEAD_US = 56.0;
+                return m_gapCounts[id] == 0 ? 0.0 : getMeanGap(id) + PHY_OVERHEAD_US;
+            };
+
+            const uint8_t otherLinkId = 1 - linkId;
+            const double otherMeanGap = getMeanGap(otherLinkId);
+            const double thisCycleOverhead = getCycleOverhead(linkId);
+            const double otherCycleOverhead = getCycleOverhead(otherLinkId);
+            // Predict the next other-link PPDU start from the end of its last
+            // complete PPDU plus the observed inter-PPDU gap. PHY overhead is
+            // already included in that PPDU end and must not be added again.
+            const double T_i2u = m_ppduTimeWindow[otherLinkId][1] + otherMeanGap -
+                                 Simulator::Now().GetMicroSeconds();
 
             if (T_i2u > 0)
             {
-                // Per-link frame rate (subframes per microsecond), derived
-                // from the assumed data rate and a fixed subframe size.
-                std::vector<double> R_f;
-                double L_subf = 1572 * 8;
-                for (double r : m_datarateSetting)
-                {
-                    R_f.push_back(r / L_subf / 1e6);
-                }
+                const double rate0 = m_frameRates[0];
+                const double rate1 = m_frameRates[1];
+                const double thisRate = m_frameRates[linkId];
+                const double rateSquares = rate0 * rate0 + rate1 * rate1;
 
-                double T_u2i = (bawSize * R_f[linkId] +
-                                 t[linkId] * (R_f[0] * R_f[0] + R_f[1] * R_f[1]) -
-                                 t[1 - linkId] * (R_f[linkId] * R_f[linkId])) /
-                               (R_f[0] * R_f[0] + R_f[0] * R_f[1] + R_f[1] * R_f[1]);
+                const double T_u2i =
+                    (bawSize * thisRate + thisCycleOverhead * rateSquares -
+                     otherCycleOverhead * thisRate * thisRate) /
+                    (rateSquares + rate0 * rate1);
 
                 ampduLimitRes = static_cast<uint32_t>(
-                    std::ceil((T_i2u + std::max(0.0, T_u2i - t[linkId])) * R_f[linkId]));
+                    std::ceil((T_i2u + std::max(0.0, T_u2i - thisCycleOverhead)) *
+                              thisRate));
+                decisionSource =
+                    "damla_" + std::string(bawSource) + "_adaptive_mean_gap";
             }
             else
             {
                 ampduLimitRes = kUnlimited;
+                decisionSource =
+                    "damla_" + std::string(bawSource) + "_prediction_expired_unlimited";
             }
-            // std::cout << "DAMLA period, m_ampduLimits" << (uint32_t)linkId << " = " << ampduLimitRes << "; BAW = " << bawSize << "\n----------------------------------------" << std::endl;
             break;
         }
 
         case 3: // only2G: link 0 unlimited, link 1 disabled
             ampduLimitRes = linkId ? 0 : kUnlimited;
+            decisionSource = "only2g";
             break;
 
         case 4: // only5G: link 0 disabled, link 1 unlimited
             ampduLimitRes = linkId ? kUnlimited : 0;
+            decisionSource = "only5g";
             break;
 
         case 6: // bothset: use the fixed per-link limits
             ampduLimitRes = m_ampduLimits[linkId];
+            decisionSource = "fixed_limit";
             break;
 
         default:
@@ -206,22 +224,27 @@ AmpduLimitController::GetAmpduLimit(uint8_t linkId, uint32_t policy, uint32_t ba
         {
         case 1: // greedy: all three links unlimited
             ampduLimitRes = kUnlimited;
+            decisionSource = "greedy_unlimited";
             break;
 
         case 3: // only2G: link 0 only, links 1/2 disabled
             ampduLimitRes = (linkId == 0) ? kUnlimited : 0;
+            decisionSource = "only2g";
             break;
 
         case 4: // only5G: link 1 only, links 0/2 disabled
             ampduLimitRes = (linkId == 1) ? kUnlimited : 0;
+            decisionSource = "only5g";
             break;
 
         case 5: // only6G: link 2 only, links 0/1 disabled
             ampduLimitRes = (linkId == 2) ? kUnlimited : 0;
+            decisionSource = "only6g";
             break;
 
         case 6: // allset: use the fixed per-link limits
             ampduLimitRes = m_ampduLimits[linkId];
+            decisionSource = "fixed_limit";
             break;
 
         default:
@@ -233,14 +256,27 @@ AmpduLimitController::GetAmpduLimit(uint8_t linkId, uint32_t policy, uint32_t ba
         NS_FATAL_ERROR("Unsupported number of links: " << m_mac->GetNLinks());
     }
 
-    if (m_lastUpdateTime != Simulator::Now() && logFlag)
+    m_decisionSources[linkId] = decisionSource;
+    if (logFlag &&
+        (m_lastLoggedLimits[linkId] != static_cast<int64_t>(ampduLimitRes) ||
+         m_lastLoggedDecisionSources[linkId] != decisionSource))
     {
-        std::cout << "AmpduLimits" << static_cast<uint32_t>(linkId) << " = " << ampduLimitRes
-                  << std::endl;
+        std::cout << "[AMPDU_LIMIT]"
+                  << " timeNs=" << Simulator::Now().GetNanoSeconds()
+                  << " link=" << +linkId
+                  << " value=" << ampduLimitRes
+                  << " source=" << decisionSource << std::endl;
+        m_lastLoggedLimits[linkId] = ampduLimitRes;
+        m_lastLoggedDecisionSources[linkId] = decisionSource;
     }
-    m_lastUpdateTime = Simulator::Now();
 
     return ampduLimitRes;
+}
+
+const std::string&
+AmpduLimitController::GetLastDecisionSource(uint8_t linkId) const
+{
+    return m_decisionSources.at(linkId);
 }
 
 void
@@ -250,17 +286,17 @@ AmpduLimitController::SetAmpduLimit(int limit0, int limit1, int limit2)
     for (std::size_t i = 0; i < m_ampduLimits.size() && i < inputLimits.size(); ++i)
     {
         m_ampduLimits[i] = inputLimits[i];
-        std::cout << "Set AmpduLimit for link " << i << " to " << inputLimits[i] << std::endl;
     }
 }
 
 void
 AmpduLimitController::SetDatarateSetting(uint32_t datarate0, uint32_t datarate1, uint32_t datarate2)
 {
-    std::vector<uint32_t> inputRates = {datarate0, datarate1, datarate2};
-    for (std::size_t i = 0; i < m_datarateSetting.size() && i < inputRates.size(); ++i)
+    constexpr double SUBFRAME_SIZE_BITS = 1572.0 * 8.0;
+    const std::array<uint32_t, 3> inputRates = {datarate0, datarate1, datarate2};
+    for (std::size_t i = 0; i < m_frameRates.size() && i < inputRates.size(); ++i)
     {
-        m_datarateSetting[i] = inputRates[i];
+        m_frameRates[i] = static_cast<double>(inputRates[i]) / SUBFRAME_SIZE_BITS / 1e6;
     }
 }
 

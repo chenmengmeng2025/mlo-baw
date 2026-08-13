@@ -38,6 +38,8 @@ class RecipientBlockAckAgreement : public BlockAckAgreement
      * \param timeout the timeout value
      * \param startingSeq the starting sequence number
      * \param htSupported whether HT support is enabled
+     * \param nLinks number of links sharing the Block Ack agreement
+     * \param mode distributed multi-radio MLD mode flags
      */
     RecipientBlockAckAgreement(Mac48Address originator,
                                bool amsduSupported,
@@ -46,6 +48,7 @@ class RecipientBlockAckAgreement : public BlockAckAgreement
                                uint16_t timeout,
                                uint16_t startingSeq,
                                bool htSupported,
+                               uint8_t nLinks,
                                uint32_t mode);
     ~RecipientBlockAckAgreement() override;
 
@@ -122,7 +125,8 @@ class RecipientBlockAckAgreement : public BlockAckAgreement
     };
 
     BlockAckWindow m_scoreboard; ///< recipient's scoreboard
-    std::vector<BlockAckWindow> m_scoreboard_asyn; // used for m_mode > 0
+    std::vector<BlockAckWindow>
+        m_linkScoreboards; ///< per-link scoreboards for distributed receiver mode
     uint32_t m_mode;
     uint16_t m_winStartB;        ///< starting SN for the reordering buffer
     std::size_t m_winSizeB;      ///< size of the receive reordering buffer

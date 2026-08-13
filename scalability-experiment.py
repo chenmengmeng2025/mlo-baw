@@ -60,8 +60,13 @@ class TrialResult:
     all_fp_converged: bool
     fp_iterations_max: int
     active_set_passes: int
-    cached_update_us: float
-    full_wall_us: float
+    execution_time_us: float
+    exhaustive_evaluated: bool = False
+    exhaustive_combinations: int = 0
+    same_allocation: int = 0
+    normalized_variance_gap: float = 0.0
+    relative_throughput_gap: float = 0.0
+    exhaustive_time_us: float = 0.0
 
 
 def percentile(values, probability):
@@ -105,7 +110,7 @@ def solve_fixed_point(N, K_mld, K_sld, W_mld, W_sld, max_iter, tol, damping):
 
 
 def solve_allocation(coef, BAW):
-    """Instrumented active-set implementation of the paper's closed form."""
+    """Instrumented active-set and O(L log L) largest-remainder implementation."""
     L = len(coef)
     active = [True] * L
     allocation = [0] * L
@@ -132,12 +137,17 @@ def solve_allocation(coef, BAW):
             continue
 
         for l in indices:
-            allocation[l] = max(1, round(continuous[l]))
+            allocation[l] = math.floor(continuous[l])
 
         residual = BAW - sum(allocation)
-        if residual:
-            adjust = min(indices, key=lambda l: coef[l].B)
-            allocation[adjust] += residual
+        ranked = sorted(
+            indices,
+            key=lambda l: (-(continuous[l] - allocation[l]), l),
+        )
+        if not 0 <= residual <= len(ranked):
+            raise RuntimeError("invalid largest-remainder residual")
+        for l in ranked[:residual]:
+            allocation[l] += 1
         return allocation, passes
 
 
@@ -156,7 +166,7 @@ def make_operating_point(L, BAW, trial, seed):
     return R, N, sld_mpdu, Wm, Ws, Km, Ks
 
 
-def run_trial(L, BAW, trial, scan):
+def run_trial(L, BAW, trial, scan, exhaustive=False):
     R, N, sld_mpdu, Wm, Ws, Km, Ks = make_operating_point(
         L, BAW, trial, scan.seed
     )
@@ -179,10 +189,6 @@ def run_trial(L, BAW, trial, scan):
         for l in range(L)
     ]
 
-    # Cached update: contention parameters are unchanged, so the previously
-    # obtained fixed points are reused. Only A/B coefficients and the
-    # closed-form active-set allocation are recomputed.
-    cached_start = time.perf_counter_ns()
     coef = [
         solver.calc_AB(
             l, sld_mpdu[l], fixed_points[l][0], fixed_points[l][1],
@@ -192,74 +198,162 @@ def run_trial(L, BAW, trial, scan):
     ]
 
     allocation, passes = solve_allocation(coef, BAW)
-    cached_update_us = (time.perf_counter_ns() - cached_start) / 1000.0
-    full_wall_us = (time.perf_counter_ns() - full_start) / 1000.0
+    execution_time_us = (time.perf_counter_ns() - full_start) / 1000.0
+
+    exhaustive_evaluated = False
+    exhaustive_combinations = 0
+    same_allocation = 0
+    normalized_variance_gap = 0.0
+    relative_throughput_gap = 0.0
+    exhaustive_time_us = 0.0
+
+    if exhaustive:
+        exhaustive_combinations = solver.exhaustive_combination_count(
+            BAW, allocation
+        )
+        exhaustive_start = time.perf_counter_ns()
+        comparison = solver.compare_with_exhaustive(
+            coef=coef,
+            BAW=BAW,
+            proposed_allocation=allocation,
+            sigma=cfg.sigma,
+            payload_bits=cfg.L_P,
+            per_vec=[0.0] * L,
+            max_combinations=exhaustive_combinations,
+        )
+        exhaustive_time_us = (
+            time.perf_counter_ns() - exhaustive_start
+        ) / 1000.0
+        exhaustive_evaluated = True
+        same_allocation = comparison.same_allocation
+        normalized_variance_gap = comparison.normalized_variance_gap
+        relative_throughput_gap = comparison.relative_throughput_gap
 
     return TrialResult(
         constraint_valid=(sum(allocation) == BAW and all(x >= 0 for x in allocation)),
         all_fp_converged=all(x[3] for x in fixed_points),
         fp_iterations_max=max(x[2] for x in fixed_points),
         active_set_passes=passes,
-        cached_update_us=cached_update_us,
-        full_wall_us=full_wall_us,
+        execution_time_us=execution_time_us,
+        exhaustive_evaluated=exhaustive_evaluated,
+        exhaustive_combinations=exhaustive_combinations,
+        same_allocation=same_allocation,
+        normalized_variance_gap=normalized_variance_gap,
+        relative_throughput_gap=relative_throughput_gap,
+        exhaustive_time_us=exhaustive_time_us,
     )
 
 
-def summarize(L, BAW, trials):
+def summarize(L, BAW, trials, exhaustive=False):
     """Summarize correctness, solver effort, and wall-clock runtime."""
     def values(name):
         return [getattr(x, name) for x in trials]
 
-    cached_us = values("cached_update_us")
-    full_us = values("full_wall_us")
+    full_us = values("execution_time_us")
     successful = [
         x.constraint_valid and x.all_fp_converged for x in trials
     ]
-    return {
+    summary = {
         "L": L,
         "BAW": BAW,
         "tested_points": len(trials),
         "success_rate": round(sum(successful) / len(trials), 6),
         "max_fp_iterations": max(values("fp_iterations_max")),
         "active_set_passes_max": max(values("active_set_passes")),
-        "cached_update_ms_p50": round(percentile(cached_us, 0.50) / 1000.0, 6),
-        "cached_update_ms_p95": round(percentile(cached_us, 0.95) / 1000.0, 6),
-        "full_update_ms_p50": round(percentile(full_us, 0.50) / 1000.0, 6),
-        "full_update_ms_p95": round(percentile(full_us, 0.95) / 1000.0, 6),
+        "execution_time_ms_p50": round(percentile(full_us, 0.50) / 1000.0, 6),
+        "execution_time_ms_p95": round(percentile(full_us, 0.95) / 1000.0, 6),
     }
 
+    if exhaustive:
+        compared = [trial for trial in trials if trial.exhaustive_evaluated]
+        summary["exhaustive_tested_points"] = len(compared)
+        if compared:
+            summary["same_allocation_rate"] = round(
+                sum(trial.same_allocation for trial in compared) / len(compared),
+                6,
+            )
+            summary["normalized_variance_gap_mean"] = round(
+                sum(trial.normalized_variance_gap for trial in compared)
+                / len(compared),
+                12,
+            )
+            summary["throughput_gap_pct_mean"] = round(
+                100.0
+                * sum(trial.relative_throughput_gap for trial in compared)
+                / len(compared),
+                9,
+            )
+            exhaustive_us = [
+                trial.exhaustive_time_us for trial in compared
+            ]
+            summary["exhaustive_time_ms_p95"] = round(
+                percentile(exhaustive_us, 0.95) / 1000.0,
+                6,
+            )
+            summary["exhaustive_time_ms_p99"] = round(
+                percentile(exhaustive_us, 0.99) / 1000.0,
+                6,
+            )
+        else:
+            summary["same_allocation_rate"] = ""
+            summary["normalized_variance_gap_mean"] = ""
+            summary["throughput_gap_pct_mean"] = ""
+            summary["exhaustive_time_ms_p95"] = ""
+            summary["exhaustive_time_ms_p99"] = ""
 
-def write_latex_table(rows, path, trials_per_case):
+    return summary
+
+
+def write_latex_table(rows, path, trials_per_case, exhaustive=False):
     """Write Table tab:scalability for direct inclusion in the response."""
+
+    if exhaustive:
+        column_spec = "ccccccc"
+        runtime_header = (
+            r"$J_{\max}$ & Proposed (P50/P95, ms) & "
+            r"Enumeration (P95/P99, ms) \\"
+        )
+    else:
+        column_spec = "cccccc"
+        runtime_header = (
+            r"$J_{\max}$ & Execution Time (P50/P95, ms) \\"
+        )
+
     lines = [
         r"\begin{table*}[t]",
         r"\centering",
         r"\caption{Numerical scalability and host-side runtime of the proposed "
         r"allocation method.}",
         r"\label{tab:scalability}",
-        r"\begin{tabular}{ccccc cc}",
+        rf"\begin{{tabular}}{{{column_spec}}}",
         r"\hline",
-        r"$L$ & $W_{BA}$ & Success & $I_{\max}$ & "
-        r"$J_{\max}$ & Cached update (P50/P95) & "
-        r"Full update (P50/P95) \\",
+        r"$L$ & $W_{BA}$ & Success & $I_{\max}$ & " + runtime_header,
         r"\hline",
     ]
     for row in rows:
-        lines.append(
+        line = (
             f"{row['L']} & {row['BAW']} & "
             f"{100.0 * row['success_rate']:.1f}\\% & "
             f"{row['max_fp_iterations']} & "
             f"{row['active_set_passes_max']} & "
-            f"{row['cached_update_ms_p50']:.3f}/"
-            f"{row['cached_update_ms_p95']:.3f} & "
-            f"{row['full_update_ms_p50']:.3f}/"
-            f"{row['full_update_ms_p95']:.3f} \\\\"
+            f"{row['execution_time_ms_p50']:.3f}/"
+            f"{row['execution_time_ms_p95']:.3f}"
         )
+        if exhaustive:
+            line += (
+                f" & {row['exhaustive_time_ms_p95']:.3f}/"
+                f"{row['exhaustive_time_ms_p99']:.3f}"
+            )
+        lines.append(line + r" \\")
     lines.extend([r"\hline", r"\end{tabular}", r"\end{table*}", ""])
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def run_experiment(scan, output_path):
+def run_experiment(
+    scan,
+    output_path,
+    exhaustive=False,
+):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     rows = []
     total_cases = len(scan.L_values) * len(scan.BAW_values)
@@ -269,11 +363,17 @@ def run_experiment(scan, output_path):
         for BAW in scan.BAW_values:
             case += 1
             trials = [
-                run_trial(L, BAW, trial, scan)
+                run_trial(
+                    L,
+                    BAW,
+                    trial,
+                    scan,
+                    exhaustive=exhaustive,
+                )
                 for trial in range(scan.trials_per_case)
             ]
 
-            rows.append(summarize(L, BAW, trials))
+            rows.append(summarize(L, BAW, trials, exhaustive=exhaustive))
             print(f"[{case}/{total_cases}] L={L}, BAW={BAW}")
 
     with output_path.open("w", newline="", encoding="utf-8") as fout:
@@ -281,7 +381,17 @@ def run_experiment(scan, output_path):
         writer.writeheader()
         writer.writerows(rows)
 
-    write_latex_table(rows, output_path.parent / "scalability.tex", scan.trials_per_case)
+    latex_filename = (
+        "scalability-exhaustive.tex"
+        if exhaustive
+        else "scalability.tex"
+    )
+    write_latex_table(
+        rows,
+        output_path.parent / latex_filename,
+        scan.trials_per_case,
+        exhaustive=exhaustive,
+    )
 
     failures = [row for row in rows if row["success_rate"] < 1.0]
     print(f"Summary rows: {len(rows)}")
@@ -298,12 +408,52 @@ def main():
         type=Path,
         default=SCRIPT_DIR / "outputs" / "scalability.csv",
     )
+    parser.add_argument(
+        "--exhaustive",
+        action="store_true",
+        help=(
+            "fully enumerate every trial; defaults to L=2,3 unless "
+            "--links is specified"
+        ),
+    )
+    parser.add_argument(
+        "--links",
+        nargs="+",
+        type=int,
+        help=(
+            "link counts to evaluate; defaults to 2,...,8 normally and "
+            "to 2,3 with --exhaustive"
+        ),
+    )
     args = parser.parse_args()
 
+    if args.trials <= 0:
+        parser.error("--trials must be positive")
+    if args.links and any(value <= 0 for value in args.links):
+        parser.error("--links values must be positive")
+
+    if args.links:
+        link_values = tuple(dict.fromkeys(args.links))
+    elif args.exhaustive:
+        link_values = (2, 3)
+    else:
+        link_values = ScalingScanConfig().L_values
+
+    output_path = args.output
+    if args.exhaustive and not output_path.stem.endswith("-exhaustive"):
+        output_path = output_path.with_name(
+            f"{output_path.stem}-exhaustive{output_path.suffix}"
+        )
+
     scan = ScalingScanConfig(
+        L_values=link_values,
         trials_per_case=args.trials,
     )
-    return run_experiment(scan, args.output)
+    return run_experiment(
+        scan,
+        output_path,
+        exhaustive=args.exhaustive,
+    )
 
 
 if __name__ == "__main__":

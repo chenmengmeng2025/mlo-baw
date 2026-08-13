@@ -27,6 +27,7 @@
 #include <iostream>
 #include <optional>
 #include <ostream>
+#include <sstream>
 
 #undef NS_LOG_APPEND_CONTEXT
 #define NS_LOG_APPEND_CONTEXT WIFI_FEM_NS_LOG_APPEND_CONTEXT
@@ -357,7 +358,6 @@ HtFrameExchangeManager::StartFrameExchange(Ptr<QosTxop> edca, Time availableTime
     // expired and the queue might be empty.
     if (!peekedItem)
     {
-        // if (edca->GetAmpduLimitController()) std::cout << Simulator::Now() << " No frames available for transmission on " << +m_linkId << std::endl;
         NS_LOG_DEBUG("No frames available for transmission");
         return false;
     }
@@ -606,35 +606,7 @@ HtFrameExchangeManager::SendDataFrame(Ptr<WifiMpdu> peekedItem,
     std::vector<Ptr<WifiMpdu>> mpduList =
         m_mpduAggregator->GetNextAmpdu(mpdu, txParams, availableTime);
     NS_ASSERT(txParams.m_acknowledgment);
-    if (edca->GetAmpduLimitController()) {
-        auto recipient = mpdu->GetHeader().GetAddr1();
-        if (auto mldAddr = GetWifiRemoteStationManager()->GetMldAddress(recipient))
-        {
-            recipient = *mldAddr;
-        }
-        auto agreement = edca->GetBaManager()->GetOriginatorBlockAckAgreement(recipient, mpdu->GetHeader().GetQosTid());
-        if (!mpduList.empty()) {
-            for (const auto & it : mpduList) {
-                if(!m_dcf->IsPERAllZero()) agreement->GetTxWindow().SetElementState(agreement->GetDistance(it->GetHeader().GetSequenceNumber()), agreement->GetTxWindow().InflightStateForLink(m_linkId));
-            }
-        }
-        else{
-            if(!m_dcf->IsPERAllZero()) agreement->GetTxWindow().SetElementState(agreement->GetDistance(mpdu->GetHeader().GetSequenceNumber()), agreement->GetTxWindow().InflightStateForLink(m_linkId));
-        }
 
-        if (edca->GetMode() & 1 << 5) // sender log
-        {
-            std::cout <<Simulator::Now() << " Link" << (uint32_t)m_linkId << " send DataFrame: "<< "[";
-            if (!mpduList.empty()) {
-                for (const auto & it : mpduList) {
-                    std::cout << it->GetHeader().GetSequenceNumber() << ", ";
-                }
-                std::cout << "], 长度 = " << mpduList.size() << ", mpduSize = " << mpduList[0]->GetPacketSize() << std::endl;
-            } else std::cout << mpdu->GetHeader().GetSequenceNumber() <<  "], size = 1" << std::endl;
-            // agreement->GetTxWindow().Print(std::cout);
-        }
-    }
-    
     if (mpduList.size() > 1)
     {
         // A-MPDU aggregation succeeded
@@ -1014,6 +986,100 @@ HtFrameExchangeManager::SendPsdu()
 {
     NS_LOG_FUNCTION(this);
 
+    // SendPsdu() is reached only after protection has completed successfully.
+    // Keep the effective-BAW state and sender log aligned with an actual data
+    // transmission rather than with an A-MPDU that was only prepared before RTS/CTS.
+    if (m_edca && m_edca->GetAmpduLimitController() && m_psdu && !m_psdu->GetTids().empty())
+    {
+        const auto firstMpdu = *m_psdu->begin();
+        const auto& header = firstMpdu->GetHeader();
+
+        if (header.IsQosData())
+        {
+            OriginatorBlockAckAgreement* agreement = nullptr;
+            auto recipient = header.GetAddr1();
+            if (auto mldAddr = GetWifiRemoteStationManager()->GetMldAddress(recipient))
+            {
+                recipient = *mldAddr;
+            }
+            agreement = m_edca->GetBaManager()->GetOriginatorBlockAckAgreement(
+                recipient, header.GetQosTid());
+            if (m_mac->GetBaAgreementEstablishedAsOriginator(header.GetAddr1(),
+                                                             header.GetQosTid()))
+            {
+                for (const auto& mpdu : *PeekPointer(m_psdu))
+                {
+                    agreement->GetTxWindow().SetElementState(
+                        agreement->GetDistance(mpdu->GetHeader().GetSequenceNumber()),
+                        agreement->GetTxWindow().InflightStateForLink(m_linkId));
+                }
+            }
+
+            if (m_edca->GetMode() & (1 << 2)) // sender log
+            {
+                std::ostringstream snRanges;
+                bool firstRange = true;
+                bool haveRange = false;
+                uint16_t rangeStart = 0;
+                uint16_t rangeEnd = 0;
+                const auto flushRange = [&]() {
+                    if (!firstRange)
+                    {
+                        snRanges << ",";
+                    }
+                    snRanges << rangeStart;
+                    if (rangeStart != rangeEnd)
+                    {
+                        snRanges << "-" << rangeEnd;
+                    }
+                    firstRange = false;
+                };
+                const auto appendSequence = [&](uint16_t sequence) {
+                    if (!haveRange)
+                    {
+                        rangeStart = rangeEnd = sequence;
+                        haveRange = true;
+                    }
+                    else if (sequence == rangeEnd + 1)
+                    {
+                        rangeEnd = sequence;
+                    }
+                    else
+                    {
+                        flushRange();
+                        rangeStart = rangeEnd = sequence;
+                    }
+                };
+
+                for (const auto& mpdu : *PeekPointer(m_psdu))
+                {
+                    appendSequence(mpdu->GetHeader().GetSequenceNumber());
+                }
+                flushRange();
+
+                std::cout << "[MPDU_TX]"
+                          << " timeNs=" << Simulator::Now().GetNanoSeconds()
+                          << " link=" << +m_linkId
+                          << " tid=" << +header.GetQosTid()
+                          << " count=" << m_psdu->GetNMpdus()
+                          << " snRanges=" << snRanges.str()
+                          << " mpduBytes=" << firstMpdu->GetPacketSize()
+                          << " decisionSource="
+                          << m_edca->GetAmpduLimitController()->GetLastDecisionSource(m_linkId)
+                          << std::endl;
+                if (agreement)
+                {
+                    std::cout << "[BAW_STATE]"
+                              << " event=MPDU_TX"
+                              << " timeNs=" << Simulator::Now().GetNanoSeconds()
+                              << " link=" << +m_linkId
+                              << " tid=" << +header.GetQosTid() << std::endl;
+                    agreement->GetTxWindow().Print(std::cout);
+                }
+            }
+        }
+    }
+
     Time txDuration =
         m_phy->CalculateTxDuration(m_psdu->GetSize(), m_txParams.m_txVector, m_phy->GetPhyBand());
 
@@ -1066,7 +1132,7 @@ HtFrameExchangeManager::SendPsdu()
         Ptr<QosTxop> edca = m_mac->GetQosTxop(tid);
         auto [reqHdr, hdr] = edca->PrepareBlockAckRequest(m_psdu->GetAddr1(), tid);
         GetBaManager(tid)->ScheduleBar(reqHdr, hdr);
-        
+
         Simulator::Schedule(txDuration, &HtFrameExchangeManager::TransmissionSucceeded, this);
     }
     else
@@ -1172,16 +1238,7 @@ HtFrameExchangeManager::ForwardPsduDown(Ptr<const WifiPsdu> psdu, WifiTxVector& 
     if (m_mac->GetNLinks() > 1) {
         if (psdu->GetTids().size() && m_mac->GetQosTxop(*psdu->GetTids().begin())->GetMode() & 0x01)
         {
-            // bool logfl = m_mac->GetQosTxop(*psdu->GetTids().begin())->GetMode() & (1 << 5);
-            // if (logfl) {
-            //     std::cout << Simulator::Now() << " ForwardPsduDown on Link " << +m_linkId << std::endl;
-            //     std::cout << "\t Before ForwardPsduDown, TxStatus: (" << m_mac->GetLinkTxStatus()[0] << ", "
-            //               << m_mac->GetLinkTxStatus()[1] << ")" << std::endl;
-            // }
             m_phy->Send(psdu, txVector, m_linkId, m_mac->GetLinkTxStatus());
-            // if (logfl)
-            //     std::cout << "\t After ForwardPsduDown, TxStatus: (" << m_mac->GetLinkTxStatus()[0] << ", "
-            //               << m_mac->GetLinkTxStatus()[1] << ")" << std::endl;
         }
         else
             m_phy->Send(psdu, txVector);
@@ -1521,9 +1578,11 @@ HtFrameExchangeManager::SendBlockAck(const RecipientBlockAckAgreement& agreement
     WifiMacHeader hdr;
     hdr.SetType(WIFI_MAC_CTL_BACKRESP);
     auto addr1 = agreement.GetPeer();
-    if (auto originator = GetWifiRemoteStationManager()->GetAffiliatedStaAddress(addr1))
+    const auto affiliatedSta =
+        GetWifiRemoteStationManager()->GetAffiliatedStaAddress(addr1);
+    if (affiliatedSta)
     {
-        addr1 = *originator;
+        addr1 = *affiliatedSta;
     }
     hdr.SetAddr1(addr1);
     hdr.SetAddr2(m_self);
@@ -1534,10 +1593,71 @@ HtFrameExchangeManager::SendBlockAck(const RecipientBlockAckAgreement& agreement
     blockAck.SetType(agreement.GetBlockAckType());
     blockAck.SetTidInfo(agreement.GetTid());
     agreement.FillBlockAckBitmap(&blockAck, m_linkId);
-    if (m_mac->GetQosTxop(agreement.GetTid())->GetMode() & (1 << 6)) // log receiver
+    const bool logBaTx =
+        (m_mac->GetQosTxop(agreement.GetTid())->GetMode() & (1 << 3)) != 0;
+
+    // The experiment represents SLD interferers as MLDs whose TIDs are pinned to
+    // one link, so an affiliated STA address alone does not identify the MLD under test.
+    std::size_t mappedLinkCount = 0;
+    if (logBaTx && affiliatedSta)
     {
-        std::cout << Simulator::Now() << " Link" << +m_linkId << " send BlockAck:" << std::endl;
-        blockAck.Print(std::cout << "\t");
+        for (const auto linkId : m_mac->GetLinkIds())
+        {
+            if (m_mac->TidMappedOnLink(agreement.GetPeer(),
+                                       WifiDirection::UPLINK,
+                                       agreement.GetTid(),
+                                       linkId))
+            {
+                ++mappedLinkCount;
+            }
+        }
+    }
+    if (logBaTx && mappedLinkCount > 1)
+    {
+        std::ostringstream ackedOffsets;
+        std::size_t ackedCount = 0;
+        std::size_t rangeStart = 0;
+        bool inRange = false;
+        bool firstRange = true;
+        const auto& bitmap = blockAck.GetBitmap();
+        for (std::size_t offset = 0; offset <= bitmap.size() * 8; ++offset)
+        {
+            const bool received =
+                offset < bitmap.size() * 8 &&
+                (bitmap[offset / 8] & (uint8_t{1} << (offset % 8))) != 0;
+            if (received)
+            {
+                ++ackedCount;
+                if (!inRange)
+                {
+                    rangeStart = offset;
+                    inRange = true;
+                }
+            }
+            else if (inRange)
+            {
+                if (!firstRange)
+                {
+                    ackedOffsets << ",";
+                }
+                ackedOffsets << rangeStart;
+                if (rangeStart != offset - 1)
+                {
+                    ackedOffsets << "-" << offset - 1;
+                }
+                firstRange = false;
+                inRange = false;
+            }
+        }
+
+        std::cout << "[BA_TX]"
+                  << " timeNs=" << Simulator::Now().GetNanoSeconds()
+                  << " link=" << +m_linkId
+                  << " tid=" << +agreement.GetTid()
+                  << " ssn=" << blockAck.GetStartingSequence()
+                  << " windowBits=" << bitmap.size() * 8
+                  << " ackedBits=" << ackedCount
+                  << " ackedOffsets=" << ackedOffsets.str() << std::endl;
     }
     Ptr<Packet> packet = Create<Packet>();
     packet->AddHeader(blockAck);
@@ -1626,10 +1746,10 @@ HtFrameExchangeManager::ReceiveMpdu(Ptr<const WifiMpdu> mpdu,
                                                      blockAck,
                                                      m_mac->GetMldAddress(sender).value_or(sender),
                                                      {tid});
-                                                    
+
             GetWifiRemoteStationManager()->ReportAmpduTxStatus(sender,
                                                                ret.first,
-                                                               ret.second, 
+                                                               ret.second,
                                                                rxSnr,
                                                                tag.Get(),
                                                                m_txParams.m_txVector);

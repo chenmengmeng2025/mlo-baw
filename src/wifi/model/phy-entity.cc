@@ -814,7 +814,11 @@ PhyEntity::GetReceptionStatus(Ptr<WifiMpdu> mpdu,
         staId,
         {relativeMpduStart, relativeMpduStart + mpduDuration});
 
-    if(m_fixedPER && mpdu->GetHeader().IsQosData()) snrPer.per = m_fixedPER; //重新赋值为固定的PER值
+    // Override the error-model PER for QoS Data when a fixed test PER is configured.
+    if (m_fixedPER > 0.0 && mpdu->GetHeader().IsQosData())
+    {
+        snrPer.per = m_fixedPER;
+    }
     WifiMode mode = event->GetPpdu()->GetTxVector().GetMode(staId);
     NS_LOG_DEBUG("rate=" << (mode.GetDataRate(event->GetPpdu()->GetTxVector(), staId))
                          << ", SNR(dB)=" << RatioToDb(snrPer.snr) << ", PER=" << snrPer.per
@@ -833,13 +837,11 @@ PhyEntity::GetReceptionStatus(Ptr<WifiMpdu> mpdu,
           m_wifiPhy->m_postReceptionErrorModel->IsCorrupt(mpdu->GetPacket()->Copy())))
     {
         NS_LOG_DEBUG("Reception succeeded: " << *mpdu);
-        // if(m_fixedPER && mpdu->GetHeader().IsQosData()) std::cout << mpdu->GetHeader().GetSequenceNumber() <<": PER=" << snrPer.per << ", Reception succeeded" << std::endl;
         return {true, signalNoise};
     }
     else
     {
         NS_LOG_DEBUG("Reception failed: " << *mpdu);
-        // if(m_fixedPER && mpdu->GetHeader().IsQosData()) std::cout << mpdu->GetHeader().GetSequenceNumber() <<": PER=" << snrPer.per << ", Reception failed" << std::endl;
         return {false, signalNoise};
     }
 }
