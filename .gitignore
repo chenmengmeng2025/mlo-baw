@@ -41,6 +41,7 @@ outputs/scalability--exhaustive.tex
 !outputs/solve-3link-exhaustive.csv
 
 # Local exploratory inputs and one-off helper scripts.
+/scratch/solve/
 /damla.json
 /plot.py
 /regenerate_wifi_diff.sh
