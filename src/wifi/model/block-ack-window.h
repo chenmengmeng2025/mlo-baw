@@ -8,12 +8,12 @@
 
 #ifndef BLOCK_ACK_WINDOW_H
 #define BLOCK_ACK_WINDOW_H
-#include "ns3/simulator.h"
+#include "ns3/assert.h"
+#include "ns3/nstime.h"
+
+#include <array>
 #include <cstdint>
-#include <cmath>
-#include <iomanip>
 #include <ostream>
-#include <string>
 #include <vector>
 
 namespace ns3
@@ -47,23 +47,24 @@ namespace ns3
  *                            |
  *                           HEAD
  *
- * Each elemen in the window also tracks one of four transmission states via
+ * Each element in the window also tracks one of five transmission states via
  * ElementState, maintained in a parallel circular vector m_statesWindow:
  *
- *   UNACKED      – elemen not yet acknowledged (default / reset state)
- *   INFLIGHT_2G  – MPDU is in-flight on the 2.4 GHz link (linkId = 0)
- *   INFLIGHT_5G  – MPDU is in-flight on the 5 GHz link   (linkId = 1)
- *   ACKED        – MPDU has been positively acknowledged
+ *   UNACKED      - element not yet acknowledged (default/reset state)
+ *   ACKED        - MPDU has been positively acknowledged
+ *   INFLIGHT_2G  - MPDU is in flight on the 2.4 GHz link (linkId = 0)
+ *   INFLIGHT_5G  - MPDU is in flight on the 5 GHz link (linkId = 1)
+ *   INFLIGHT_6G  - MPDU is in flight on the 6 GHz link (linkId = 2)
  */
 class BlockAckWindow
 {
   public:
     /**
-     * \brief Per-elemen transmission state.
+     * \brief Per-element transmission state.
      *
-     * Encodes whether the corresponding MPDU is unacknowledged, in-flight on
-     * the 2.4 GHz link (linkId 0), in-flight on the 5 GHz link (linkId 1),
-     * or has been positively acknowledged.
+     * Encodes whether the corresponding MPDU is unacknowledged, acknowledged,
+     * or in flight on the 2.4, 5, or 6 GHz link (link IDs 0, 1, and 2,
+     * respectively).
      */
     enum class ElementState : uint8_t
     {
@@ -82,10 +83,11 @@ class BlockAckWindow
     static ElementState InflightStateForLink(uint8_t linkId)
     {
         static constexpr ElementState table[] = {
-            ElementState::INFLIGHT_2G, // linkId = 0 → 2.4 GHz
-            ElementState::INFLIGHT_5G, // linkId = 1 → 5 GHz
-            ElementState::INFLIGHT_6G, // linkId = 2 → 6 GHz
+            ElementState::INFLIGHT_2G, // linkId 0: 2.4 GHz
+            ElementState::INFLIGHT_5G, // linkId 1: 5 GHz
+            ElementState::INFLIGHT_6G, // linkId 2: 6 GHz
         };
+        NS_ASSERT_MSG(linkId < 3, "Invalid link ID " << +linkId);
         return table[linkId];
     }
 
@@ -153,7 +155,7 @@ class BlockAckWindow
     void Advance(std::size_t count);
 
     /**
-     * Set the ElementState of the elemen at the given distance from winStart.
+     * Set the ElementState of the element at the given distance from winStart.
      *
      * \param distance distance from winStart; must be less than the window size
      * \param state    the new ElementState to assign
@@ -161,39 +163,35 @@ class BlockAckWindow
     void SetElementState(std::size_t distance, ElementState state);
 
     /**
-     * Get the ElementState of the elemen at the given distance from winStart.
+     * Get the ElementState of the element at the given distance from winStart.
      *
      * \param distance distance from winStart; must be less than the window size
-     * \return the ElementState of the requested elemen
+     * \return the ElementState of the requested element
      */
     ElementState GetElementState(std::size_t distance) const;
 
-    /**
-     * Count the number of elemens whose ElementState equals \p state.
-     *
-     * \param state the ElementState to count
-     * \return the number of window elemens currently in the given state
-     */
-    std::size_t CountByState(ElementState state) const;
 
-        /**
+    /**
      * Compute the effective BAW (Block Ack Window) size seen by \p linkId,
      * taking into account that MPDUs in flight on the *other* link may or
      * may not be ACKed before this link needs to advance its window.
      *
      * Definitions (all measured from winStart, in logical distance order):
-     *   - type-b : slots whose state is INFLIGHT on the OTHER link  (count = m)
+     *   - type-b : slots whose state is INFLIGHT on the OTHER link
      *   - type-l : slots whose state is INFLIGHT on THIS  link      (count = L)
      *   - type-u : slots whose state is UNACKED                     (count = U)
      *   - type-a : slots whose state is ACKED
+     *   - m      : number of type-b slots before the first type-l or type-u slot
+     *   - Dother : total number of type-b slots in the complete window
      *   - K_i    : number of consecutive type-a slots immediately AFTER
-     *              the i-th type-b slot and BEFORE the (i+1)-th type-b slot
-     *              (for i = m, count up to the next non-a slot or window end)
+     *              the i-th prefix type-b slot
      *
-     * Formula:
-     *   EffBAW = sum_{i=1}^{m} [ (K_i + 1) * (1-p)^i ] + m*p + L + U
+     * Distributed-receiver specialization of Eq. (6):
+     *   EffBAW = sum_{i=1}^{m} [ (K_i + 1) * (1-p)^i ]
+     *             + Dother*p + L + U
      *
-     * where p = fixedPER of the other link.
+     * where p is the fixed PER of the other link. Because a local BA only
+     * reports MPDUs received on that link, D1*p1 + D2*p2 reduces to Dother*p.
      *
      * \param linkId     this link's identifier (0 or 1)
      * \param otherPer   fixed PER of the other link (must be in [0.0, 1.0])
@@ -229,9 +227,9 @@ class BlockAckWindow
   private:
     uint16_t m_winStart;                  ///< window start (sequence number)
     std::vector<bool> m_window;           ///< ACK bitmap (circular queue)
-    std::vector<ElementState> m_statesWindow; ///< per-elemen transmission state (parallel circular queue)
+    std::vector<ElementState> m_statesWindow; ///< per-element transmission state
     std::size_t m_head;                   ///< physical index of winStart in both vectors
-    Time m_lastUpdateTime;              ///< the last time when the window was updated (used for debugging/logging)
+    std::array<Time, 2> m_lastEffectiveBawLogTimes{Time::Min(), Time::Min()};
 };
 
 } // namespace ns3

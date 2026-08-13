@@ -15,6 +15,7 @@
 #include "ns3/abort.h"
 #include "ns3/log.h"
 #include <iostream>
+#include <string_view>
 #include <ostream>
 
 #undef NS_LOG_APPEND_CONTEXT
@@ -385,43 +386,89 @@ QosFrameExchangeManager::TryAddMpdu(Ptr<const WifiMpdu> mpdu,
     {
         ppduDurationLimit = availableTime - *protectionTime - *acknowledgmentTime;
     }
-   
+
     uint32_t maxNMpdus = std::numeric_limits<uint32_t>::max();
 
-    // Reproduce the effective BAW size calculation under DAMLA (Section III-C, III-D of the paper)
-    std::vector<double> fixedPERs = m_dcf->GetFixedPER();
+    // Apply the per-link A-MPDU limit independently of the distributed sender mode.
+    // Non-QoS frames (e.g., ADDBA and BAR) are not part of an A-MPDU and must not
+    // enter the limit calculation.
+    auto ampduLimitController = m_edca->GetAmpduLimitController();
+    if (ampduLimitController && mpdu->GetHeader().IsQosData())
+    {
+        // DAMLA with PER uses Eq. (6)'s expected effective BAW. Keep this
+        // expectation as a double until the final MPDU-count ceiling.
+        const uint16_t mpduBufferSize = m_mac->GetMpduBufferSize();
+        double bawSize = static_cast<double>(mpduBufferSize);
+        double baDurationUs;
+        if (mpduBufferSize <= 256)
+        {
+            baDurationUs = 40.0;
+        }
+        else if (mpduBufferSize <= 512)
+        {
+            baDurationUs = 52.0;
+        }
+        else
+        {
+            baDurationUs = 72.0;
+        }
 
-    if ((m_edca->GetMode() & 0x01)) {
-        
-        uint16_t BawSize = 0;
-        auto ampduLimitController = m_edca->GetAmpduLimitController();
-        uint16_t mpduBufferSize = m_mac->GetMpduBufferSize();
-        int T_BA;
-        if (mpduBufferSize <= 256) T_BA = 40;
-        else if (mpduBufferSize <= 512) T_BA = 52;
-        else T_BA = 72;
-        
         // DAMLA enabled, 2-link MLO, PER != 0 (Sec III-D step 1): effective-BAW
         // estimation (Eq. 6) is only needed when link errors can cause MPDU loss;
         // with PER = 0 the nominal BAW size W can be used directly.
-        // Check if now falls within the other link's (1 - m_linkId) outstanding
-        // transmission window (+SIFS +T_BA). Only then is the other link's cycle
-        // end time M2 known, giving T^s_{1->2} = M2 - M1 (Sec III-D). If so, run
-        // DAMLA: estimate w (Eq. 6) -> required T^{s*}_{2->1} (Eq. 5, W->w) -> y*_1 (Eq. 7).
-        if(m_edca->GetPolicy() == 2 && m_mac->GetNLinks() == 2 
-            && !std::all_of(fixedPERs.begin(), fixedPERs.end(),[](double p) { return p == 0.0; }) 
-            && ampduLimitController->IsWithinOtherLinkPpduWindow(m_linkId, (m_linkId ? 16 : 10) + T_BA)){
-                auto recipient = mpdu->GetHeader().GetAddr1();
-                if (auto mldAddr = GetWifiRemoteStationManager()->GetMldAddress(recipient)) recipient = *mldAddr;
-                BawSize = m_edca->GetBaManager()->GetOriginatorBlockAckAgreement(recipient, mpdu->GetHeader().GetQosTid())
-                            ->GetTxWindow().ComputeEffectiveBawSize(m_linkId, m_dcf->GetFixedPER()[1 - m_linkId], m_edca->GetMode() & 1 << 5);
-        }else{
-            BawSize = mpduBufferSize;
+        // The SLD-aware extension estimates the next cycle from measured
+        // inter-PPDU gaps. The source string records whether this decision used
+        // effective w or why it fell back to nominal W.
+        std::string_view bawSource = "nominal_tracking_disabled";
+        const bool effectiveBawTracking = m_edca->IsEffectiveBawTrackingEnabled();
+        const auto establishedAgreement = m_mac->GetBaAgreementEstablishedAsOriginator(
+            mpdu->GetHeader().GetAddr1(), mpdu->GetHeader().GetQosTid());
+
+        if (effectiveBawTracking && !establishedAgreement)
+        {
+            bawSource = "nominal_no_ba_agreement";
         }
-        // Calculate the maximum number of MPDUs allowed in the A-MPDU based on the allocated Effective BAW Size.
-        maxNMpdus = ampduLimitController->GetAmpduLimit(m_linkId, m_edca->GetPolicy(), BawSize, m_edca->GetMode() & 1 << 5);
+        else if (effectiveBawTracking)
+        {
+            const uint8_t otherLinkId = 1 - m_linkId;
+            const auto otherPhy = m_mac->GetWifiPhy(otherLinkId);
+            NS_ASSERT(otherPhy);
+            const double otherSifsUs = otherPhy->GetSifs().GetMicroSeconds();
+
+            if (ampduLimitController->IsWithinOtherLinkPpduWindow(
+                    m_linkId, otherSifsUs + baDurationUs))
+            {
+                auto recipient = mpdu->GetHeader().GetAddr1();
+                if (auto mldAddr = GetWifiRemoteStationManager()->GetMldAddress(recipient))
+                {
+                    recipient = *mldAddr;
+                }
+                bawSize = m_edca->GetBaManager()
+                              ->GetOriginatorBlockAckAgreement(recipient,
+                                                               mpdu->GetHeader().GetQosTid())
+                              ->GetTxWindow()
+                              .ComputeEffectiveBawSize(
+                                  m_linkId,
+                                  m_dcf->GetFixedPER()[otherLinkId],
+                                  m_edca->GetMode() & (1 << 2));
+                bawSource = "effective_baw";
+            }
+            else
+            {
+                bawSource = "nominal_outside_other_window";
+            }
+        }
+
+        maxNMpdus = ampduLimitController->GetAmpduLimit(m_linkId,
+                                                       m_edca->GetPolicy(),
+                                                       bawSize,
+                                                       bawSource,
+                                                       m_edca->GetMode() & (1 << 2));
     }
-    if (!IsWithinLimitsIfAddMpdu(mpdu, txParams, ppduDurationLimit) || txParams.GetCurrentMpduNumber(mpdu->GetHeader().GetAddr1()) > maxNMpdus)
+    if (!IsWithinLimitsIfAddMpdu(mpdu, txParams, ppduDurationLimit) ||
+        (mpdu->GetHeader().IsQosData() &&
+        txParams.GetCurrentMpduNumber(mpdu->GetHeader().GetAddr1(),
+                                      mpdu->GetHeader().GetQosTid()) > maxNMpdus))
     {
         // adding MPDU failed, undo the addition of the MPDU and restore protection and
         // acknowledgment methods if they were swapped

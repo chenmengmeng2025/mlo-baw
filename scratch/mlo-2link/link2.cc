@@ -47,7 +47,6 @@
 #include <deque>
 #include <filesystem>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -439,6 +438,7 @@ NodeStats statsMLD; //!< statistics for the single MLD STA under test
  * per-link successful/failed MPDU counters and logs the result.
  *
  * \param statsBeginTime start of the measurement window; results before this time are ignored
+ * \param statsEndTime end of the measurement window; results at or after this time are ignored
  * \param recipient the address of the BlockAck recipient (i.e. the peer that sent it)
  * \param tid the traffic ID the BlockAck applies to
  * \param linkId the link the BlockAck was received on (only 0 and 1 are tracked)
@@ -447,7 +447,7 @@ NodeStats statsMLD; //!< statistics for the single MLD STA under test
  */
 void
 NotifyBlockAckResult(Time statsBeginTime,
-                      bool logreceiver,
+                      Time statsEndTime,
                       Mac48Address recipient,
                       uint8_t tid,
                       uint8_t linkId,
@@ -455,21 +455,13 @@ NotifyBlockAckResult(Time statsBeginTime,
                       uint16_t nFailedMpdus)
 {
     const Time now = Simulator::Now();
-    if (now < statsBeginTime || linkId > 1)
+    if (now < statsBeginTime || now >= statsEndTime || linkId > 1)
     {
         return;
     }
 
     statsMLD.link[linkId].successfulMpdus += nSuccessfulMpdus;
     statsMLD.link[linkId].failedMpdus += nFailedMpdus;
-
-    if(logreceiver){
-        std::cout << now.GetMicroSeconds() << " us: "
-                << " BlockAck from " << recipient << " tid=" << (uint32_t)tid
-                << " link=" << (uint32_t)linkId << " success=" << nSuccessfulMpdus
-                << " failed=" << nFailedMpdus << " total=" << (nSuccessfulMpdus + nFailedMpdus)
-                << std::endl;
-    }
 }
 
 /**
@@ -515,8 +507,8 @@ main(int argc, char* argv[])
     uint32_t maxAmpduNumSld0 = 1;
     uint32_t maxAmpduNumSld1 = 1;
 
-    uint8_t nStaSlds0 = 1; //!< number of interfering SLD STAs on link 0 (2.4 GHz)
-    uint8_t nStaSlds1 = 1; //!< number of interfering SLD STAs on link 1 (5 GHz)
+    uint32_t nStaSlds0 = 1; //!< number of interfering SLD STAs on link 0 (2.4 GHz)
+    uint32_t nStaSlds1 = 1; //!< number of interfering SLD STAs on link 1 (5 GHz)
     double period = 0.5;
     uint32_t nss = 2;
     double fixedPER0 = 0.0;
@@ -525,6 +517,9 @@ main(int argc, char* argv[])
     double simT = 5.5;
     bool logsender = false;
     bool logreceiver = false;
+    bool distributedSender = true;
+    bool distributedReceiver = true;
+    bool enableAmpduLimit = true;
     Time simT_delayEnd = NanoSeconds(2);
     uint32_t policyint = 6;
     std::string scenario = "default";
@@ -544,6 +539,9 @@ main(int argc, char* argv[])
     cmd.AddValue("nsld1", "number of interfering SLD STAs on link 1", nStaSlds1);
     cmd.AddValue("logsender", "enable transmitter-side logging", logsender);
     cmd.AddValue("logreceiver", "enable receiver-side logging", logreceiver);
+    cmd.AddValue("distributedSender", "enable distributed sender-side read pointers", distributedSender);
+    cmd.AddValue("distributedReceiver", "enable distributed receiver-side BA scoreboards", distributedReceiver);
+    cmd.AddValue("ampduLimit", "enable per-link A-MPDU aggregation limits", enableAmpduLimit);
     cmd.AddValue("policy", "A-MPDU limit control policy ID", policyint);
     cmd.AddValue("maxampdunum0", "max A-MPDU size (MPDUs) for the MLD on link 0", maxAmpduNum0);
     cmd.AddValue("maxampdunum1", "max A-MPDU size (MPDUs) for the MLD on link 1", maxAmpduNum1);
@@ -582,32 +580,32 @@ main(int argc, char* argv[])
         break;
     }
 
+    const uint32_t effectiveMaxAmpduNumSld0 = nStaSlds0 == 0 ? 0 : maxAmpduNumSld0;
+    const uint32_t effectiveMaxAmpduNumSld1 = nStaSlds1 == 0 ? 0 : maxAmpduNumSld1;
+    const uint32_t effectiveMaxAmpduNum0 = policyint == 6 ? maxAmpduNum0 : 0;
+    const uint32_t effectiveMaxAmpduNum1 = policyint == 6 ? maxAmpduNum1 : 0;
+
     // ---------------- Build the output file title / directory ----------------
+    // Compact naming scheme:
+    //   <policy>-w<BAW>-bw<BW0>x<BW1>-m<MCS0>x<MCS1>-nss<NSS>
+    //   -sld<N0>x<N1>-sa<SLD-A-MPDU0>x<SLD-A-MPDU1>
+    //   -per<PER0>x<PER1>[-ma<MLD-A-MPDU0>x<MLD-A-MPDU1>]
+    //   -ds<DISTRIBUTED_SENDER>-dr<DISTRIBUTED_RECEIVER>-al<A-MPDU_LIMIT>
+    //   -t<SIM_TIME>-dt<STATS_PERIOD>-s<SEED>
+    //
+    // All result-affecting command-line parameters are retained to prevent
+    // different configurations from overwriting the same trace files.
     std::ostringstream oss;
-    oss << policy << "_baw_" << mpduBufferSize << "_bw_" << bw0 << "_" << bw1 << "_mcs_" << mcs0
-        << "_" << mcs1 << "_interference_" << static_cast<uint32_t>(nStaSlds0) << "_"
-        << static_cast<uint32_t>(nStaSlds1);
-    if (maxAmpduNumSld0 && nStaSlds0)
+    oss << policy << "-w" << mpduBufferSize << "-bw" << bw0 << "x" << bw1 << "-m" << mcs0
+        << "x" << mcs1 << "-nss" << nss << "-sld" << static_cast<uint32_t>(nStaSlds0) << "x"
+        << static_cast<uint32_t>(nStaSlds1) << "-sa" << effectiveMaxAmpduNumSld0 << "x"
+        << effectiveMaxAmpduNumSld1 << "-per" << fixedPER0 << "x" << fixedPER1;
+    if (policyint == 6)
     {
-        oss << "_maxAmpduNumSld0_" << maxAmpduNumSld0;
+        oss << "-ma" << effectiveMaxAmpduNum0 << "x" << effectiveMaxAmpduNum1;
     }
-    if (maxAmpduNumSld1 && nStaSlds1)
-    {
-        oss << "_maxAmpduNumSld1_" << maxAmpduNumSld1;
-    }
-    if (fixedPER0 > 0)
-    {
-        oss << std::fixed << std::setprecision(2) << "_fixedPER0_" << fixedPER0;
-    }
-    if (fixedPER1 > 0)
-    {
-        oss << std::fixed << std::setprecision(2) << "_fixedPER1_" << fixedPER1;
-    }
-    else if (policyint == 6)
-    {
-        oss << "_maxAmpduNum0_" << maxAmpduNum0 << "_maxAmpduNum1_" << maxAmpduNum1;
-    }
-    oss << "_seed_" << seedNumber;
+    oss << "-ds" << distributedSender << "-dr" << distributedReceiver << "-al"
+        << enableAmpduLimit << "-t" << simT << "-dt" << period << "-s" << seedNumber;
 
     const std::string title = oss.str();
     const std::filesystem::path scenarioDir = filepath.parent_path() / scenario;
@@ -622,35 +620,26 @@ main(int argc, char* argv[])
     ppduTxOutputFile = prepareFile(title + "_PPDU.csv");
     rtsctsTxOutputFile = prepareFile(title + "_RTSCTS.csv");
     baTxOutputFile = prepareFile(title + "_BA.csv");
-    std::cout << "PPDU Tx csv: " << ppduTxOutputFile << std::endl;
 
-    // Sender-side mode flags for the MLD STA's EDCA/Txop, used to configure
-    // its AmpduLimitController. Bit 0 (value 1, the default here) enables
-    // AmpduLimitController-based A-MPDU limiting on the MLD STA (node 1) for
-    // its BE access category; if cleared, the nominal MpduBufferSize is used
-    // directly with no per-link limit control. Bit 5 additionally enables
-    // sender-side debug logging when requested via --logsender.
-    uint8_t modeSender = 1;
+    // Distributed multi-radio MLD sender processing: bit 0 enables per-link read
+    // pointers and delayed cross-link synchronization. A-MPDU limiting is
+    // controlled independently by the EnableAmpduLimit attribute.
+    uint8_t senderModeFlags = distributedSender ? (1 << 0) : 0;
     if (logsender)
     {
-        modeSender = modeSender | (1 << 5);
+        senderModeFlags |= (1 << 2);
     }
 
-    // Receiver-side mode flags for the MLD STA's BlockAck agreement manager.
-    // Bit 2 selects the "independent scoreboard" BA mode (IEEE 802.11be
+    // Distributed multi-radio MLD receiver processing: bit 1 selects the
+    // independent-scoreboard BA mode (IEEE 802.11be
     // Clause 35.3.8, Mode (i)): each affiliated STA maintains its own BA
     // scoreboard and is not required to synchronize it with the other
     // affiliated STAs, so a BA frame generated on one link only reflects the
-    // reception status of MPDUs delivered on that same link. This models a
-    // distributed multi-radio MLD architecture where cross-link scoreboard
-    // synchronization would incur non-negligible latency/overhead, as opposed
-    // to a single-chip/single-MAC design (Modes (ii)/(iii)) with a common,
-    // instantaneously-synchronized scoreboard. Bit 6 additionally enables
-    // receiver-side debug logging when requested via --logreceiver.
-    uint8_t modeReceiver = 1 << 2;
-    if (logreceiver)
+    // reception status of MPDUs delivered on that same link.
+    uint8_t receiverModeFlags = distributedReceiver ? (1 << 1) : 0;
+    if (distributedReceiver && logreceiver)
     {
-        modeReceiver = modeReceiver | (1 << 6);
+        receiverModeFlags |= (1 << 3);
     }
 
     // ---------------- Fixed simulation parameters ----------------
@@ -700,8 +689,13 @@ main(int argc, char* argv[])
         const std::string ctrlRateStr = (i == 0)
                                              ? "ErpOfdmRate" + std::to_string(nonHtRefRateMbps) + "Mbps"
                                              : "OfdmRate" + std::to_string(nonHtRefRateMbps) + "Mbps";
-        std::cout << "Link " << std::to_string(i) << " ControlRate: " << ctrlRateStr
-                  << " DataMode: " << dataModeStr << std::endl;
+        const double dataRateMbps =
+            EhtPhy::GetDataRate(mcs[i], bandwidth[i], NanoSeconds(gi), 1) * nss / 1e6;
+        std::cout << "[LINK_RATE]"
+                  << " link=" << +i
+                  << " controlMode=" << ctrlRateStr
+                  << " dataMode=" << dataModeStr
+                  << " dataRateMbps=" << dataRateMbps << std::endl;
         wifi.SetRemoteStationManager(i,
                                       "ns3::ConstantRateWifiManager",
                                       "DataMode",
@@ -781,34 +775,23 @@ main(int argc, char* argv[])
     apDev = wifi.Install(phy, mac, apNodes.Get(0));
 
     mac.SetType("ns3::StaWifiMac", "Ssid", SsidValue(bssSsid), "ActiveProbing", BooleanValue(false));
+
+    // The interfering "SLD" nodes intentionally use the same two-link device
+    // installation as the MLD STA. For this uplink throughput experiment, an
+    // SLD is represented equivalently by mapping all of its TIDs to exactly one
+    // link below: link 0 for the 2.4 GHz interferers and link 1 for the 5 GHz
+    // interferers. Consequently, their application QoS data occupies only the
+    // designated link, while the common installation keeps node creation and
+    // per-link PHY/MAC configuration uniform.
     mldDev = wifi.Install(phy, mac, mldNodes);
 
     const Time statsBeginTime = Seconds(1.5);
-    std::cout << "statsBeginTime: " << statsBeginTime.As(Time::S) << std::endl;
     const Time statsEndTime =
         Seconds(period) * ((simulationTime + simT_delayEnd) / Seconds(period)).GetInt();
-    std::cout << "statsEndTime: " << statsEndTime.As(Time::S) << std::endl;
-
-    Ptr<WifiMac> mac_ap = DynamicCast<WifiNetDevice>(apDev.Get(0))->GetMac();
-    std::cout << "AP0 MAC: " << apDev.Get(0)->GetAddress() << std::endl;
-
-    for (uint8_t i = 0; i < nLinks; ++i)
-    {
-        auto fem = mac_ap->GetFrameExchangeManager(i);
-        std::cout << "\t apDevice linkId " << std::to_string(i)
-                  << " mac address: " << fem->GetAddress() << std::endl;
-    }
-    for (std::size_t id = 0; id < nStaMlds; ++id)
-    {
-        Ptr<WifiMac> mac_mld = DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetMac();
-        std::cout << "MLD" << id << " MAC: " << mldDev.Get(id)->GetAddress() << std::endl;
-        for (uint8_t i = 0; i < nLinks; ++i)
-        {
-            auto fem = mac_mld->GetFrameExchangeManager(i);
-            std::cout << "\t mldDevice linkId " << std::to_string(i)
-                      << " mac address: " << fem->GetAddress() << std::endl;
-        }
-    }
+    std::cout << "[STATS_WINDOW]"
+              << " begin=" << statsBeginTime.As(Time::S)
+              << " end=" << statsEndTime.As(Time::S)
+              << " duration=" << (statsEndTime - statsBeginTime).As(Time::S) << std::endl;
 
     // ---------------- Trace connections ----------------
     // AP and the MLD STA under test: connect PHY-level CSV logging (PpduTxRecord).
@@ -828,16 +811,13 @@ main(int argc, char* argv[])
         ->GetQosTxop(0)
         ->GetBaManager()
         ->TraceConnectWithoutContext("BlockAckResult",
-                                      MakeBoundCallback(&NotifyBlockAckResult, statsBeginTime, logreceiver));
+                                      MakeBoundCallback(&NotifyBlockAckResult,
+                                                        statsBeginTime,
+                                                        statsEndTime));
 
     // Interfering SLD STAs on link 0 (2.4 GHz).
     for (std::size_t id = nStaMlds; id < nStaMlds + nStaSlds0; ++id)
     {
-        Ptr<WifiMac> mac_mld = DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetMac();
-        std::cout << "SLD_2.4G_" << id << " MAC: " << mldDev.Get(id)->GetAddress() << std::endl;
-        auto fem = mac_mld->GetFrameExchangeManager(0);
-        std::cout << "\t sldDevice linkId 0 mac address: " << fem->GetAddress() << std::endl;
-
         const uint32_t staIndex = id - nStaMlds;
         for (uint8_t linkId = 0; linkId < nLinks; ++linkId)
         {
@@ -852,11 +832,6 @@ main(int argc, char* argv[])
     // Interfering SLD STAs on link 1 (5 GHz).
     for (std::size_t id = nStaMlds + nStaSlds0; id < nStaMlds + nStaSlds0 + nStaSlds1; ++id)
     {
-        Ptr<WifiMac> mac_mld = DynamicCast<WifiNetDevice>(mldDev.Get(id))->GetMac();
-        std::cout << "SLD_5G_" << id << " MAC: " << mldDev.Get(id)->GetAddress() << std::endl;
-        auto fem = mac_mld->GetFrameExchangeManager(1);
-        std::cout << "\t sldDevice linkId 1 mac address: " << fem->GetAddress() << std::endl;
-
         const uint32_t staIndex = id - nStaMlds - nStaSlds0;
         for (uint8_t linkId = 0; linkId < nLinks; ++linkId)
         {
@@ -906,7 +881,6 @@ main(int argc, char* argv[])
     // ---------------- Mobility: circular layout around the AP ----------------
     Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
     positionAlloc->Add(Vector(0.0, 2.0, 0.0));
-    std::cout << "AP position: (0.0, 2.0, 0.0)" << std::endl;
 
     const double bssRadius = 0.1;
     const double step = 360.0 / (nStaMlds + nStaSlds0 + nStaSlds1);
@@ -916,7 +890,6 @@ main(int argc, char* argv[])
         const double x = 0.0 + bssRadius * cos(ang);
         const double y = 2.0 + bssRadius * sin(ang);
         positionAlloc->Add(Vector(x, y, 0.0));
-        std::cout << " STA" << i << ": (" << x << ", " << y << ", 0.0)" << std::endl;
     }
 
     MobilityHelper mobility;
@@ -934,12 +907,6 @@ main(int argc, char* argv[])
     const Ipv4InterfaceContainer apNodeInterface = address.Assign(apDev.Get(0));
     const Ipv4InterfaceContainer mldNodeInterface = address.Assign(mldDev);
 
-    std::cout << "AP0 IP: " << apNodeInterface.GetAddress(0) << std::endl;
-    for (std::size_t i = 0; i < nStaMlds + nStaSlds0 + nStaSlds1; ++i)
-    {
-        std::cout << "  STA-" << std::to_string(i) + ": " << mldNodeInterface.GetAddress(i)
-                  << std::endl;
-    }
 
     // ---------------- Applications ----------------
     uint16_t port = 9;
@@ -951,17 +918,12 @@ main(int argc, char* argv[])
 
     const auto maxLoad2 = EhtPhy::GetDataRate(mcs[0], bandwidth[0], NanoSeconds(gi), 1) * nss;
     const auto maxLoad5 = EhtPhy::GetDataRate(mcs[1], bandwidth[1], NanoSeconds(gi), 1) * nss;
-    std::cout << "maxload = " << std::to_string((maxLoad2 + maxLoad5) / 1e6)
-              << " Mbps; 2.4 GHz: " << std::to_string(maxLoad2 / 1e6)
-              << " Mbps, 5 GHz: " << std::to_string(maxLoad5 / 1e6) << " Mbps" << std::endl;
 
     // MLD STA offered load is split evenly between the two links; each SLD
     // STA is loaded up to its own link's max rate.
     const auto packetInterval = payloadSize * 8.0 / (maxLoad2 + maxLoad5) / 2;
     const auto packetInterval2 = payloadSize * 8.0 / maxLoad2;
     const auto packetInterval5 = payloadSize * 8.0 / maxLoad5;
-    std::cout << "2.4 GHz: " << std::to_string(packetInterval2)
-              << " s, 5 GHz: " << std::to_string(packetInterval5) << " s" << std::endl;
 
     UdpClientHelper client(apNodeInterface.GetAddress(0), port);
     client.SetAttribute("MaxPackets", UintegerValue(0));
@@ -996,8 +958,9 @@ main(int argc, char* argv[])
     }
 
     const std::string mldMappingStr = "0,1,2,3,4,5,6,7 0,1"; //!< MLD STA: all TIDs on both links
-    const std::string mldMappingStr1 = "0,1,2,3,4,5,6,7 0";  //!< SLD STA on link 0 only
-    const std::string mldMappingStr2 = "0,1,2,3,4,5,6,7 1";  //!< SLD STA on link 1 only
+    // Equivalent SLD representation: pin every TID to one designated link.
+    const std::string mldMappingStr1 = "0,1,2,3,4,5,6,7 0"; //!< 2.4 GHz SLD
+    const std::string mldMappingStr2 = "0,1,2,3,4,5,6,7 1"; //!< 5 GHz SLD
 
     std::size_t index = 0;
     for (auto i = mldDev.Begin(); i != mldDev.End(); ++i, ++index)
@@ -1028,7 +991,10 @@ main(int argc, char* argv[])
                 BooleanValue(false));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/UseExplicitBarAfterMissedBlockAck",
                 BooleanValue(false));
-    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode", UintegerValue(modeSender));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode",
+                UintegerValue(senderModeFlags));
+    Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/EnableAmpduLimit",
+                BooleanValue(enableAmpduLimit));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Policy",
                 UintegerValue(policyint));
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/MaxAmpduNum0",
@@ -1040,7 +1006,7 @@ main(int argc, char* argv[])
     Config::Set("/NodeList/1/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/DataRate5",
                 DoubleValue(maxLoad5));
     Config::Set("/NodeList/0/DeviceList/*/$ns3::WifiNetDevice/Mac/BE_Txop/Mode",
-                UintegerValue(modeReceiver));
+                UintegerValue(receiverModeFlags));
 
     // ---------------- OBSS/BSS EDCA parameters (equal AIFSN/CW for all nodes) ----------------
     for (uint32_t i = 0; i < allNodes.GetN(); ++i)
@@ -1075,13 +1041,13 @@ main(int argc, char* argv[])
                          nss,
                          nStaSlds0,
                          nStaSlds1,
-                         nStaSlds0 == 0 ? 0 : maxAmpduNumSld0,
-                         nStaSlds1 == 0 ? 0 : maxAmpduNumSld1,
+                         effectiveMaxAmpduNumSld0,
+                         effectiveMaxAmpduNumSld1,
                          fixedPER0,
                          fixedPER1,
                          mpduBufferSize,
-                         policyint == 6 ? maxAmpduNum0 : 0,
-                         policyint == 6 ? maxAmpduNum1 : 0,
+                         effectiveMaxAmpduNum0,
+                         effectiveMaxAmpduNum1,
                          originalSeed,
                          statsMLD.Tput(payloadSize, interval),
                          statsMLD.link[0].Tput(payloadSize, interval),

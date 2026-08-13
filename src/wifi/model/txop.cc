@@ -18,6 +18,7 @@
 #include "wifi-phy.h"
 
 #include "ns3/attribute-container.h"
+#include "ns3/boolean.h"
 #include "ns3/log.h"
 #include "ns3/pointer.h"
 #include "ns3/shuffle.h"
@@ -156,10 +157,19 @@ Txop::GetTypeId()
                           MakePointerAccessor(&Txop::GetWifiMacQueue),
                           MakePointerChecker<WifiMacQueue>())
             .AddAttribute("Mode",
-                "Mode Setting",
+                "Distributed multi-radio MLD mode flags: bit 0 enables sender-side per-link "
+                "read pointers, bit 1 enables receiver-side per-link BA scoreboards, bit 2 "
+                "enables sender logging, and bit 3 enables receiver logging.",
                 UintegerValue(0),
                 MakeUintegerAccessor(&Txop::m_mode),
                 MakeUintegerChecker<uint32_t>()
+                )
+            .AddAttribute("EnableAmpduLimit",
+                "Enable the per-link A-MPDU aggregation limit controller independently of "
+                "the distributed sender and receiver processing.",
+                BooleanValue(false),
+                MakeBooleanAccessor(&Txop::m_ampduLimitEnabled),
+                MakeBooleanChecker()
                 )
             .AddAttribute("Policy",
                 "pre title",
@@ -783,14 +793,15 @@ Txop::DoInitialize()
         GenerateBackoff(id);
     }
     // The initialization of m_queue and m_mac has been completed.
-    if(m_mode & 0x01) {
+    if (m_ampduLimitEnabled)
+    {
         m_ampduLimitController = Create<AmpduLimitController>(m_mac);
         m_ampduLimitController->SetDatarateSetting(m_datarate0, m_datarate1, m_datarate2);
         if(m_pertitle == 6){
             m_ampduLimitController->SetAmpduLimit(m_maxAmpduNum0, m_maxAmpduNum1, m_maxAmpduNum2);
         }
     }
-     
+
 }
 
 Txop::ChannelAccessStatus
@@ -896,7 +907,11 @@ void
 Txop::SetFixedPER(const std::vector<double>& per)
 {
     m_fixedPERs = per;
-    m_fixedPERs.resize(m_links.size(), 0.0); // 若 per 比链路数短，补 0.0；若更长则截断
+    m_fixedPERs.resize(m_links.size(), 0.0);
+    NS_ABORT_MSG_IF(std::any_of(m_fixedPERs.cbegin(), m_fixedPERs.cend(), [](double value) {
+                        return value < 0.0 || value > 1.0;
+                    }),
+                    "Fixed PER values must be in [0, 1]");
 
     for (uint8_t linkId = 0; linkId < m_links.size(); ++linkId)
     {
@@ -913,13 +928,20 @@ Txop::SetFixedPER(const std::vector<double>& per)
 std::vector<double>
 Txop::GetFixedPER() const
 {
-    return m_fixedPERs; 
+    return m_fixedPERs;
 }
 
 bool
 Txop::IsPERAllZero() const
 {
-    return std::all_of(m_fixedPERs.cbegin(), m_fixedPERs.cend(), [](double per) { return per == 0.0; }); 
+    return std::all_of(m_fixedPERs.cbegin(), m_fixedPERs.cend(), [](double per) { return per == 0.0; });
+}
+
+bool
+Txop::IsEffectiveBawTrackingEnabled() const
+{
+    return (m_mode & (1 << 0)) && m_ampduLimitEnabled && m_pertitle == 2 &&
+           !IsPERAllZero() && m_mac->GetNLinks() == 2;
 }
 
 } // namespace ns3

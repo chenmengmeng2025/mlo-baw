@@ -50,6 +50,13 @@ class BlockAckManager : public Object
         ACKNOWLEDGED
     };
 
+    /// Acknowledgment response represented by a sender-side log entry.
+    enum class AckResponseType : uint8_t
+    {
+        ACK,
+        BLOCK_ACK
+    };
+
   public:
     /**
      * \brief Get the type ID.
@@ -343,11 +350,6 @@ class BlockAckManager : public Object
      * typedef for a callback to invoke when an MPDU is dropped.
      */
     typedef Callback<void, Ptr<const WifiMpdu>> DroppedOldMpdu;
-    // /**
-    //  * typedef for a callback to invoke when an MPDU that was successfully acknowledged via Block Ack.
-    //  * 
-    //  */
-    // typedef TracedCallback<Ptr<const WifiMpdu>, uint8_t> MpduAndLinkIdTracedCallback;
     /**
      * \param callback the callback to invoke when a
      * packet transmission was completed successfully.
@@ -433,42 +435,52 @@ class BlockAckManager : public Object
      * \param tid the TID
      */
     void RemoveFromSendBarIfDataQueuedList(const Mac48Address& recipient, uint8_t tid);
-    
+
     /**
-     * Get the minimum read pointer value among all links.
+     * Get the read pointer maintained for a link.
      *
      * \param recipient the recipient MAC address
      * \param tid Traffic ID
-     * \return the minimum read pointer value
+     * \param linkId link identifier
+     * \return the link-local read pointer
      */
     uint16_t GetOriginatorRptr(const Mac48Address& recipient, uint8_t tid, uint8_t linkId) const;
 
     /**
-     * SyncRptr read pointers after block ack.
+     * Propagate a link's read pointer after Block Ack processing.
      *
-     * \param recipient the recipient MAC address  
+     * \param recipient the recipient MAC address
      * \param tid Traffic ID
+     * \param linkId source link identifier
      */
     void SyncRptr(const Mac48Address& recipient, uint8_t tid, uint8_t linkId);
 
     /**
-     * Update read pointers before send dataframe.
+     * Refresh a link's read pointer before sending a data frame.
      *
-     * \param recipient the recipient MAC address  
+     * \param recipient the recipient MAC address
      * \param tid Traffic ID
+     * \param linkId link identifier
+     * \return true if the link-local read pointer changed
      */
     bool UpdateRptr(const Mac48Address& recipient, uint8_t tid, uint8_t linkId);
 
     /**
-     * Set whether a link is in TX or ACK mode.
+     * Enable or disable read-pointer synchronization for a link.
      *
-     * \param isTx whether the link is in TX mode
-     * \param linkId link identifier 
+     * \param linkId link identifier
+     * \param txStatus true while the link is transmitting
      */
     void UpdateLinkRPtrSyncEnabled(uint8_t linkId, bool txStatus);
 
+    /**
+     * Configure the number of links whose read pointers are maintained.
+     *
+     * \param nLinks number of links
+     */
+    void SetNLinks(uint8_t nLinks);
+
     void SetMode(uint32_t mode);
-    void SetPERAllZero(bool isAllZero);
 
     OriginatorBlockAckAgreement* GetOriginatorBlockAckAgreement(const Mac48Address& recipient, uint8_t tid);
 
@@ -529,6 +541,42 @@ class BlockAckManager : public Object
                                     const Time& now);
 
     /**
+     * Update effective-BAW state after acknowledgment reception failed on a link.
+     *
+     * \param agreement the originator agreement owning the transmit window
+     * \param mpdu the affected MPDU
+     * \param failedLinkId the link on which acknowledgment reception failed
+     */
+    void UpdateBawStateAfterFailedTransmission(
+        OriginatorBlockAckAgreement& agreement,
+        Ptr<const WifiMpdu> mpdu,
+        uint8_t failedLinkId);
+
+    /**
+     * Log an ACK or BlockAck result and the updated transmit BAW.
+     *
+     * \param responseType ACK or BlockAck
+     * \param linkId link on which the response was received
+     * \param tid traffic identifier
+     * \param sequenceNumber acknowledged SN or BlockAck starting SN
+     * \param nSuccessfulMpdus number of acknowledged MPDUs
+     * \param nFailedMpdus number of failed MPDUs
+     * \param txWinBefore transmit-window start before processing the response
+     * \param rptrBefore local read pointer before processing, if distributed
+     * \param agreement agreement containing the updated BAW and read pointers
+     */
+    void LogAckReception(AckResponseType responseType,
+                         uint8_t linkId,
+                         uint8_t tid,
+                         uint16_t sequenceNumber,
+                         uint16_t nSuccessfulMpdus,
+                         uint16_t nFailedMpdus,
+                         uint16_t txWinBefore,
+                         std::optional<uint16_t> rptrBefore,
+                         const OriginatorBlockAckAgreement& agreement) const;
+
+
+    /**
      * This data structure contains, for each originator block ack agreement (recipient, TID),
      * a set of packets for which an ack by block ack is requested.
      * Every packet or fragment indicated as correctly received in BlockAck frame is
@@ -549,15 +597,14 @@ class BlockAckManager : public Object
     TxOk m_txOkCallback;                                    ///< transmit OK callback
     TxFailed m_txFailedCallback;                            ///< transmit failed callback
     DroppedOldMpdu m_droppedOldMpduCallback;                ///< the dropped MPDU callback
-    // MpduAndLinkIdTracedCallback m_ackMpduCallback;  
     /**
      * The trace source fired when a state transition occurred.
      */
     TracedCallback<Time, Mac48Address, uint8_t, OriginatorBlockAckAgreement::State>
         m_originatorAgreementState;
-    std::vector<bool> m_linkRPtrSyncEnabled{true, true, true}; //!< Per-link ACK mode enabled flags
+    uint8_t m_nLinks{1}; //!< Number of links sharing the Block Ack agreement
+    std::vector<bool> m_linkRPtrSyncEnabled{true}; //!< Whether each link can accept read pointer updates
     uint32_t m_mode;
-    bool m_isPERAllZero;
     TracedCallback<Mac48Address, uint8_t, uint8_t, uint16_t, uint16_t> m_blockAckResultCallback;
 };
 

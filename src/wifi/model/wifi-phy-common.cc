@@ -164,8 +164,8 @@ GetPpduMaxTime(WifiPreamble preamble)
     case WIFI_PREAMBLE_HE_TB:
     case WIFI_PREAMBLE_EHT_MU:
     case WIFI_PREAMBLE_EHT_TB:
-        // duration = MicroSeconds(5484);
-        duration = MicroSeconds(std::numeric_limits<uint32_t>::max()); // 解除maxppduduration限制
+        // Experimental extension: disable the standard PPDU duration limit.
+        duration = MicroSeconds(std::numeric_limits<uint32_t>::max());
         break;
     default:
         duration = MicroSeconds(0);

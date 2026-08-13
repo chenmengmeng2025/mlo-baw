@@ -191,7 +191,7 @@ OfdmPpdu::LSigHeader::GetRate(MHz_u channelWidth) const
 void
 OfdmPpdu::LSigHeader::SetLength(uint16_t length)
 {
-    // NS_ASSERT_MSG(length < 4096, "Invalid length"); // 解除maxppduduration限制
+    // Experimental extension: allow L-SIG lengths produced by oversized PPDUs.
     m_length = length;
 }
 
